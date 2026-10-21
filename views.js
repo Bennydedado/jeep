@@ -30,7 +30,7 @@ function econWord(e, avg) {
 // ======================================================= Overview
 function renderHome(v) {
   const st = STATS;
-  v.append(titleRow('Jeep', S.prefs.vehicle + (st.odo ? ' · ' + fmt0(st.odo) + ' km' : '')));
+  v.append(titleRow('Heep', S.prefs.vehicle + (st.odo ? ' · ' + fmt0(st.odo) + ' km' : '')));
   topBanners(v);
   if (!st.n) {
     v.append(card(h('div', { class: 'empty' },
