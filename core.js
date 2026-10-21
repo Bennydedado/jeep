@@ -1,7 +1,7 @@
 'use strict';
 // core.js - the Jeep log on this phone, syncing with the Google Sheet, and the numbers.
 
-const VERSION = '1.0.0';
+const VERSION = '1.0.1';
 const TANK_DEFAULT = 77.6; // 2006 Liberty CRD: 20.5 US gal
 
 // ---------- this phone's copy (the sheet is the real one)
@@ -366,7 +366,7 @@ function sampleData() {
   const d = EMPTY(), day = 864e5;
   let seed = 11;
   const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-  const stations = ['Esso Fort St. John', 'Petro-Canada Taylor', 'Co-op Fort St. John', 'Shell Dawson Creek'];
+  const stations = ['Esso', 'Petro-Canada', 'Co-op', 'Shell'];
   let t = dayStart(Date.now() - 196 * day) + 17.5 * 3600e3, odo = 241320;
   d.fill.push({ id: 'x0', t, odo, lit: 66.4, cost: 109.5, full: true, station: stations[0], note: '' });
   for (let i = 1; i <= 15; i++) {

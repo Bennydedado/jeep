@@ -1,7 +1,7 @@
 // Keeps the app opening with no signal (gas stations up north). Your data never goes through here:
 // calls to the sheet go straight to Google.
-const CACHE = 'jeep-1.0.0';
-const SHELL = ['./', 'index.html', 'app.css?v=1.0.0', 'core.js?v=1.0.0', 'ui.js?v=1.0.0', 'views.js?v=1.0.0', 'live.js?v=1.0.0', 'app.js?v=1.0.0',
+const CACHE = 'jeep-1.0.1';
+const SHELL = ['./', 'index.html', 'app.css?v=1.0.1', 'core.js?v=1.0.1', 'ui.js?v=1.0.1', 'views.js?v=1.0.1', 'live.js?v=1.0.1', 'app.js?v=1.0.1',
   'manifest.webmanifest', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => {
