@@ -1,8 +1,9 @@
 'use strict';
 // core.js - the Jeep log on this phone, syncing with the Google Sheet, and the numbers.
 
-const VERSION = '1.0.1';
+const VERSION = '1.0.2';
 const TANK_DEFAULT = 77.6; // 2006 Liberty CRD: 20.5 US gal
+const PERSONAL = 'Personal tank'; // the Station value for fill-ups from the tank at home
 
 // ---------- this phone's copy (the sheet is the real one)
 const store = {
@@ -261,7 +262,9 @@ function calc(d) {
   st.dist = f.length >= 2 ? f[f.length - 1].odo - f[0].odo : 0;
   st.lastFill = f[f.length - 1] || null;
   st.lastFull = lastF;
-  const priced = f.filter(x => x._.ppl);
+  const priced = f.filter(x => x._.ppl && x.station !== PERSONAL);
+  st.personal = { n: 0, lit: 0, cost: 0 };
+  for (const x of f) if (x.station === PERSONAL) { st.personal.n++; st.personal.lit += x.lit; st.personal.cost += x.cost; }
   if (priced.length) {
     st.ppl = priced.reduce((s, x) => s + x.cost, 0) / priced.reduce((s, x) => s + x.lit, 0);
     st.lastPpl = priced[priced.length - 1]._.ppl;

@@ -98,9 +98,9 @@ function renderHome(v) {
       })));
   }
   // what diesel has cost
-  const priced = st.f.filter(x => x._.ppl && x.t);
+  const priced = st.f.filter(x => x._.ppl && x.t && x.station !== PERSONAL);
   if (priced.length >= 2) {
-    v.append(card(cardHead('Diesel price', '$/L at each fill-up'),
+    v.append(card(cardHead('Pump price', '$/L at each station fill-up'),
       lineChart({ pts: priced.map(x => ({ t: x.t, v: x._.ppl, tip: fmtDay(x.t, true) + (x.station ? ' · ' + x.station : '') })), fmt: n => '$' + n.toFixed(3), fmtAxis: n => '$' + n.toFixed(2), minStep: 0.05, label: 'Diesel price per litre' })));
   }
   // all-time numbers
@@ -113,6 +113,7 @@ function renderHome(v) {
   ];
   if (st.daysBetween) rows.push(['Days between fill-ups', fmt1(st.daysBetween)], ['Distance per day', fmt0(st.kmPerDay) + ' km']);
   if (st.best != null && st.tanks.length > 1) rows.push(['Best and worst tank', fmt1(st.best) + ' · ' + fmt1(st.worst) + ' L/100 km']);
+  if (st.personal.n) rows.push(['From your personal tank', st.personal.n + (st.personal.n > 1 ? ' fill-ups · ' : ' fill-up · ') + fmt0(st.personal.lit) + ' L' + (st.personal.cost ? ' · ' + money(st.personal.cost, 0) : '')]);
   if (st.year.n) rows.push([new Date().getFullYear() + ' so far', money(st.year.cost, 0) + ' · ' + fmt0(st.year.lit) + ' L']);
   v.append(h('div', { class: 'card list' }, rows.map(([k, val]) => h('div', { class: 'row' }, h('div', { class: 'main' }, h('b', { text: k })), h('div', { class: 'end' }, h('span', { text: val, style: 'font-size:15px' }))))));
 }
@@ -203,37 +204,45 @@ function stationList() {
   return [...count.entries()].sort((a, b) => b[1] - a[1]).map(e => e[0]);
 }
 
-// the main thing: a fill-up, typed at the pump
+// the main thing: a fill-up, typed at the pump or at the personal tank.
+// Litres, total and price per litre: type any two and the third works itself out.
+function personalPrice() {
+  const xs = (STATS ? STATS.f : []).filter(x => x.station === PERSONAL && x.cost > 0 && x.lit > 0);
+  return xs.length ? xs[xs.length - 1].cost / xs[xs.length - 1].lit : null;
+}
 function fillSheet(x) {
   const editing = !!x;
-  const m = { t: x ? num(x.t) || Date.now() : Date.now(), odo: x ? num(x.odo) : null, lit: x ? num(x.lit) : null, cost: x ? num(x.cost) : null, full: x ? x.full !== false : true, station: x ? x.station || '' : '', note: x ? x.note || '' : '' };
-  let mode = S.prefs.priceMode, armed = false;
   const st = STATS;
+  const m = { t: x ? num(x.t) || Date.now() : Date.now(), odo: x ? num(x.odo) : null, full: x ? x.full !== false : true, station: x ? x.station || '' : '', note: x ? x.note || '' : '' };
+  let source = m.station === PERSONAL ? 'personal' : 'station';
+  let armed = false, autoPpl = false;
   const lastOdo = st.lastFill ? st.lastFill.odo : 0;
   openSheet({
     title: editing ? 'Fill-up' : 'New fill-up', saveLabel: 'Save fill-up', onSave: () => save(),
     build(b, sheet) {
       const odo = bigField({ id: 'f-odo', label: 'Odometer', unit: 'km', mode: 'numeric', value: m.odo ? String(m.odo) : '', placeholder: lastOdo ? fmt0(lastOdo + Math.round(st.dist / Math.max(1, st.n - 1) || 600)) : '0' });
-      const lit = bigField({ id: 'f-lit', label: 'Litres', unit: 'L', value: m.lit != null ? String(m.lit) : '', placeholder: '0.00' });
-      const cash = bigField({ id: 'f-cost', label: mode === 'total' ? 'Total' : 'Price per litre', pre: '$', value: '', placeholder: mode === 'total' ? '0.00' : '0.000', last: true });
-      if (m.cost) cash.input.value = mode === 'total' ? fmt2(m.cost) : (m.lit ? (m.cost / m.lit).toFixed(3) : '');
-      const priceLine = h('div', { class: 'foot', style: 'text-align:right' });
-      const modeSeg = seg([['total', 'Total'], ['ppl', 'Per litre']], mode, nv => {
-        const l = lit.get(), c = cash.get();
-        if (l && c) cash.input.value = nv === 'ppl' ? (c / l).toFixed(3) : fmt2(c * l);
-        mode = nv; S.prefs.priceMode = nv; savePrefs();
-        cash.label.textContent = nv === 'total' ? 'Total' : 'Price per litre';
-        cash.input.placeholder = nv === 'total' ? '0.00' : '0.000';
-        update();
-      });
+      const KEYS = ['lit', 'cost', 'ppl'];
+      const LABEL = { lit: 'Litres', cost: 'Total', ppl: 'Price per litre' };
+      const PH = { lit: '0.00', cost: '0.00', ppl: '0.000' };
+      const F = {
+        lit: bigField({ id: 'f-lit', label: LABEL.lit, unit: 'L', placeholder: PH.lit }),
+        cost: bigField({ id: 'f-cost', label: LABEL.cost, pre: '$', placeholder: PH.cost }),
+        ppl: bigField({ id: 'f-ppl', label: LABEL.ppl, pre: '$', placeholder: PH.ppl, last: true }),
+      };
+      let order = []; // the fields typed in, oldest first; with two typed, the third is worked out
+      if (x && num(x.lit) > 0) { F.lit.input.value = String(num(x.lit)); order.push('lit'); }
+      if (x && num(x.cost) > 0) { F.cost.input.value = fmt2(num(x.cost)); order.push('cost'); }
       const full = switchEl(m.full, v2 => { m.full = v2; update(); });
       const when = h('input', { type: 'datetime-local', value: toLocalInput(m.t), max: toLocalInput(Date.now() + 864e5) });
-      const station = textRow('Station', { placeholder: 'Optional', value: m.station, list: 'stations', enterkeyhint: 'next' });
+      const station = textRow('Station', { placeholder: 'Optional', value: source === 'personal' ? '' : m.station, list: 'stations', enterkeyhint: 'next' });
       const note = textRow('Note', { placeholder: 'Optional', value: m.note, enterkeyhint: 'done' });
-      const chips = h('div', { class: 'station-chips' }, stationList().slice(0, 5).map(name => h('button', { type: 'button', text: name, onclick: () => { station.input.value = name; } })));
+      const chips = h('div', { class: 'station-chips' }, stationList().filter(n => n !== PERSONAL).slice(0, 5).map(name => h('button', { type: 'button', text: name, onclick: () => { station.input.value = name; } })));
+      const srcSeg = seg([['station', 'Gas station'], ['personal', PERSONAL]], source, v2 => { source = v2; onSource(); update(); });
       const result = h('div', { class: 'result' });
       const err = h('div', { class: 'err' });
-      put(b, odo.wrap, h('div', { class: 'pair' }, lit.wrap, cash.wrap), h('div', { style: 'display:flex;gap:12px;align-items:center' }, h('div', { style: 'flex:1' }, modeSeg), priceLine),
+      put(b, srcSeg, odo.wrap,
+        h('div', { class: 'pair' }, F.lit.wrap, F.cost.wrap),
+        h('div', { class: 'pair' }, F.ppl.wrap, h('div', { class: 'foot', style: 'align-self:center;padding:0 4px', text: 'Type any two of litres, total and price. The third works itself out.' })),
         h('div', { class: 'group' },
           h('label', { class: 'gr' }, h('span', { text: 'Full tank' }), h('span', { style: 'flex:1' }), full),
           h('label', { class: 'gr' }, h('span', { text: 'When' }), when),
@@ -244,27 +253,69 @@ function fillSheet(x) {
         editing ? confirmButton('Delete this fill-up', 'Tap again to delete it', () => { commit({ op: 'del', tab: 'fill', id: x.id }); sheet.close(); toast('Fill-up deleted', fmt0(m.odo || 0) + ' km', 'info'); }) : null);
       odo.input.addEventListener('blur', () => { const n = odo.get(); if (n) odo.input.value = fmt0(n); });
       odo.input.addEventListener('focus', () => { const n = odo.get(); if (n) odo.input.value = String(n); });
-      for (const i of [odo.input, lit.input, cash.input]) i.addEventListener('input', () => { armed = false; update(); });
+      odo.input.addEventListener('input', () => { armed = false; update(); });
+      for (const k of KEYS) F[k].input.addEventListener('input', () => {
+        order = order.filter(o => o !== k);
+        if (F[k].input.value.trim() !== '') order.push(k);
+        if (k === 'ppl') autoPpl = false;
+        armed = false;
+        update();
+      });
 
+      // at the personal tank there's no station, and the price is usually what the tank's diesel cost last time
+      function onSource() {
+        const personal = source === 'personal';
+        station.row.hidden = personal;
+        chips.hidden = personal;
+        const price = personalPrice();
+        if (personal && order.length < 2 && !order.includes('ppl') && price) {
+          F.ppl.input.value = price.toFixed(3); order.push('ppl'); autoPpl = true;
+        } else if (!personal && autoPpl) {
+          F.ppl.input.value = ''; order = order.filter(o => o !== 'ppl'); autoPpl = false;
+        }
+      }
+      function derived() {
+        if (order.length < 2) return null;
+        const two = order.slice(-2);
+        return KEYS.find(k => !two.includes(k));
+      }
+      function values() {
+        const v = { lit: F.lit.get(), cost: F.cost.get(), ppl: F.ppl.get() }, d = derived();
+        if (d === 'lit') v.lit = v.ppl > 0 && v.cost != null ? v.cost / v.ppl : null;
+        if (d === 'cost') v.cost = v.lit != null && v.ppl != null ? v.lit * v.ppl : null;
+        if (d === 'ppl') v.ppl = v.lit > 0 && v.cost != null ? v.cost / v.lit : null;
+        if (!d && v.lit > 0 && v.cost != null && v.ppl == null) v.ppl = v.cost / v.lit;
+        return { v, d };
+      }
       function read() {
-        m.odo = odo.get(); m.lit = lit.get();
-        const c = cash.get();
-        m.cost = c == null ? null : (mode === 'total' ? c : (m.lit ? Math.round(c * m.lit * 100) / 100 : null));
-        m.ppl = c == null ? null : (mode === 'total' ? (m.lit ? c / m.lit : null) : c);
+        const { v } = values();
+        m.odo = odo.get();
+        m.lit = v.lit != null && isFinite(v.lit) ? v.lit : null;
+        m.cost = v.cost != null && isFinite(v.cost) ? Math.round(v.cost * 100) / 100 : null;
+        m.ppl = v.ppl != null && isFinite(v.ppl) ? v.ppl : null;
         m.t = fromLocalInput(when.value) || m.t;
-        m.station = station.input.value.trim();
+        m.station = source === 'personal' ? PERSONAL : station.input.value.trim();
         m.note = note.input.value.trim();
       }
       function update() {
         read();
+        const { v, d } = values();
+        for (const k of KEYS) {
+          const f = F[k], isD = k === d;
+          f.wrap.classList.toggle('calc', isD);
+          f.label.textContent = LABEL[k] + (isD ? ' · worked out' : '');
+          if (isD) {
+            f.input.value = '';
+            f.input.placeholder = v[k] != null && isFinite(v[k]) ? (k === 'ppl' ? v[k].toFixed(3) : fmt2(v[k])) : PH[k];
+          } else f.input.placeholder = PH[k];
+        }
         const p = previewFill(m, x && x.id);
         if (m.odo && p.prev) {
           if (m.odo <= p.prev.odo) odo.setHint('Lower than your last fill-up at ' + fmt0(p.prev.odo) + ' km', true);
           else odo.setHint('+' + fmt0(m.odo - p.prev.odo) + ' km since the fill-up at ' + fmt0(p.prev.odo), m.odo - p.prev.odo > 1500);
         } else odo.setHint(lastOdo && !m.odo ? 'Last fill-up ' + fmt0(lastOdo) + ' km' : '');
-        lit.setHint(m.lit > st.tank * 1.03 ? 'More than the ' + fmt1(st.tank) + ' L tank' : '', true);
-        cash.setHint('');
-        priceLine.textContent = m.ppl && mode === 'total' ? '$' + m.ppl.toFixed(3) + ' a litre' : (m.cost && mode === 'ppl' ? money(m.cost) + ' in all' : '');
+        F.lit.setHint(m.lit > st.tank * 1.03 ? 'More than the ' + fmt1(st.tank) + ' L tank' : '', true);
+        F.ppl.setHint(source === 'personal' && autoPpl ? 'What your tank cost last time' : '');
         result.textContent = '';
         if (p.econ != null) {
           put(result, h('div', { class: 'v' }, fmt1(p.econ), h('small', { text: 'L/100 km' })),
@@ -281,17 +332,17 @@ function fillSheet(x) {
         read();
         if (!(m.odo > 0)) { odo.bad(true); err.textContent = 'Type what the odometer says.'; odo.input.focus(); return; }
         odo.bad(false);
-        if (!(m.lit > 0)) { lit.bad(true); err.textContent = 'Type how many litres went in.'; lit.input.focus(); return; }
-        lit.bad(false);
+        if (!(m.lit > 0)) { F.lit.bad(true); err.textContent = 'Type the litres, or the total and the price per litre.'; F.lit.input.focus(); return; }
+        F.lit.bad(false);
         const p = previewFill(m, x && x.id);
         if (p.prev && m.odo <= p.prev.odo && !armed) { armed = true; err.textContent = 'That\'s lower than your last fill-up. Check it, or save again to keep it.'; return; }
-        const row = { id: x ? x.id : newId('f'), t: m.t, odo: Math.round(m.odo), lit: Math.round(m.lit * 1000) / 1000, cost: m.cost == null ? '' : Math.round(m.cost * 100) / 100, full: m.full, station: m.station, note: m.note };
+        const row = { id: x ? x.id : newId('f'), t: m.t, odo: Math.round(m.odo), lit: Math.round(m.lit * 1000) / 1000, cost: m.cost == null ? '' : m.cost, full: m.full, station: m.station, note: m.note };
         commit({ op: 'put', tab: 'fill', row });
         sheet.close();
         toast(editing ? 'Fill-up changed' : 'Fill-up saved',
           p.econ != null ? fmt1(p.econ) + ' L/100 km' + (st.avg ? ', ' + econWord(p.econ, st.avg) : '') : (m.full ? 'Fuel economy shows after your next full tank' : 'Top-up: counts toward the next full tank'));
       }
-      sheet.save = save;
+      onSource();
       update();
       if (!editing) setTimeout(() => odo.input.focus(), 60);
     },
@@ -445,8 +496,6 @@ function settingsSheet() {
         h('div', { class: 'group' }, h('label', { class: 'gr' }, h('span', { text: 'Name' }), veh), h('label', { class: 'gr' }, h('span', { text: 'Tank (L)' }), tank)),
         h('div', { class: 'label', text: 'Appearance' }),
         seg([['system', 'Automatic'], ['dark', 'Dark'], ['light', 'Light']], S.prefs.theme, v2 => { S.prefs.theme = v2; savePrefs(); applyTheme(); }),
-        h('div', { class: 'label', text: 'Prices at the pump' }),
-        seg([['total', 'Type the total'], ['ppl', 'Type $ per litre']], S.prefs.priceMode, v2 => { S.prefs.priceMode = v2; savePrefs(); }),
         h('div', { class: 'label', text: 'Live' }),
         h('div', { class: 'card list' },
           h('button', { class: 'row', onclick: () => { sheet.close(); go('live'); demoStart(); } }, h('div', { class: 'main' }, h('b', { text: 'Try the live demo' }), h('span', { text: 'Made-up numbers, to see the Live screen' })), icon('play', 'chev')),
