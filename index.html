@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Jeep</title>
+<meta name="description" content="Fill-ups, fuel economy, service reminders and live T3 data for a 2006 Jeep Liberty CRD.">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Jeep">
+<meta name="theme-color" content="#050506">
+<meta name="color-scheme" content="dark light">
+<meta name="format-detection" content="telephone=no">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="stylesheet" href="app.css?v=1.0.0">
+</head>
+<body>
+<div class="topbar" id="topbar" aria-hidden="true"><span id="topTitle"></span></div>
+<main id="view"></main>
+<div class="dock">
+  <nav class="tabbar glass" id="tabbar" aria-label="Sections"></nav>
+  <button class="fab" id="fab" aria-label="Add a fill-up"></button>
+</div>
+<datalist id="stations"></datalist>
+<noscript><p style="padding:40px 20px">The Jeep app needs JavaScript turned on.</p></noscript>
+<script src="core.js?v=1.0.0"></script>
+<script src="ui.js?v=1.0.0"></script>
+<script src="views.js?v=1.0.0"></script>
+<script src="live.js?v=1.0.0"></script>
+<script src="app.js?v=1.0.0"></script>
+</body>
+</html>
