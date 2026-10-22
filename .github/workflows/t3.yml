@@ -40,7 +40,7 @@ jobs:
             cp "$(find ~/.arduino15 -name boot_app0.bin | head -1)" firmware/boot_app0.bin
             rm -f firmware/T3-full.bin
             printf '{"v":"%s","url":"https://bennydedado.github.io/jeep/firmware/T3.bin"}\n' "$V" > firmware/t3.json
-            printf '{"name":"Jeep T3","version":"%s","new_install_prompt_erase":false,"builds":[{"chipFamily":"ESP32","parts":[{"path":"bootloader.bin","offset":4096},{"path":"partitions.bin","offset":32768},{"path":"boot_app0.bin","offset":57344},{"path":"T3.bin","offset":65536}]}]}\n' "$V" > firmware/manifest.json
+            printf '{"name":"Jeep T3","version":"%s","new_install_prompt_erase":false,"builds":[{"chipFamily":"ESP32","parts":[{"path":"bootloader.bin?v=%s","offset":4096},{"path":"partitions.bin?v=%s","offset":32768},{"path":"boot_app0.bin?v=%s","offset":57344},{"path":"T3.bin?v=%s","offset":65536}]}]}\n' "$V" "$V" "$V" "$V" "$V" > firmware/manifest.json
           fi
           git config user.name "github-actions"
           git config user.email "github-actions@users.noreply.github.com"
