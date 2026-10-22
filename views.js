@@ -106,7 +106,7 @@ function renderHome(v) {
   // all-time numbers
   const rows = [
     ['Distance logged', fmt0(st.dist) + ' km'],
-    ['Diesel bought', fmt0(st.lit) + ' L'],
+    ['Diesel bought', (st.estLit ? '≈' : '') + fmt0(st.lit + st.estLit) + ' L'],
     ['Spent on diesel', money(st.cost)],
     ['Fill-ups', st.n + (st.tops ? ' (' + st.tops + (st.tops > 1 ? ' top-ups)' : ' top-up)') : '')],
     ['Average fill-up', fmt1(st.lit / st.n) + ' L · ' + money(st.cost / st.n, 0)],
@@ -157,7 +157,7 @@ function fillRow(x) {
       h('span', { text: fmt0(x.odo) + ' km' + (x._.since ? ' · +' + fmt0(x._.since) : '') + (x.station ? ' · ' + x.station : '') })),
     h('div', { class: 'end' },
       h('b', { text: e != null ? fmt1(e) : '—' }),
-      h('span', { text: fmt1(x.lit) + ' L · ' + (x.cost ? money(x.cost) : 'no price') })),
+      h('span', { text: x.unknown ? (x._.est ? '≈' + fmt0(x._.est) + ' L, estimated' : 'litres not known') : fmt1(x.lit) + ' L · ' + (x.cost ? money(x.cost) : 'no price') })),
     icon('chev', 'chev'));
 }
 
@@ -240,11 +240,14 @@ function fillSheet(x) {
       const srcSeg = seg([['station', 'Gas station'], ['personal', PERSONAL]], source, v2 => { source = v2; onSource(); update(); });
       const result = h('div', { class: 'result' });
       const err = h('div', { class: 'err' });
+      const amounts = h('div', { class: 'pair' }, F.lit.wrap, F.cost.wrap);
+      const priceRow = h('div', { class: 'pair' }, F.ppl.wrap, h('div', { class: 'foot', style: 'align-self:center;padding:0 4px', text: 'Type any two of litres, total and price. The third works itself out.' }));
+      const fullRow = h('label', { class: 'gr' }, h('span', { text: 'Full tank' }), h('span', { style: 'flex:1' }), full);
+      const personalNote = h('div', { class: 'foot', style: 'padding:0 4px', text: 'At your personal tank only the odometer is needed. The tank counts as full, and fuel economy starts again from here.' });
       put(b, srcSeg, odo.wrap,
-        h('div', { class: 'pair' }, F.lit.wrap, F.cost.wrap),
-        h('div', { class: 'pair' }, F.ppl.wrap, h('div', { class: 'foot', style: 'align-self:center;padding:0 4px', text: 'Type any two of litres, total and price. The third works itself out.' })),
+        amounts, priceRow, personalNote,
         h('div', { class: 'group' },
-          h('label', { class: 'gr' }, h('span', { text: 'Full tank' }), h('span', { style: 'flex:1' }), full),
+          fullRow,
           h('label', { class: 'gr' }, h('span', { text: 'When' }), when),
           station.row, note.row),
         chips.children.length ? chips : null,
@@ -262,17 +265,12 @@ function fillSheet(x) {
         update();
       });
 
-      // at the personal tank there's no station, and the price is usually what the tank's diesel cost last time
+      // at the personal tank it's just the odometer: always filled to full, litres and price unknown
       function onSource() {
         const personal = source === 'personal';
-        station.row.hidden = personal;
-        chips.hidden = personal;
-        const price = personalPrice();
-        if (personal && order.length < 2 && !order.includes('ppl') && price) {
-          F.ppl.input.value = price.toFixed(3); order.push('ppl'); autoPpl = true;
-        } else if (!personal && autoPpl) {
-          F.ppl.input.value = ''; order = order.filter(o => o !== 'ppl'); autoPpl = false;
-        }
+        for (const el of [station.row, chips, amounts, priceRow, fullRow]) el.hidden = personal;
+        personalNote.hidden = !personal;
+        if (personal) { m.full = true; full.checked = true; }
       }
       function derived() {
         if (order.length < 2) return null;
@@ -295,6 +293,8 @@ function fillSheet(x) {
         m.ppl = v.ppl != null && isFinite(v.ppl) ? v.ppl : null;
         m.t = fromLocalInput(when.value) || m.t;
         m.station = source === 'personal' ? PERSONAL : station.input.value.trim();
+        m.unknown = source === 'personal';
+        if (m.unknown) { m.lit = null; m.cost = null; m.ppl = null; m.full = true; }
         m.note = note.input.value.trim();
       }
       function update() {
@@ -315,12 +315,15 @@ function fillSheet(x) {
           else odo.setHint('+' + fmt0(m.odo - p.prev.odo) + ' km since the fill-up at ' + fmt0(p.prev.odo), m.odo - p.prev.odo > 1500);
         } else odo.setHint(lastOdo && !m.odo ? 'Last fill-up ' + fmt0(lastOdo) + ' km' : '');
         F.lit.setHint(m.lit > st.tank * 1.03 ? 'More than the ' + fmt1(st.tank) + ' L tank' : '', true);
-        F.ppl.setHint(source === 'personal' && autoPpl ? 'What your tank cost last time' : '');
+        F.ppl.setHint('');
         result.textContent = '';
         if (p.econ != null) {
           put(result, h('div', { class: 'v' }, fmt1(p.econ), h('small', { text: 'L/100 km' })),
             h('div', { class: 's', text: fmt0(p.dist) + ' km on this tank' + (st.avg ? ' · ' + econWord(p.econ, st.avg) : '') }),
             p.perKm ? h('div', { class: 's', text: '$' + p.perKm.toFixed(3) + ' per km' }) : null);
+          result.hidden = false;
+        } else if (p.personal) {
+          put(result, h('div', { class: 's', text: 'Tank full at this odometer. Fuel economy starts again from here.' }));
           result.hidden = false;
         } else if (m.odo && m.lit) {
           put(result, h('div', { class: 's', text: p.top ? 'Top-up: it counts toward your next full tank.' : p.first ? 'Your first full tank in the log. Fuel economy shows from the next one.' : '' }));
@@ -332,15 +335,15 @@ function fillSheet(x) {
         read();
         if (!(m.odo > 0)) { odo.bad(true); err.textContent = 'Type what the odometer says.'; odo.input.focus(); return; }
         odo.bad(false);
-        if (!(m.lit > 0)) { F.lit.bad(true); err.textContent = 'Type the litres, or the total and the price per litre.'; F.lit.input.focus(); return; }
+        if (!m.unknown && !(m.lit > 0)) { F.lit.bad(true); err.textContent = 'Type the litres, or the total and the price per litre.'; F.lit.input.focus(); return; }
         F.lit.bad(false);
         const p = previewFill(m, x && x.id);
         if (p.prev && m.odo <= p.prev.odo && !armed) { armed = true; err.textContent = 'That\'s lower than your last fill-up. Check it, or save again to keep it.'; return; }
-        const row = { id: x ? x.id : newId('f'), t: m.t, odo: Math.round(m.odo), lit: Math.round(m.lit * 1000) / 1000, cost: m.cost == null ? '' : m.cost, full: m.full, station: m.station, note: m.note };
+        const row = { id: x ? x.id : newId('f'), t: m.t, odo: Math.round(m.odo), lit: m.unknown ? '' : Math.round(m.lit * 1000) / 1000, cost: m.unknown || m.cost == null ? '' : m.cost, full: m.full, station: m.station, note: m.note };
         commit({ op: 'put', tab: 'fill', row });
         sheet.close();
         toast(editing ? 'Fill-up changed' : 'Fill-up saved',
-          p.econ != null ? fmt1(p.econ) + ' L/100 km' + (st.avg ? ', ' + econWord(p.econ, st.avg) : '') : (m.full ? 'Fuel economy shows after your next full tank' : 'Top-up: counts toward the next full tank'));
+          m.unknown ? 'Personal tank: full at ' + fmt0(m.odo) + ' km' : p.econ != null ? fmt1(p.econ) + ' L/100 km' + (st.avg ? ', ' + econWord(p.econ, st.avg) : '') : (m.full ? 'Fuel economy shows after your next full tank' : 'Top-up: counts toward the next full tank'));
       }
       onSource();
       update();

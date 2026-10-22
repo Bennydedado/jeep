@@ -1,7 +1,7 @@
 'use strict';
 // core.js - the Jeep log on this phone, syncing with the Google Sheet, and the numbers.
 
-const VERSION = '1.0.4';
+const VERSION = '1.0.5';
 const TANK_DEFAULT = 77.6; // 2006 Liberty CRD: 20.5 US gal
 const PERSONAL = 'Personal tank'; // the Station value for fill-ups from the tank at home
 
@@ -226,32 +226,28 @@ function addMonths(t, n) {
 
 // fuel economy works on full tanks: every litre bought since the last full tank, over the distance since it
 function calc(d) {
-  const f = d.fill.filter(x => num(x.odo) > 0 && num(x.lit) > 0)
-    .map(x => Object.assign({}, x, { odo: num(x.odo), lit: num(x.lit), cost: num(x.cost) || 0, full: x.full !== false }))
+  // a fill-up from the personal tank can be just the odometer: the tank is full, the litres aren't known
+  const f = d.fill.filter(x => num(x.odo) > 0 && (num(x.lit) > 0 || x.full !== false))
+    .map(x => { const lit = num(x.lit) || 0; return Object.assign({}, x, { odo: num(x.odo), lit, cost: num(x.cost) || 0, full: x.full !== false, unknown: !(lit > 0) }); })
     .sort((a, b) => (a.odo - b.odo) || ((a.t || 0) - (b.t || 0)));
-  let prevFull = null, prevAny = null, acc = 0, first = null, lastF = null, litR = 0;
+  // each full tank closes a stretch; stretches that end in unknown litres don't count toward the averages
+  let prevFull = null, prevAny = null, acc = 0, accCost = 0, lastF = null, litR = 0, distR = 0, costR = 0;
   for (const x of f) {
-    x._ = { econ: null, dist: null, since: prevAny ? x.odo - prevAny.odo : null, ppl: x.cost > 0 ? x.cost / x.lit : null };
-    if (prevFull) acc += x.lit;
+    x._ = { econ: null, dist: null, est: null, since: prevAny ? x.odo - prevAny.odo : null, ppl: x.lit > 0 && x.cost > 0 ? x.cost / x.lit : null };
+    if (prevFull) { acc += x.lit; accCost += x.cost; }
     if (x.full) {
       if (prevFull && x.odo > prevFull.odo) {
-        x._.econ = acc / (x.odo - prevFull.odo) * 100;
         x._.dist = x.odo - prevFull.odo;
-        litR += acc;
+        if (!x.unknown) { x._.econ = acc / x._.dist * 100; litR += acc; distR += x._.dist; costR += accCost; }
       }
-      if (!first) first = x;
-      prevFull = x; acc = 0; lastF = x;
+      prevFull = x; acc = 0; accCost = 0; lastF = x;
     }
     prevAny = x;
   }
-  const st = { f, n: f.length, lit: 0, cost: 0, tops: f.filter(x => !x.full).length };
+  const st = { f, n: f.length, lit: 0, cost: 0, estLit: 0, tops: f.filter(x => !x.full).length };
   for (const x of f) { st.lit += x.lit; st.cost += x.cost; }
-  if (first && lastF && lastF.odo > first.odo) {
-    let costR = 0;
-    for (const x of f) if (x.odo > first.odo && x.odo <= lastF.odo) costR += x.cost;
-    st.avg = litR / (lastF.odo - first.odo) * 100;
-    st.perKm = costR > 0 ? costR / (lastF.odo - first.odo) : null;
-  }
+  if (distR > 0) { st.avg = litR / distR * 100; st.perKm = costR > 0 ? costR / distR : null; }
+  if (st.avg) for (const x of f) if (x.unknown && x._.dist) { x._.est = x._.dist * st.avg / 100; st.estLit += x._.est; }
   st.tanks = f.filter(x => x._.econ != null);
   if (st.tanks.length) {
     const e = st.tanks.map(x => x._.econ);
@@ -263,8 +259,8 @@ function calc(d) {
   st.lastFill = f[f.length - 1] || null;
   st.lastFull = lastF;
   const priced = f.filter(x => x._.ppl && x.station !== PERSONAL);
-  st.personal = { n: 0, lit: 0, cost: 0 };
-  for (const x of f) if (x.station === PERSONAL) { st.personal.n++; st.personal.lit += x.lit; st.personal.cost += x.cost; }
+  st.personal = { n: 0, lit: 0, cost: 0, est: false };
+  for (const x of f) if (x.station === PERSONAL) { st.personal.n++; st.personal.lit += x.unknown ? (x._.est || 0) : x.lit; st.personal.est = st.personal.est || x.unknown; st.personal.cost += x.cost; }
   if (priced.length) {
     st.ppl = priced.reduce((s, x) => s + x.cost, 0) / priced.reduce((s, x) => s + x.lit, 0);
     st.lastPpl = priced[priced.length - 1]._.ppl;
@@ -326,6 +322,7 @@ function previewFill(m, editingId) {
   let prev = null;
   for (const x of others) if (x.odo < m.odo) prev = x;
   const out = { prev };
+  if (m.odo > 0 && m.unknown) { out.personal = true; return out; }
   if (!(m.odo > 0) || !(m.lit > 0)) return out;
   if (!m.full) { out.top = true; return out; }
   let acc = m.lit, full = null;
