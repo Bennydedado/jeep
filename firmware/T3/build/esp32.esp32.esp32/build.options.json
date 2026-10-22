@@ -1,9 +1,0 @@
-{
-  "additionalFiles": "",
-  "compiler.optimization_flags": "-Os",
-  "customBuildProperties": "",
-  "fqbn": "esp32:esp32:esp32:PartitionScheme=min_spiffs",
-  "hardwareFolders": "/home/runner/.arduino15/packages/esp32/hardware/esp32/3.3.12,/home/runner/.arduino15/packages/esp32/hardware/esp32/3.3.12",
-  "otherLibrariesFolders": "/home/runner/Arduino/libraries",
-  "sketchLocation": "/home/runner/work/jeep/jeep/firmware/T3"
-}
