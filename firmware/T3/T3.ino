@@ -39,14 +39,14 @@
 struct Trip;
 struct Live;
 
-#define FW "1.1"
+#define FW "1.2"
 // new versions are built on GitHub and fetched from here over Wi-Fi (no more uploading by USB)
 #define UPDATE_JSON "https://bennydedado.github.io/jeep/firmware/t3.json"
 
 // ---------------------------------------------------------------- pins on the T3 V1.6.1
 #define OLED_SDA 21
 #define OLED_SCL 22
-#define OLED_RST 16       // not wired on every T3; pulsing it is harmless
+// (no screen reset pin: on the T3 V1.6.1 pins 16 and 17 belong to the chip's own memory and must never be touched)
 #define LORA_SCK 5
 #define LORA_MISO 19
 #define LORA_MOSI 27
@@ -747,6 +747,7 @@ void draw() {
 // ---------------------------------------------------------------- start
 void setup() {
   Serial.begin(115200);
+  Serial.println("Jeep T3 " FW " starting");
   pinMode(BUTTON_PIN, INPUT_PULLUP);
   pinMode(LED_PIN, OUTPUT); digitalWrite(LED_PIN, LOW);
   // LoRa off for good: asleep, never transmitting, fine with no antenna on
@@ -754,7 +755,6 @@ void setup() {
   LoRa.setPins(LORA_CS, LORA_RST, LORA_DIO0);
   if (LoRa.begin(915E6)) LoRa.sleep();
   // the screen
-  pinMode(OLED_RST, OUTPUT); digitalWrite(OLED_RST, LOW); delay(20); digitalWrite(OLED_RST, HIGH);
   Wire.begin(OLED_SDA, OLED_SCL);
   oled.begin(SSD1306_SWITCHCAPVCC, 0x3C);
   oled.clearDisplay(); oled.setTextColor(SSD1306_WHITE); oled.setCursor(0, 0); oled.print("Jeep T3 " FW "\nstarting..."); oled.display();
