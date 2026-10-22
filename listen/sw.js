@@ -1,7 +1,8 @@
 // Listening opens with no signal too, showing the stats it last got. Its own copy, apart from Heep's:
 // this worker only looks after /jeep/listen/, and Heep's leaves this folder alone.
-const CACHE = 'listen-1.0.0';
-const SHELL = ['./', 'index.html', 'app.css?v=1.0.0', 'ui.js?v=1.0.0', 'app.js?v=1.0.0',
+const CACHE = 'listen-1.1.0';
+const SHELL = ['./', 'index.html', 'app.css?v=1.1.0', 'ui.js?v=1.1.0', 'app.js?v=1.1.0',
+  'fonts/poppins-regular.woff', 'fonts/poppins-medium.woff', 'fonts/poppins-bold.woff',
   'manifest.webmanifest', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => {

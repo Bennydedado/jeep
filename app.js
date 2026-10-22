@@ -8,6 +8,7 @@ const TAB_DEFS = [
   ['live', 'Live', 'live', renderLive],
 ];
 
+let TB = null; // the tab bar
 function render() {
   STATS = calc(S.data);
   const v = document.getElementById('view');
@@ -16,6 +17,7 @@ function render() {
   v.textContent = '';
   def[3](v);
   for (const b of document.querySelectorAll('.tab')) b.setAttribute('aria-current', b.dataset.tab === def[0] ? 'page' : 'false');
+  if (TB) TB.set(def[0]);
   const dl = document.getElementById('stations');
   if (dl) { dl.textContent = ''; for (const s of stationList()) dl.append(h('option', { value: s })); }
   onScroll();
@@ -47,7 +49,7 @@ function boot() {
   const fresh = fromLink ? connect(fromLink) : false;
   if (!S.conn) { S.sample = true; S.data = sampleData(); }
   const bar = document.getElementById('tabbar');
-  for (const [id, label, ic] of TAB_DEFS) bar.append(h('button', { class: 'tab', 'data-tab': id, 'aria-label': label, onclick: () => go(id) }, icon(ic), h('span', { text: label })));
+  TB = tabBar(bar, TAB_DEFS, go);
   const fab = document.getElementById('fab');
   fab.append(icon('plus'));
   fab.addEventListener('click', () => fillSheet());

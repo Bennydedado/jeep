@@ -416,3 +416,90 @@ function fuelGauge(pct, big, small, stale) {
   return h('div', { class: 'gauge', role: 'img', 'aria-label': big + ' ' + small }, svg,
     h('div', { class: 'mid' }, h('div', { class: 'pct', text: big }), h('div', { class: 'km', text: small })));
 }
+
+// ---------- the tab bar, iOS 26 style: a glass bubble sits behind the current tab. Tap a tab and it glides over;
+// press and slide along the bar and it lifts into a lens that follows your finger, then settles where you let go.
+function tabBar(bar, defs, onPick) {
+  const bub = h('div', { class: 'bubble', 'aria-hidden': 'true' });
+  bar.append(bub);
+  const tabs = defs.map(([id, label, ic]) => {
+    const b = h('button', { class: 'tab', type: 'button', 'data-tab': id, 'aria-label': label }, icon(ic), h('span', { text: label }));
+    // the keyboard and VoiceOver still click; a finger is handled below (and its click skipped)
+    b.addEventListener('click', e => { if (e.detail === 0 || Date.now() - api.touched > 700) onPick(id); });
+    bar.append(b);
+    return b;
+  });
+  const api = { touched: 0, set };
+  let cur = -1, drag = null;
+  const calm = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const geo = i => ({ x: tabs[i].offsetLeft, w: tabs[i].offsetWidth });
+  function move(x, w) { bub.style.translate = x + 'px 0'; if (w != null) bub.style.width = w + 'px'; }
+  // show tab i as current; `glide` adds the little stretch iOS does when the bubble travels
+  function show(i, glide) {
+    const g = geo(i);
+    if (!g.w) return;
+    if (cur < 0) { bub.classList.add('still'); move(g.x, g.w); void bub.offsetWidth; bub.classList.remove('still'); }
+    else move(g.x, g.w);
+    if (glide && cur >= 0 && i !== cur && bub.animate && !calm()) {
+      bub.animate([{ scale: '1 1' }, { scale: '1.22 0.86', offset: 0.32 }, { scale: '1 1' }], { duration: 560, easing: 'ease-out' });
+    }
+    cur = i;
+  }
+  function set(id) { const i = defs.findIndex(d => d[0] === id); show(i < 0 ? 0 : i, true); }
+  const nearest = cx => { let best = 0, bd = Infinity; tabs.forEach((t, i) => { const d = Math.abs(t.offsetLeft + t.offsetWidth / 2 - cx); if (d < bd) { bd = d; best = i; } }); return best; };
+  function lift(clientX) {
+    clearTimeout(drag.hold);
+    drag.lens = true;
+    bar.classList.add('dragging');
+    bub.classList.add('lens');
+    follow(clientX, performance.now());
+  }
+  function follow(clientX, t) {
+    const w = tabs[0].offsetWidth, pad = 4;
+    const x = Math.max(pad, Math.min(bar.clientWidth - pad - w, clientX - drag.left - w / 2));
+    // like a drop of liquid: the faster it moves, the more it stretches
+    const v = drag.pt ? (x - drag.px) / Math.max(8, t - drag.pt) : 0;
+    drag.px = x; drag.pt = t;
+    drag.st = drag.st * 0.55 + Math.min(0.3, Math.abs(v) * 0.22) * 0.45;
+    if (!calm()) bub.style.scale = (1.2 + drag.st).toFixed(3) + ' ' + (1.2 - drag.st * 0.55).toFixed(3);
+    clearTimeout(drag.relax);
+    drag.relax = setTimeout(() => { if (drag) { drag.st = 0; bub.style.scale = ''; } }, 90);
+    move(x, w);
+    const i = nearest(x + w / 2);
+    tabs.forEach((tb, j) => tb.classList.toggle('near', j === i));
+  }
+  bar.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    drag = { id: e.pointerId, x0: e.clientX, left: bar.getBoundingClientRect().left, lens: false, st: 0, px: 0, pt: 0, lx: e.clientX };
+    try { bar.setPointerCapture(e.pointerId); } catch (err) { /* fine */ }
+    drag.hold = setTimeout(() => { if (drag && !drag.lens) lift(drag.lx); }, 220); // press and hold lifts it too
+  });
+  bar.addEventListener('pointermove', e => {
+    if (!drag || e.pointerId !== drag.id) return;
+    drag.lx = e.clientX;
+    if (!drag.lens && Math.abs(e.clientX - drag.x0) > 6) lift(e.clientX);
+    else if (drag.lens) follow(e.clientX, performance.now());
+  });
+  function end(e, cancelled) {
+    if (!drag || e.pointerId !== drag.id) return;
+    const d = drag;
+    drag = null;
+    clearTimeout(d.hold); clearTimeout(d.relax);
+    bar.classList.remove('dragging');
+    bub.classList.remove('lens');
+    bub.style.scale = '';
+    tabs.forEach(tb => tb.classList.remove('near'));
+    api.touched = Date.now();
+    if (cancelled) { show(cur, false); return; }
+    const w = tabs[0].offsetWidth;
+    const i = d.lens ? nearest((parseFloat(bub.style.translate) || 0) + w / 2) : nearest(e.clientX - d.left);
+    const same = i === cur;
+    show(i, !d.lens);
+    if (!(same && d.lens)) onPick(defs[i][0]); // sliding back to where you started changes nothing
+  }
+  bar.addEventListener('pointerup', e => end(e, false));
+  bar.addEventListener('pointercancel', e => end(e, true));
+  bar.addEventListener('lostpointercapture', e => { if (drag && e.pointerId === drag.id) end(e, false); });
+  addEventListener('resize', () => { if (cur >= 0) { const c = cur; cur = -1; show(c, false); } });
+  return api;
+}

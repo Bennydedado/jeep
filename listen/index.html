@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-app="listening">
+<html lang="en" data-app="listening" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -9,15 +9,16 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Listening">
-<meta name="theme-color" content="#050506">
-<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#121212">
+<meta name="color-scheme" content="dark">
 <meta name="format-detection" content="telephone=no">
 <meta name="robots" content="noindex, nofollow">
 <meta name="referrer" content="no-referrer">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-180.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
-<link rel="stylesheet" href="app.css?v=1.0.0">
+<link rel="preload" href="fonts/poppins-bold.woff" as="font" type="font/woff" crossorigin>
+<link rel="stylesheet" href="app.css?v=1.1.0">
 </head>
 <body>
 <div class="topbar" id="topbar" aria-hidden="true"><span id="topTitle"></span></div>
@@ -26,7 +27,7 @@
   <nav class="tabbar glass" id="tabbar" aria-label="Sections"></nav>
 </div>
 <noscript><p style="padding:40px 20px">Listening needs JavaScript turned on.</p></noscript>
-<script src="ui.js?v=1.0.0"></script>
-<script src="app.js?v=1.0.0"></script>
+<script src="ui.js?v=1.1.0"></script>
+<script src="app.js?v=1.1.0"></script>
 </body>
 </html>

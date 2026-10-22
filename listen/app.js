@@ -2,7 +2,7 @@
 // Listening - your listening stats from the Hub, on the phone. The Hub sums up your Spotify history and sends a
 // summary to your Jeep log sheet's Apps Script every half hour; this app reads it from there.
 
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 const store = {
   get(k, d) { try { const v = localStorage.getItem('listen.' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
   set(k, v) { try { localStorage.setItem('listen.' + k, JSON.stringify(v)); } catch (e) { /* private mode or full */ } },
@@ -13,7 +13,7 @@ const S = {
   data: store.get('data', null),
   at: store.get('at', 0),
   syncedAt: store.get('syncedAt', 0),
-  prefs: Object.assign({ theme: 'system', range: '28', kind: 'artists' }, store.get('prefs', {})),
+  prefs: Object.assign({ range: '28', kind: 'artists', unit: 'min' }, store.get('prefs', {})),
   tab: store.get('tab', 'home'),
   sync: { busy: false, state: 'idle', msg: '' },
   queue: [],
@@ -63,6 +63,10 @@ function ago(t) {
 function ymd(s) { s = String(s || ''); return s.length >= 8 ? new Date(+s.slice(0, 4), +s.slice(4, 6) - 1, +s.slice(6, 8)).getTime() : null; }
 function hrs(mins) { return mins >= 600 ? fmt0(mins / 60) + ' h' : mins >= 60 ? (Math.round(mins / 6) / 10) + ' h' : fmt0(mins) + ' min'; }
 function img(id) { return id ? 'https://i.scdn.co/image/' + id : ''; }
+// time shows in minutes, or in hours if Settings says so
+const inHours = () => S.prefs.unit === 'h';
+function T(mins) { return inHours() ? hrs(mins) : fmt0(mins) + ' min'; }
+function axisT(g) { return inHours() ? axisH(g) : !g ? '0' : g >= 10000 ? Math.round(g / 1000) + 'k' : fmt0(g); }
 
 function setSync(state, msg) { S.sync.state = state; S.sync.msg = msg || ''; if (typeof updateSyncButtons === 'function') updateSyncButtons(); }
 async function sync(why) {
@@ -191,12 +195,12 @@ function rangeDays(r) {
 function timeline(r) {
   const days = rangeDays(r);
   const md = t => MON[new Date(t).getMonth()] + ' ' + new Date(t).getDate();
-  if (S.prefs.range === '28') return { items: thin(days.map(d => ({ v: d.m, x: md(d.t), tip: fmtDay(d.t, true) + ' · ' + hrs(d.m) })), 4), unit: 'a day' };
+  if (S.prefs.range === '28') return { items: thin(days.map(d => ({ v: d.m, x: md(d.t), tip: fmtDay(d.t, true) + ' · ' + T(d.m) })), 4), unit: 'a day' };
   if (S.prefs.range === '182') {
     // whole weeks counted back from the last day, so the last bar is the latest week
     const weeks = [];
     for (let end = days.length; end > 0; end -= 7) { const part = days.slice(Math.max(0, end - 7), end); weeks.unshift({ t: part[0].t, m: part.reduce((s, d) => s + d.m, 0) }); }
-    return { items: thin(weeks.map(w => ({ v: w.m, x: md(w.t), tip: 'Week of ' + fmtDay(w.t, true) + ' · ' + hrs(w.m) })), 5), unit: 'a week' };
+    return { items: thin(weeks.map(w => ({ v: w.m, x: md(w.t), tip: 'Week of ' + fmtDay(w.t, true) + ' · ' + T(w.m) })), 5), unit: 'a week' };
   }
   const map = new Map();
   if (S.prefs.range === 'all') for (const m of r.months || []) { const y = +String(m[0]).slice(0, 4), mo = +String(m[0]).slice(4, 6) - 1; if (y) map.set(y * 12 + mo, m[1]); }
@@ -210,7 +214,7 @@ function timeline(r) {
   const items = [];
   for (let k = k0; k <= k1; k++) {
     const y = Math.floor(k / 12), mo = k % 12, m = map.get(k) || 0;
-    items.push({ v: m, x: MON[mo] + (S.prefs.range === 'all' ? ' ’' + String(y).slice(2) : ''), tip: MONTHS[mo] + ' ' + y + ' · ' + hrs(m) });
+    items.push({ v: m, x: MON[mo] + (S.prefs.range === 'all' ? ' ’' + String(y).slice(2) : ''), tip: MONTHS[mo] + ' ' + y + ' · ' + T(m) });
   }
   return { items: thin(items, S.prefs.range === 'all' ? 5 : 6), unit: 'a month' };
 }
@@ -223,6 +227,89 @@ function streakNow(r) {
   return n;
 }
 
+// the colour at the top of the page comes from your top artist's picture, the way Spotify tints its own pages
+const tints = new Map();
+let tintFor = '';
+function tintFrom(id) {
+  const root = document.documentElement.style;
+  tintFor = id || '';
+  if (!id) { root.removeProperty('--tint'); return; }
+  if (tints.has(id)) { const c = tints.get(id); if (c) root.setProperty('--tint', c); else root.removeProperty('--tint'); return; }
+  const im = new Image();
+  im.crossOrigin = 'anonymous';
+  im.referrerPolicy = 'no-referrer';
+  im.onload = () => {
+    let c = null;
+    try {
+      const cv = document.createElement('canvas');
+      cv.width = cv.height = 16;
+      const x = cv.getContext('2d');
+      x.drawImage(im, 0, 0, 16, 16);
+      const d = x.getImageData(0, 0, 16, 16).data;
+      let r = 0, g = 0, b = 0, w = 0;
+      for (let i = 0; i < d.length; i += 4) {
+        const mx = Math.max(d[i], d[i + 1], d[i + 2]), mn = Math.min(d[i], d[i + 1], d[i + 2]);
+        const k = 0.04 + Math.pow(mx ? (mx - mn) / mx : 0, 2) * (mx / 255); // the colourful pixels count most
+        r += d[i] * k; g += d[i + 1] * k; b += d[i + 2] * k; w += k;
+      }
+      c = toned(r / w, g / w, b / w);
+    } catch (e) { c = null; }
+    tints.set(id, c);
+    if (c && tintFor === id) root.setProperty('--tint', c);
+  };
+  im.onerror = () => tints.set(id, null);
+  im.src = img(id);
+}
+// keeps the hue, sets the depth Spotify uses behind white text
+function toned(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+  let hu = 0, sa = 0;
+  const l = (mx + mn) / 2;
+  if (mx !== mn) {
+    const d = mx - mn;
+    sa = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
+    hu = (mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4) / 6;
+  }
+  sa = Math.min(0.62, sa * 1.15);
+  const L = 0.36, q = L < 0.5 ? L * (1 + sa) : L + sa - L * sa, p = 2 * L - q;
+  const f = t => { t = (t + 1) % 1; return t < 1 / 6 ? p + (q - p) * 6 * t : t < 1 / 2 ? q : t < 2 / 3 ? p + (q - p) * (2 / 3 - t) * 6 : p; };
+  return [f(hu + 1 / 3), f(hu), f(hu - 1 / 3)].map(v => Math.round(v * 255)).join(', ');
+}
+function section(title, onAll) {
+  return h('div', { class: 'sec' }, h('h2', { text: title }), onAll ? h('button', { type: 'button', text: 'Show all', onclick: onAll }) : null);
+}
+// where you listen: phone or PC (the Hub counts the plays whose device Spotify recorded)
+const DEV_NAME = { iPhone: 'Phone', Android: 'Phone', 'Windows PC': 'PC', Mac: 'PC', Linux: 'PC' };
+const DEV_COLOR = ['var(--fuel)', '#ffffff', '#8a8a8a', '#4d4d4d'];
+function deviceCard(r) {
+  let devs = r.devices || [], note = null;
+  const all = S.data && S.data.ranges && S.data.ranges.all;
+  if (!devs.length && all && all !== r && (all.devices || []).length) { devs = all.devices; note = 'all time'; }
+  const by = new Map();
+  for (const d of devs) { const n = DEV_NAME[d[0]] || d[0]; by.set(n, (by.get(n) || 0) + (+d[1] || 0)); }
+  const parts = [...by.entries()].map(([n, m]) => ({ n, m })).sort((a, b) => b.m - a.m);
+  const tot = parts.reduce((t, x) => t + x.m, 0);
+  if (!tot) return null;
+  const pct = x => { const p = x.m / tot * 100; return p >= 0.5 ? Math.round(p) + '%' : '<1%'; };
+  return card(cardHead('Phone vs PC', note),
+    h('div', { class: 'split', role: 'img', 'aria-label': parts.map(x => x.n + ' ' + pct(x)).join(', ') },
+      parts.map((x, i) => h('i', { style: 'width:' + (x.m / tot * 100).toFixed(2) + '%;background:' + DEV_COLOR[Math.min(i, 3)] }))),
+    h('div', { class: 'devs' }, parts.map((x, i) => h('div', { class: 'dev' + (x.m / tot < 0.02 ? ' small' : '') },
+      h('i', { style: 'background:' + DEV_COLOR[Math.min(i, 3)] }),
+      h('div', null, h('b', { text: pct(x) }), h('span', { text: x.n + ' · ' + T(x.m) }))))));
+}
+function showTop(kind) { S.prefs.kind = kind; savePrefs(); go('top'); }
+// one artist, song or album as a row: rank, picture, names, time and plays
+function itemRow(kind, x, i) {
+  let title, sub, mins, plays, pic, round = false;
+  if (kind === 'artists') { [title, plays, mins, pic] = x; sub = x[4] ? 'Most played: ' + x[4] : 'Artist'; round = true; }
+  else { [title, sub, plays, mins, pic] = x; }
+  return h('div', { class: 'row' }, i == null ? null : h('div', { class: 'rank', text: String(i + 1) }), artEl(pic, title, round),
+    h('div', { class: 'main' }, h('b', { text: title }), h('span', { text: sub })),
+    h('div', { class: 'end' }, h('b', { text: T(mins) }), h('span', { text: fmt0(plays) + (plays === 1 ? ' play' : ' plays') })));
+}
+
 // ======================================================= Summary
 function renderHome(v) {
   const r = R();
@@ -230,28 +317,28 @@ function renderHome(v) {
   topBanners(v);
   v.append(rangeSeg());
   if (!r) {
+    tintFrom(null);
     v.append(card(h('div', { class: 'empty' }, h('div', { class: 'ico' }, icon('note')), h('h3', { text: 'No stats yet' }),
       h('p', { text: S.conn ? 'Your PC sends your listening stats here every half hour while the Hub is running.' : 'Connect with your setup link to see your listening.' }))));
     return;
   }
+  const a0 = (r.artists || [])[0];
+  tintFrom(a0 && a0[3]);
   // the headline: time listened, against the same stretch before it
-  const hero = h('div', { class: 'hero' });
-  hero.append(h('div', null, h('div', { class: 'big', text: r.mins >= 600 ? fmt0(r.mins / 60) : fmt0(r.mins) }),
-    h('div', { class: 'unit', text: (r.mins >= 600 ? 'hours' : 'minutes') + ' of music · ' + fmt0(r.plays) + ' plays' })));
+  const asHours = inHours() && r.mins >= 600;
   const chips = h('div', { class: 'chips' });
   if (r.prevMins > 0 && PREV_WORD[S.prefs.range]) {
     const d = (r.mins - r.prevMins) / r.prevMins;
-    chips.append(h('span', { class: 'chip' }, h('i', { class: 'dot', style: 'background:' + (d >= 0 ? 'var(--good)' : 'var(--ink-3)') }), (d >= 0 ? '+' : '') + Math.round(d * 100) + '% vs ' + PREV_WORD[S.prefs.range]));
+    chips.append(h('span', { class: 'chip' + (d >= 0 ? ' up' : '') }, (d >= 0 ? '▲ ' : '▼ ') + Math.abs(Math.round(d * 100)) + '% vs ' + PREV_WORD[S.prefs.range]));
   }
-  if (S.prefs.range !== 'all' && r.days && r.days.length) chips.append(h('span', { class: 'chip', text: 'about ' + hrs(r.mins / Math.max(1, +S.prefs.range)) + ' a day' }));
-  hero.append(chips);
-  v.append(card(hero));
-  // number one
-  const a = (r.artists || [])[0];
-  if (a) v.append(h('button', { class: 'card', style: 'text-align:left;width:100%', onclick: () => go('top') },
-    h('div', { class: 'label', style: 'margin-bottom:12px', text: 'Your top artist' }),
-    h('div', { class: 'top-artist' }, artEl(a[3], a[0], true, true),
-      h('div', { class: 'who' }, h('b', { text: a[0] }), h('span', { text: fmt0(a[1]) + ' plays · ' + hrs(a[2]) + (a[4] ? ' · most played: ' + a[4] : '') })))));
+  chips.append(h('span', { class: 'chip', text: fmt0(r.plays) + ' plays' }));
+  if (S.prefs.range !== 'all' && r.days && r.days.length) chips.append(h('span', { class: 'chip', text: T(r.mins / Math.max(1, +S.prefs.range)) + ' a day' }));
+  v.append(h('div', { class: 'hero' }, h('div', { class: 'big num', text: asHours ? fmt0(r.mins / 60) : fmt0(r.mins) }),
+    h('div', { class: 'unit', text: (asHours ? 'hours' : 'minutes') + ' listened' }), chips));
+  // number one, like the top of an artist page
+  if (a0) v.append(h('button', { class: 'feature', type: 'button', onclick: () => showTop('artists') }, artEl(a0[3], a0[0], true, true),
+    h('div', { class: 'who' }, h('span', { class: 'eyebrow', text: 'Your top artist' }), h('b', { text: a0[0] }),
+      h('span', { text: fmt0(a0[1]) + ' plays · ' + T(a0[2]) }), a0[4] ? h('span', { text: 'Most played: ' + a0[4] }) : null)));
   // the numbers
   const total = S.prefs.range === 'all' ? null : +S.prefs.range;
   v.append(h('div', { class: 'tiles' },
@@ -259,25 +346,36 @@ function renderHome(v) {
     tile('Days listening', 'calendar', fmt0(r.daysWith), total ? '/ ' + total : null, total ? Math.round(r.daysWith / total * 100) + '% of days' : 'since ' + (r.first ? fmtDay(r.first * 1000, true) : 'you started')),
     tile('Longest streak', 'flame', fmt0(r.longest), r.longest === 1 ? 'day' : 'days', !r.longestEnd ? '' : ymd(r.longestEnd) >= addDays(lastDay(r), -1) ? 'still going' : 'ended ' + fmtDay(ymd(r.longestEnd), true)),
     tile('Skipped', 'skip', fmt0(r.skips), null, r.plays ? Math.round(r.skips / Math.max(1, r.plays) * 100) + '% of plays' : '')));
+  const dc = deviceCard(r);
+  if (dc) v.append(dc);
+  // your top artists on a shelf, your top songs as a list
+  if ((r.artists || []).length > 1) {
+    v.append(section('Your top artists', () => showTop('artists')),
+      h('div', { class: 'shelf' }, r.artists.slice(0, 10).map(x => h('button', { class: 'it', type: 'button', onclick: () => showTop('artists') },
+        artEl(x[3], x[0], true), h('b', { text: x[0] }), h('span', { text: T(x[2]) })))));
+  }
+  if ((r.songs || []).length) {
+    v.append(section('Your top songs', () => showTop('songs')), h('div', { class: 'list' }, r.songs.slice(0, 5).map((x, i) => itemRow('songs', x, i))));
+  }
   // over time
   const tl = timeline(r);
   if (tl.items.length > 1) {
-    v.append(card(cardHead('Over time', 'time ' + tl.unit),
-      barChart({ items: tl.items, fmt: hrs, fmtAxis: axisH, labelAll: true, label: 'Listening over time' })));
+    v.append(card(cardHead('Over time', (inHours() ? 'hours ' : 'minutes ') + tl.unit),
+      barChart({ items: tl.items, fmt: T, fmtAxis: axisT, labelAll: true, label: 'Listening over time' })));
   }
   if (S.prefs.range === 'all' && (r.years || []).length > 1) {
     const ym = new Map(r.years.map(y => [+y[0], y]));
     const y0 = Math.min(...ym.keys()), y1 = Math.max(...ym.keys()), ys = [];
     for (let y = y0; y <= y1; y++) { const e = ym.get(y) || [y, 0, 0]; ys.push({ v: e[1], x: String(y), tip: y + ' · ' + fmt0(e[2]) + ' plays' }); }
     v.append(card(cardHead('By year', y1 === new Date().getFullYear() ? y1 + ' so far' : null),
-      barChart({ items: ys, fmt: hrs, fmtAxis: axisH, labelAll: ys.length <= 8, height: 150, label: 'Listening by year' })));
+      barChart({ items: ys, fmt: T, fmtAxis: axisT, labelAll: ys.length <= 8, height: 150, label: 'Listening by year' })));
   }
   // when
   if ((r.hours || []).some(x => x > 0)) {
     const peak = r.hours.indexOf(Math.max(...r.hours));
     const hl = x => (x % 12 || 12) + (x < 12 ? ' AM' : ' PM');
     v.append(card(cardHead('Time of day', 'most at ' + hl(peak)),
-      barChart({ items: r.hours.map((m, i) => ({ v: m, x: i % 6 === 0 ? hl(i).replace(' ', '') : '', tip: hl(i) + ' · ' + hrs(m) })), hl: peak, fmt: hrs, fmtAxis: axisH, labelAll: true, height: 150, label: 'Listening by hour' })));
+      barChart({ items: r.hours.map((m, i) => ({ v: m, x: i % 6 === 0 ? hl(i).replace(' ', '') : '', tip: hl(i) + ' · ' + T(m) })), hl: peak, fmt: T, fmtAxis: axisT, labelAll: true, height: 150, label: 'Listening by hour' })));
   }
   if ((r.wdays || []).some(x => x > 0)) {
     // the Hub's week starts on Monday
@@ -285,27 +383,15 @@ function renderHome(v) {
     const best = r.wdays.indexOf(Math.max(...r.wdays));
     const full = ['Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays', 'Sundays'];
     v.append(card(cardHead('Day of the week', full[best] + ' are the biggest'),
-      barChart({ items: r.wdays.map((m, i) => ({ v: m, x: names[i], tip: names[i] + ' · ' + hrs(m) })), hl: best, fmt: hrs, fmtAxis: axisH, labelAll: true, height: 150, label: 'Listening by weekday' })));
-  }
-  // the top five
-  if ((r.artists || []).length > 1) {
-    v.append(card(cardHead('Top artists', 'All', () => { S.prefs.kind = 'artists'; savePrefs(); go('top'); }),
-      h('div', { class: 'list', style: 'margin:0 -18px -18px' }, r.artists.slice(0, 5).map((x, i) => h('div', { class: 'row' },
-        h('div', { class: 'rank', text: String(i + 1) }), artEl(x[3], x[0], true),
-        h('div', { class: 'main' }, h('b', { text: x[0] }), h('span', { text: x[4] ? 'most played: ' + x[4] : '' })),
-        h('div', { class: 'end' }, h('b', { text: hrs(x[2]) }), h('span', { text: fmt0(x[1]) + ' plays' })))))));
+      barChart({ items: r.wdays.map((m, i) => ({ v: m, x: names[i], tip: names[i] + ' · ' + T(m) })), hl: best, fmt: T, fmtAxis: axisT, labelAll: true, height: 150, label: 'Listening by weekday' })));
   }
   // a few fun ones
   const facts = [];
-  if (r.best && r.best[1] > 0) facts.push(['star', 'Biggest day: ' + fmtDay(ymd(r.best[0]), true), hrs(r.best[1]) + ' of music']);
+  if (r.best && r.best[1] > 0) facts.push(['star', 'Biggest day: ' + fmtDay(ymd(r.best[0]), true), T(r.best[1]) + ' of music']);
   if (S.prefs.range === '28' || S.prefs.range === '182') { const n = streakNow(r); if (n > 1 && n !== r.longest) facts.push(['flame', n + ' days in a row', 'music every day, up to ' + fmtDay(lastDay(r), true)]); }
   if (r.skipped && r.skipped[0]) facts.push(['skip', 'Skipped the most: ' + r.skipped[0], r.skipped[1] + ' · ' + fmt0(r.skipped[2]) + ' skips']);
   if (r.firstPlay && r.firstPlay[1]) facts.push(['clock', 'First song on record: ' + r.firstPlay[1], r.firstPlay[2] + ' · ' + fmtDay(r.firstPlay[0] * 1000, true)]);
-  if ((r.devices || []).length > 1) {
-    const tot = r.devices.reduce((s, d) => s + d[1], 0) || 1;
-    facts.push(['phone', 'Where you listen', r.devices.slice(0, 3).map(d => d[0] + ' ' + Math.round(d[1] / tot * 100) + '%').join(' · ')]);
-  }
-  if (facts.length) v.append(card(cardHead('Highlights', null), h('div', { class: 'facts' }, facts.map(([ic, b, s]) => h('div', { class: 'fact' }, h('div', { class: 'ico' }, icon(ic)), h('div', null, h('b', { text: b }), h('span', { text: s })))))));
+  if (facts.length) v.append(card(cardHead('Highlights', null), h('div', { class: 'facts' }, facts.map(([ic, b2, s2]) => h('div', { class: 'fact' }, h('div', { class: 'ico' }, icon(ic)), h('div', null, h('b', { text: b2 }), h('span', { text: s2 })))))));
   v.append(h('div', { class: 'foot', style: 'text-align:center', text: S.sample ? 'Sample data' : 'From your Hub · sent ' + ago(S.at) + (S.syncedAt ? ' · checked ' + ago(S.syncedAt) : '') }));
 }
 
@@ -315,41 +401,36 @@ function renderTop(v) {
   const kinds = [['artists', 'Artists'], ['songs', 'Songs'], ['albums', 'Albums']];
   v.append(titleRow('Top', r ? rangeSub(r) : ''));
   topBanners(v);
-  v.append(rangeSeg(), seg(kinds, S.prefs.kind, k => { S.prefs.kind = k; savePrefs(); render(); }));
-  if (!r) return;
+  v.append(rangeSeg(), h('div', { class: 'range-row' }, seg(kinds, S.prefs.kind, k => { S.prefs.kind = k; savePrefs(); render(); })));
+  if (!r) { tintFrom(null); return; }
+  tintFrom(r.artists && r.artists[0] && r.artists[0][3]);
   const list = r[S.prefs.kind] || [];
   if (!list.length) { v.append(card(h('div', { class: 'empty' }, h('p', { text: 'Nothing here yet.' })))); return; }
-  v.append(h('div', { class: 'card list' }, list.map((x, i) => {
-    let title, sub, mins, plays, pic, round = false;
-    if (S.prefs.kind === 'artists') { [title, plays, mins, pic] = x; sub = x[4] ? 'most played: ' + x[4] : ''; round = true; }
-    else if (S.prefs.kind === 'songs') { [title, sub, plays, mins, pic] = x; if (x[5]) sub += ' · ' + x[5]; }
-    else { [title, sub, plays, mins, pic] = x; }
-    return h('div', { class: 'row' }, h('div', { class: 'rank', text: String(i + 1) }), artEl(pic, title, round),
-      h('div', { class: 'main' }, h('b', { text: title }), h('span', { text: sub })),
-      h('div', { class: 'end' }, h('b', { text: hrs(mins) }), h('span', { text: fmt0(plays) + (plays === 1 ? ' play' : ' plays') })));
-  })));
+  v.append(h('div', { class: 'list' }, list.map((x, i) => itemRow(S.prefs.kind, x, i))));
 }
 
 // ======================================================= Recent
 function renderRecent(v) {
   const rec = (S.data && S.data.recent) || [];
-  v.append(titleRow('Recent', rec.length ? 'Your last ' + rec.length + ' songs' : ''));
+  const r = R();
+  tintFrom(r && r.artists && r.artists[0] && r.artists[0][3]);
+  v.append(titleRow('Recently played', rec.length ? 'Your last ' + rec.length + ' songs' : ''));
   topBanners(v);
   if (!rec.length) { v.append(card(h('div', { class: 'empty' }, h('div', { class: 'ico' }, icon('recent')), h('h3', { text: 'Nothing yet' }), h('p', { text: 'Songs show up here after your PC sends your stats.' })))); return; }
-  let lastDay = '';
+  let day0 = '';
   const rows = [];
   for (const x of rec) {
     const t = x[0] * 1000, day = fmtDay(t, true);
-    if (day !== lastDay) {
-      if (rows.length) v.append(h('div', { class: 'card list' }, rows.splice(0)));
+    if (day !== day0) {
+      if (rows.length) v.append(h('div', { class: 'list' }, rows.splice(0)));
       v.append(h('div', { class: 'month' }, h('b', { text: day })));
-      lastDay = day;
+      day0 = day;
     }
     rows.push(h('div', { class: 'row' }, artEl(x[5], x[1]),
       h('div', { class: 'main' }, h('b', { text: x[1] }), h('span', { text: x[2] + (x[3] ? ' · ' + x[3] : '') })),
       h('div', { class: 'end' }, h('span', { text: fmtTime(t) }))));
   }
-  if (rows.length) v.append(h('div', { class: 'card list' }, rows));
+  if (rows.length) v.append(h('div', { class: 'list' }, rows));
 }
 
 // ======================================================= sheets
@@ -361,8 +442,8 @@ function settingsSheet() {
       if (!S.sample) rows.push(h('button', { class: 'row', onclick: () => { sync('tap'); sheet.close(); } }, h('div', { class: 'main' }, h('b', { text: 'Check now', style: 'color:var(--fuel)' })), icon('sync', 'chev')));
       rows.push(h('button', { class: 'row', onclick: () => connectSheet() }, h('div', { class: 'main' }, h('b', { text: S.sample ? 'Connect' : 'Connection' }), h('span', { text: 'Paste your setup link' })), icon('chev', 'chev')));
       put(b, h('div', { class: 'label', text: 'Your stats' }), h('div', { class: 'card list' }, rows),
-        h('div', { class: 'label', text: 'Appearance' }),
-        seg([['system', 'Automatic'], ['dark', 'Dark'], ['light', 'Light']], S.prefs.theme, v2 => { S.prefs.theme = v2; savePrefs(); applyTheme(); }),
+        h('div', { class: 'label', text: 'Show time in' }),
+        seg([['min', 'Minutes'], ['h', 'Hours']], S.prefs.unit, v2 => { S.prefs.unit = v2; savePrefs(); render(); }),
         h('div', { class: 'foot', text: 'Your PC sums up your Spotify history in the Hub and sends a summary to your Jeep log sheet every half hour. Pictures come from Spotify.' }),
         h('div', { class: 'foot', style: 'text-align:center', text: 'Listening ' + VERSION }),
         S.sample ? null : confirmButton('Disconnect this phone', 'Tap again: this phone forgets the link', () => {
@@ -427,12 +508,14 @@ function sampleData() {
 
 // ---------- start
 const TAB_DEFS = [['home', 'Summary', 'chart', renderHome], ['top', 'Top', 'crown', renderTop], ['recent', 'Recent', 'recent', renderRecent]];
+let TB = null; // the tab bar
 function render() {
   const v = document.getElementById('view');
   const def = TAB_DEFS.find(t => t[0] === S.tab) || TAB_DEFS[0];
   v.textContent = '';
   def[3](v);
   for (const b of document.querySelectorAll('.tab')) b.setAttribute('aria-current', b.dataset.tab === def[0] ? 'page' : 'false');
+  if (TB) TB.set(def[0]);
   onScroll();
 }
 function go(tab) {
@@ -441,11 +524,10 @@ function go(tab) {
   const v = document.getElementById('view'); v.classList.remove('enter'); void v.offsetWidth; v.classList.add('enter');
 }
 function onScroll() { const bar = document.getElementById('topbar'); if (bar) bar.classList.toggle('on', window.scrollY > 46); }
+// always dark, like Spotify
 function applyTheme() {
-  const t = S.prefs.theme;
-  if (t === 'dark' || t === 'light') document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme;
-  const dark = t === 'dark' || (t !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-  document.querySelector('meta[name="theme-color"]').setAttribute('content', dark ? '#050506' : '#f2f2f7');
+  document.documentElement.dataset.theme = 'dark';
+  document.querySelector('meta[name="theme-color"]').setAttribute('content', '#121212');
 }
 // Safari may still hold an old Heep that answers for every page under /jeep/, this one included: then Heep's
 // page comes up with this script in it. Get the new Heep (which leaves this app alone) and load the real page.
@@ -470,12 +552,11 @@ function rightPage() {
 }
 function boot() {
   applyTheme();
-  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
   const fromLink = decodeSetup(location.hash);
   const fresh = fromLink ? connect(fromLink) : false;
   if (!S.conn) { S.sample = true; S.data = sampleData(); }
   const bar = document.getElementById('tabbar');
-  for (const [id, label, ic] of TAB_DEFS) bar.append(h('button', { class: 'tab', 'data-tab': id, 'aria-label': label, onclick: () => go(id) }, icon(ic), h('span', { text: label })));
+  TB = tabBar(bar, TAB_DEFS, go);
   addEventListener('scroll', onScroll, { passive: true });
   let rt = 0;
   addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(render, 250); });
