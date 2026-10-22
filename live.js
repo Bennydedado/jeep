@@ -252,6 +252,7 @@ function t3Setup() {
         if (!on || !m) { status.append(r('T3', on ? 'Connected' : 'Not connected: Live > Connect first')); return; }
         status.append(r('T3', 'Connected · ' + (m.fw || '')), r('iCar', m.obd ? 'Reading the engine' : 'Looking for it'),
           r('Wi-Fi saved', m.nets ? (Array.isArray(m.ssids) && m.ssids.length ? m.ssids.join(', ') : m.nets + (m.nets > 1 ? ' networks' : ' network')) : 'None yet'),
+          r('Wi-Fi now', m.wifi || '-'), m.seen ? r('T3 can see', m.seen) : null,
           r('Trips waiting', String(m.queued || 0)), r('Last send', m.up || 'not yet'));
       };
       LIVE.onHi = paint;
@@ -291,11 +292,11 @@ function t3Setup() {
         h('div', { class: 'foot', text: 'While you drive on your hotspot, the T3 sends its live numbers through a free relay so Heep shows them in any browser. About 1 to 2 MB of cell data an hour. Bluetooth in Bluefy works either way.' }),
         h('div', { class: 'label', text: 'Screen turns off after' }), choose('ss', [[30, '30 s'], [60, '1 min'], [120, '2 min'], [300, '5 min'], [0, 'Never']]),
         h('div', { class: 'label', text: 'Screen brightness' }), choose('br', [[0, 'Low'], [1, 'Medium'], [2, 'High']]),
-        h('div', { class: 'label', text: 'Page at key-on' }), choose('sp', [[0, 'Economy'], [1, 'Trip'], [2, 'Engine'], [3, 'Speed']]),
+        h('div', { class: 'label', text: 'Page at key-on' }), choose('sp', [[0, 'Economy'], [1, 'Trip'], [2, 'Engine'], [3, 'Speed'], [5, 'Status']]),
         h('div', { class: 'label', text: 'A trip ends after parking' }), choose('pk', [[60, '1 min'], [90, '1.5 min'], [180, '3 min'], [300, '5 min']]),
         h('div', { class: 'label', text: 'Distance correction (%) and iCar' }), h('div', { class: 'group' }, dist.row, obdName.row),
         h('div', { class: 'foot', text: 'Distance: if the T3 says 100 km when the odometer went 103, put 103. iCar name only if it doesn\u2019t find the adapter by itself.' }),
-        h('button', { class: 'btn btn-glass glass btn-wide', onclick: () => { if (LIVE.rx) { send({ c: 'update' }); toast('Checking for a T3 update', 'It installs over Wi-Fi when the Jeep is stopped', 'info'); } else err.textContent = 'Connect to the T3 first (Live > Connect).'; } }, icon('sync'), 'Update the T3 now'),
+        h('button', { class: 'btn btn-glass glass btn-wide', onclick: () => { if (LIVE.rx) { send({ c: 'update' }); toast('Checking for a T3 update', 'It installs over Wi-Fi when the Jeep is stopped', 'info'); } else err.textContent = 'Connect to the T3 first (Live > Connect).'; } }, icon('sync'), 'Try Wi-Fi and update now'),
         err,
         h('button', { class: 'btn btn-primary btn-wide', onclick: sendCfg }, icon('bt'), 'Send to the T3'));
       paint();

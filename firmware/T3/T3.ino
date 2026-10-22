@@ -41,7 +41,7 @@
 struct Trip;
 struct Live;
 
-#define FW "1.4"
+#define FW "1.5"
 // new versions are built on GitHub and fetched from here over Wi-Fi (no more uploading by USB)
 #define UPDATE_JSON "https://bennydedado.github.io/jeep/firmware/t3.json"
 // live numbers over Wi-Fi (your hotspot): sent through this free relay to Heep in any browser
@@ -511,6 +511,9 @@ void uploadTask(void*) {
   uploading = false;
   vTaskDelete(nullptr);
 }
+String wifiNow = "off", wifiSeen = "";
+// names match even with a curly apostrophe (iPhone hotspots have one) or different capitals
+String ssidKey(String v) { v.replace("\xE2\x80\x99", "'"); v.replace("\xE2\x80\x98", "'"); v.trim(); v.toLowerCase(); return v; }
 bool liveWanted() { return liveWifi && liveTopic.length() && engineOn(); }
 bool uploadWanted() { return queued > 0 && sheetUrl.length() && millis() >= nextUploadTry; }
 void wifiOff(uint32_t retryIn) {
@@ -526,19 +529,22 @@ void wifiStep() {
       if (!want || netCount == 0 || now < nextWifiTry) return;
       WiFi.mode(WIFI_STA);
       WiFi.scanNetworks(true);
-      wifiState = W_SCAN; wifiAt = now;
+      wifiState = W_SCAN; wifiAt = now; wifiNow = "looking";
       return;
     case W_SCAN: {
       int found = WiFi.scanComplete();
       if (found == WIFI_SCAN_RUNNING && now - wifiAt < 10000) return;
       int pick = -1;
       for (int i = 0; i < netCount && pick < 0; i++)                 // in the order you listed them in Heep
-        for (int k = 0; k < found; k++) if (WiFi.SSID(k) == nets[i].ssid) { pick = i; break; }
+        for (int k = 0; k < found; k++) if (ssidKey(WiFi.SSID(k)) == ssidKey(nets[i].ssid)) { pick = i; break; }
+      wifiSeen = "";
+      for (int k = 0, n = 0; k < found && n < 8; k++) { String nm = WiFi.SSID(k); if (nm.length() && wifiSeen.indexOf(nm) < 0) { wifiSeen += (n++ ? ", " : "") + nm; } }
+      if (found <= 0) wifiSeen = "no Wi-Fi at all";
       WiFi.scanDelete();
-      if (pick < 0) { wifiOff(liveWanted() ? 20000 : 60000); return; }
+      if (pick < 0) { wifiNow = "none of yours in range"; wifiOff(liveWanted() ? 20000 : 60000); return; }
       wifiName = nets[pick].ssid;
       WiFi.begin(nets[pick].ssid.c_str(), nets[pick].pass.c_str());
-      wifiState = W_JOIN; wifiAt = now;
+      wifiState = W_JOIN; wifiAt = now; wifiNow = "joining " + wifiName;
       return;
     }
     case W_JOIN:
@@ -548,8 +554,8 @@ void wifiStep() {
           struct tm tmv;
           if (getLocalTime(&tmv, 3000)) { time_t t; time(&t); setTime((int64_t)t * 1000); }
         }
-        wifiState = W_ON; wifiIdleSince = 0;
-      } else if (now - wifiAt > 15000) { lastUpload = "couldn't join " + wifiName; wifiOff(liveWanted() ? 20000 : 60000); }
+        wifiState = W_ON; wifiIdleSince = 0; wifiNow = "on " + wifiName;
+      } else if (now - wifiAt > 15000) { lastUpload = "couldn't join " + wifiName; wifiNow = "couldn't join " + wifiName + " (password?)"; wifiOff(liveWanted() ? 20000 : 60000); }
       return;
     case W_ON:
       if (WiFi.status() != WL_CONNECTED) { wifiOff(5000); return; }
@@ -579,7 +585,7 @@ void wifiStep() {
       }
       if (mqtt.connected()) mqtt.disconnect();
       if (!wifiIdleSince) wifiIdleSince = now;
-      if (now - wifiIdleSince > 60000) wifiOff(30000);                // nothing to do for a minute: Wi-Fi off
+      if (now - wifiIdleSince > 60000) { wifiNow = "off (nothing to send)"; wifiOff(30000); }                // nothing to do for a minute: Wi-Fi off
       return;
   }
 }
@@ -624,7 +630,8 @@ void sendHi() {
             ",\"up\":\"" + lastUpload + "\",\"upAgo\":" + String(lastUploadAt ? (long)((millis() - lastUploadAt) / 1000) : -1) +
             ",\"fc\":" + String(fuelCal, 3) + ",\"dc\":" + String(distCal, 3) + ",\"totKm\":" + String(totalKm, 1) +
             ",\"ss\":" + String(screenSecs) + ",\"pk\":" + String(parkSecs) + ",\"br\":" + String(bright) + ",\"sp\":" + String(startPage) +
-            ",\"obdName\":\"" + obdName + "\",\"upd\":\"" + updStatus + "\",\"ssids\":" + ss + ",\"lw\":" + String(liveWifi ? 1 : 0) + "}");
+            ",\"obdName\":\"" + obdName + "\",\"upd\":\"" + updStatus + "\",\"ssids\":" + ss + ",\"lw\":" + String(liveWifi ? 1 : 0) +
+            ",\"wifi\":\"" + jsonEsc(wifiNow) + "\",\"seen\":\"" + jsonEsc(wifiSeen) + "\"}");
 }
 void sendTrips() {
   xSemaphoreTake(fsLock, portMAX_DELAY);
