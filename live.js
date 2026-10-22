@@ -29,14 +29,14 @@ function renderLive(v) {
     if (hasBT()) {
       v.append(card(h('div', { class: 'empty', style: 'padding:16px 6px' },
         h('div', { class: 'ico' }, icon('bt')), h('h3', { text: 'Connect to the T3' }),
-        h('p', { text: 'Turn the key so the T3 is powered, then tap Connect and pick Jeep T3.' }),
+        h('p', { text: 'Turn the key so the T3 is powered, then tap Connect and pick Jeep T3. With the T3 on your hotspot, its numbers also show up here by themselves.' }),
         h('div', { class: 'btn-row', style: 'width:100%' },
           h('button', { class: 'btn btn-primary', onclick: btConnect }, icon('bt'), 'Connect'),
           h('button', { class: 'btn btn-glass glass', onclick: demoStart }, icon('play'), 'Demo')))));
     } else {
       const link = setupLink();
       v.append(card(cardHead('Bluetooth needs Bluefy', null),
-        h('p', { class: 'foot', style: 'margin:0 0 14px', text: 'Apple doesn\'t let Safari talk to Bluetooth devices. Bluefy is a free browser that can. Fill-ups work everywhere; only Live needs Bluefy.' }),
+        h('p', { class: 'foot', style: 'margin:0 0 14px', text: 'With the T3 on your iPhone hotspot, its live numbers show up here by themselves (it uses a little cell data). For Bluetooth instead, use Bluefy: Apple doesn\'t let Safari talk to Bluetooth devices.' }),
         h('ol', { class: 'steps' },
           h('li', null, h('div', null, 'Install ', h('a', { class: 'link', href: 'https://apps.apple.com/app/id1492822055', target: '_blank', rel: 'noopener', text: 'Bluefy' }), ' from the App Store.')),
           h('li', null, h('div', null, 'Copy this link and open it in Bluefy. It brings your Jeep log along.',
@@ -62,8 +62,8 @@ function renderLive(v) {
     v.append(card(cardHead('This trip', null),
       h('div', { style: 'display:grid;grid-template-columns:repeat(4,1fr);gap:8px' }, tripCell('km', 'Distance'), tripCell('s', 'Time'), tripCell('l', 'Diesel'), tripCell('avg', 'L/100 km')),
       h('div', { class: 'btn-row', style: 'margin-top:14px' },
-        h('button', { class: 'btn btn-small btn-glass glass', onclick: () => { if (LIVE.mode === 'demo') LIVE.sim.trip = { km: 0, l: 0, s: 0, idle: 0 }; else send({ c: 'reset' }); } }, 'Reset trip'),
-        h('button', { class: 'btn btn-small btn-glass glass btn-danger', onclick: liveStop }, icon('stop'), LIVE.mode === 'demo' ? 'Stop demo' : 'Disconnect'))));
+        LIVE.mode === 'net' ? null : h('button', { class: 'btn btn-small btn-glass glass', onclick: () => { if (LIVE.mode === 'demo') LIVE.sim.trip = { km: 0, l: 0, s: 0, idle: 0 }; else send({ c: 'reset' }); } }, 'Reset trip'),
+        h('button', { class: 'btn btn-small btn-glass glass btn-danger', onclick: liveStop }, icon('stop'), LIVE.mode === 'demo' ? 'Stop demo' : LIVE.mode === 'net' ? 'Stop' : 'Disconnect'))));
     updateLive();
   }
   // trips the T3 has logged
@@ -202,6 +202,7 @@ function demoTick() {
 function liveStop(quiet) {
   clearInterval(LIVE.timer);
   const was = LIVE.mode;
+  if (was === 'net') { NET.off = true; clearTimeout(NET.retry); clearInterval(NET.ping); if (NET.ws) { try { NET.ws.close(); } catch (e) { /* gone */ } NET.ws = null; } }
   LIVE.mode = null; LIVE.v = {}; LIVE.els = null; LIVE.fw = '';
   if (LIVE.dev && LIVE.dev.gatt && LIVE.dev.gatt.connected) { try { LIVE.dev.gatt.disconnect(); } catch (e) { /* gone already */ } }
   LIVE.rx = null;
@@ -277,7 +278,7 @@ function t3Setup() {
       const obdName = textRow('iCar name', { placeholder: 'Finds it by itself', value: saved.obd || '', autocapitalize: 'off', autocorrect: 'off' });
       const t3 = LIVE.t3 || {};
       const pick = { ss: saved.ss != null ? saved.ss : (t3.ss != null ? t3.ss : 60), br: saved.br != null ? saved.br : (t3.br != null ? t3.br : 2),
-        sp: saved.sp != null ? saved.sp : (t3.sp || 0), pk: saved.pk != null ? saved.pk : (t3.pk || 90) };
+        sp: saved.sp != null ? saved.sp : (t3.sp || 0), pk: saved.pk != null ? saved.pk : (t3.pk || 90), lw: saved.lw != null ? saved.lw : (t3.lw != null ? t3.lw : 1) };
       const choose = (key, opts) => seg(opts, pick[key], v2 => { pick[key] = v2; });
       const err = h('div', { class: 'err' });
       put(b, status,
@@ -286,6 +287,8 @@ function t3Setup() {
         h('div', { class: 'foot', text: 'Add home, the shop, your iPhone hotspot: up to 8. The hotspot name is in Settings > General > About > Name; in Settings > Personal Hotspot turn on Allow Others to Join and Maximize Compatibility (the T3 only sees 2.4 GHz Wi-Fi). The iCar needs no password.' }),
         h('div', { class: 'label', text: 'Fuel correction (%)' }), h('div', { class: 'group' }, fuel.row),
         h('div', { class: 'foot', text: 'The CRD doesn’t report fuel used, so the T3 works it out. If after a full tank the T3 says 50 L and the pump said 55 L, put 110.' }),
+        h('div', { class: 'label', text: 'Live numbers over Wi-Fi and hotspot' }), choose('lw', [[1, 'On'], [0, 'Off']]),
+        h('div', { class: 'foot', text: 'While you drive on your hotspot, the T3 sends its live numbers through a free relay so Heep shows them in any browser. About 1 to 2 MB of cell data an hour. Bluetooth in Bluefy works either way.' }),
         h('div', { class: 'label', text: 'Screen turns off after' }), choose('ss', [[30, '30 s'], [60, '1 min'], [120, '2 min'], [300, '5 min'], [0, 'Never']]),
         h('div', { class: 'label', text: 'Screen brightness' }), choose('br', [[0, 'Low'], [1, 'Medium'], [2, 'High']]),
         h('div', { class: 'label', text: 'Page at key-on' }), choose('sp', [[0, 'Economy'], [1, 'Trip'], [2, 'Engine'], [3, 'Speed']]),
@@ -300,7 +303,7 @@ function t3Setup() {
       async function sendCfg() {
         readNets();
         const v = { nets: nets.filter(x => x[0]), fc: num(fuel.input.value) || 100,
-          dc: num(dist.input.value) || 100, obd: obdName.input.value.trim(), ss: pick.ss, br: pick.br, sp: pick.sp, pk: pick.pk };
+          dc: num(dist.input.value) || 100, obd: obdName.input.value.trim(), ss: pick.ss, br: pick.br, sp: pick.sp, pk: pick.pk, lw: pick.lw };
         store.set('t3', v);
         if (!(LIVE.mode === 'bt' && LIVE.rx)) { err.textContent = 'Saved on this phone. Connect to the T3 (Live > Connect) and send again.'; return; }
         if (!S.conn) { err.textContent = 'Connect Heep to your Jeep log first, so the T3 knows where to send trips.'; return; }
@@ -308,7 +311,7 @@ function t3Setup() {
         const wifi = [];
         for (const [n2, p2] of v.nets) wifi.push(n2, p2);
         await send({ c: 'cfg', wifi, u: S.conn.u, k: S.conn.k, fc: Math.max(30, Math.min(300, v.fc)) / 100, dc: Math.max(50, Math.min(200, v.dc)) / 100,
-          obd: v.obd, ss: v.ss, br: v.br, sp: v.sp, pk: v.pk });
+          obd: v.obd, ss: v.ss, br: v.br, sp: v.sp, pk: v.pk, lw: v.lw });
       }
     },
   });
@@ -334,3 +337,79 @@ function t3Guide() {
     },
   });
 }
+
+// ---------- live over Wi-Fi: when the T3 is on your hotspot (or any Wi-Fi) it sends its numbers through a free relay,
+// so Heep shows them in any browser, the Home Screen app too. Bluetooth (in Bluefy) still works and wins when both are on.
+const RELAY = 'wss://broker.emqx.io:8084/mqtt';
+const NET = { ws: null, buf: new Uint8Array(0), ping: 0, retry: 0, at: 0, off: false, topic: '' };
+// the channel name comes from your sheet key, the same way the T3 makes it
+async function liveTopic() {
+  const d = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode('heep-live:' + S.conn.k)));
+  return 'heep/' + [...d.slice(0, 16)].map(b => b.toString(16).padStart(2, '0')).join('') + '/live';
+}
+const mqStr = s => { const b = new TextEncoder().encode(s); return [b.length >> 8, b.length & 255, ...b]; };
+function mqPacket(type, body) {
+  const len = [];
+  let n = body.length;
+  do { let d = n % 128; n = Math.floor(n / 128); if (n) d |= 128; len.push(d); } while (n);
+  return new Uint8Array([type, ...len, ...body]);
+}
+async function netStart() {
+  if (NET.ws || NET.off || !S.conn || S.sample || !window.WebSocket || !(window.crypto && crypto.subtle)) return;
+  let ws;
+  try { NET.topic = await liveTopic(); if (NET.ws) return; ws = new WebSocket(RELAY, 'mqtt'); } catch (e) { return; }
+  NET.ws = ws; ws.binaryType = 'arraybuffer'; NET.buf = new Uint8Array(0);
+  ws.onopen = () => {
+    ws.send(mqPacket(0x10, [...mqStr('MQTT'), 4, 0x02, 0, 60, ...mqStr('heep-' + Math.random().toString(36).slice(2, 12))]));
+    ws.send(mqPacket(0x82, [0, 1, ...mqStr(NET.topic), 0]));
+    clearInterval(NET.ping);
+    NET.ping = setInterval(() => { try { ws.send(new Uint8Array([0xC0, 0])); } catch (e) { /* closing */ } }, 30000);
+    if (S.tab === 'live' && !LIVE.mode) render();
+  };
+  ws.onmessage = e => netBytes(new Uint8Array(e.data));
+  ws.onclose = () => { clearInterval(NET.ping); if (NET.ws === ws) NET.ws = null; clearTimeout(NET.retry); NET.retry = setTimeout(netCheck, 5000); };
+  ws.onerror = () => { try { ws.close(); } catch (e) { /* gone */ } };
+}
+function netStop() {
+  clearTimeout(NET.retry); clearInterval(NET.ping);
+  const ws = NET.ws;
+  NET.ws = null;
+  if (ws) { try { ws.close(); } catch (e) { /* gone */ } }
+  if (LIVE.mode === 'net') { LIVE.mode = null; LIVE.v = {}; LIVE.els = null; wake(false); if (S.tab === 'live') render(); }
+}
+// MQTT packets can arrive split or joined: keep the bytes until each one is whole
+function netBytes(chunk) {
+  const b = new Uint8Array(NET.buf.length + chunk.length);
+  b.set(NET.buf); b.set(chunk, NET.buf.length);
+  let i = 0;
+  while (i < b.length) {
+    let mul = 1, len = 0, j = i + 1, byte;
+    do { if (j >= b.length) { NET.buf = b.slice(i); return; } byte = b[j++]; len += (byte & 127) * mul; mul *= 128; } while (byte & 128);
+    if (j + len > b.length) { NET.buf = b.slice(i); return; }
+    if ((b[i] >> 4) === 3) {
+      const tl = (b[j] << 8) | b[j + 1], qos = (b[i] >> 1) & 3;
+      netLine(new TextDecoder().decode(b.slice(j + 2 + tl + (qos ? 2 : 0), j + len)));
+    }
+    i = j + len;
+  }
+  NET.buf = new Uint8Array(0);
+}
+function netLine(text) {
+  let m;
+  try { m = JSON.parse(text); } catch (e) { return; }
+  if (!m || m.t !== 'live' || LIVE.mode === 'bt' || LIVE.mode === 'demo') return;
+  NET.at = Date.now();
+  const fresh = LIVE.mode !== 'net';
+  LIVE.mode = 'net'; LIVE.status = 'Over Wi-Fi'; LIVE.v = m; LIVE.at = Date.now();
+  if (fresh) { wake(true); if (S.tab === 'live') render(); } else updateLive();
+}
+// listen while Live is on screen, let go when it isn't (saves data), and drop the view when the T3 goes quiet
+function netCheck() {
+  if (S.tab !== 'live') NET.off = false;
+  const want = S.tab === 'live' && !document.hidden && LIVE.mode !== 'bt' && LIVE.mode !== 'demo';
+  if (!want) { if (NET.ws || LIVE.mode === 'net') netStop(); return; }
+  if (!NET.ws) netStart();
+  if (LIVE.mode === 'net' && Date.now() - NET.at > 15000) { LIVE.mode = null; LIVE.v = {}; LIVE.els = null; wake(false); render(); }
+}
+setInterval(netCheck, 3000);
+document.addEventListener('visibilitychange', netCheck);

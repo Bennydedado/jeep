@@ -15,7 +15,7 @@
 //
 // Install once from https://bennydedado.github.io/jeep/firmware/ (Chrome, USB); after that it updates itself over Wi-Fi.
 // Building it yourself: board "ESP32 Dev Module", Partition Scheme "Minimal SPIFFS (1.9MB APP with OTA/190KB SPIFFS)",
-// libraries Adafruit SSD1306, Adafruit GFX, LoRa (Sandeep Mistry). GitHub builds it on every change (.github/workflows/t3.yml).
+// libraries Adafruit SSD1306, Adafruit GFX, LoRa (Sandeep Mistry), PubSubClient. GitHub builds it on every change (.github/workflows/t3.yml).
 
 #include <Arduino.h>
 #include <Wire.h>
@@ -28,6 +28,8 @@
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <HTTPUpdate.h>
+#include <PubSubClient.h>
+#include "mbedtls/sha256.h"
 #include <Preferences.h>
 #include <LittleFS.h>
 #include <BLEDevice.h>
@@ -39,9 +41,12 @@
 struct Trip;
 struct Live;
 
-#define FW "1.3"
+#define FW "1.4"
 // new versions are built on GitHub and fetched from here over Wi-Fi (no more uploading by USB)
 #define UPDATE_JSON "https://bennydedado.github.io/jeep/firmware/t3.json"
+// live numbers over Wi-Fi (your hotspot): sent through this free relay to Heep in any browser
+#define RELAY_HOST "broker.emqx.io"
+#define RELAY_PORT 8883
 
 // ---------------------------------------------------------------- pins on the T3 V1.6.1
 #define OLED_SDA 21
@@ -71,6 +76,8 @@ int netCount = 0;
 String sheetUrl, sheetKey, obdName;
 float fuelCal = 1.0, distCal = 1.0;
 int screenSecs = 60, parkSecs = 90, bright = 2, startPage = 0;   // all set from Heep (T3 setup)
+bool liveWifi = true;
+String liveTopic;   // a channel name made from your sheet key, so only your Heep finds it
 uint32_t bootNo = 0;
 float totalKm = 0, totalL = 0;
 
@@ -90,7 +97,17 @@ void loadSettings() {
   parkSecs = prefs.getInt("pk", 90);
   bright = prefs.getInt("br", 2);
   startPage = prefs.getInt("sp", 0);
+  liveWifi = prefs.getBool("lw", true);
   prefs.end();
+  liveTopic = "";
+  if (sheetKey.length()) {
+    String in = "heep-live:" + sheetKey;
+    unsigned char hsh[32];
+    mbedtls_sha256((const unsigned char*)in.c_str(), in.length(), hsh, 0);
+    char hex[33];
+    for (int i = 0; i < 16; i++) sprintf(hex + 2 * i, "%02x", hsh[i]);
+    liveTopic = "heep/" + String(hex) + "/live";
+  }
   if (fuelCal < 0.3 || fuelCal > 3) fuelCal = 1.0;
   if (distCal < 0.5 || distCal > 2) distCal = 1.0;
 }
@@ -408,14 +425,17 @@ void integrate() {
 }
 
 // ---------------------------------------------------------------- Wi-Fi: home or the iPhone's hotspot, then the sheet
-enum WifiState { W_IDLE, W_SCAN, W_JOIN, W_SEND };
+enum WifiState { W_IDLE, W_SCAN, W_JOIN, W_ON };
 volatile WifiState wifiState = W_IDLE;
 uint32_t wifiAt = 0, nextWifiTry = 15000;
 String wifiName, lastUpload = "not yet", updStatus = "";
 uint32_t nextUpdateCheck = 20000;     // soon after key-on, then every 6 hours
 volatile bool updating = false;
 uint32_t lastUploadAt = 0;
-volatile bool uploadDone = false;
+volatile bool uploadDone = false, uploading = false;
+uint32_t nextUploadTry = 0, wifiIdleSince = 0, mqttTry = 0, lastPub = 0;
+WiFiClientSecure mqttTls;
+PubSubClient mqtt(mqttTls);
 
 // a newer T3 program on GitHub? Fetch it and restart into it (only while the Jeep is stopped)
 void checkUpdate() {
@@ -482,18 +502,28 @@ void uploadTask(void*) {
     } else lastUpload = "bad sheet link";
   }
   if (ok) { dropTrips(ids); lastUploadAt = millis(); }
+  else if (n) nextUploadTry = millis() + 120000;
   if (millis() >= nextUpdateCheck) {
     if (car.kmh <= 0 || !engineOn()) { nextUpdateCheck = millis() + 6UL * 3600 * 1000; checkUpdate(); }
     else nextUpdateCheck = millis() + 10UL * 60 * 1000;   // moving: try again in a bit
   }
   uploadDone = true;
+  uploading = false;
   vTaskDelete(nullptr);
+}
+bool liveWanted() { return liveWifi && liveTopic.length() && engineOn(); }
+bool uploadWanted() { return queued > 0 && sheetUrl.length() && millis() >= nextUploadTry; }
+void wifiOff(uint32_t retryIn) {
+  if (mqtt.connected()) mqtt.disconnect();
+  WiFi.disconnect(true); WiFi.mode(WIFI_OFF);
+  wifiState = W_IDLE; nextWifiTry = millis() + retryIn;
 }
 void wifiStep() {
   uint32_t now = millis();
+  bool want = uploadWanted() || now >= nextUpdateCheck || liveWanted();
   switch (wifiState) {
     case W_IDLE:
-      if (((queued == 0 || sheetUrl.length() == 0) && now < nextUpdateCheck) || netCount == 0 || now < nextWifiTry) return;
+      if (!want || netCount == 0 || now < nextWifiTry) return;
       WiFi.mode(WIFI_STA);
       WiFi.scanNetworks(true);
       wifiState = W_SCAN; wifiAt = now;
@@ -502,10 +532,10 @@ void wifiStep() {
       int found = WiFi.scanComplete();
       if (found == WIFI_SCAN_RUNNING && now - wifiAt < 10000) return;
       int pick = -1;
-      for (int i = 0; i < netCount && pick < 0; i++)                 // home first, then the hotspot
+      for (int i = 0; i < netCount && pick < 0; i++)                 // in the order you listed them in Heep
         for (int k = 0; k < found; k++) if (WiFi.SSID(k) == nets[i].ssid) { pick = i; break; }
       WiFi.scanDelete();
-      if (pick < 0) { WiFi.mode(WIFI_OFF); wifiState = W_IDLE; nextWifiTry = now + 60000; return; }
+      if (pick < 0) { wifiOff(liveWanted() ? 20000 : 60000); return; }
       wifiName = nets[pick].ssid;
       WiFi.begin(nets[pick].ssid.c_str(), nets[pick].pass.c_str());
       wifiState = W_JOIN; wifiAt = now;
@@ -513,18 +543,43 @@ void wifiStep() {
     }
     case W_JOIN:
       if (WiFi.status() == WL_CONNECTED) {
-        configTime(0, 0, "pool.ntp.org", "time.google.com");
-        struct tm tmv;
-        if (getLocalTime(&tmv, 3000)) { time_t t; time(&t); setTime((int64_t)t * 1000); }
-        uploadDone = false;
-        xTaskCreatePinnedToCore(uploadTask, "upload", 16384, nullptr, 1, nullptr, 0);
-        wifiState = W_SEND; wifiAt = now;
-      } else if (now - wifiAt > 15000) { lastUpload = "couldn't join " + wifiName; WiFi.disconnect(true); WiFi.mode(WIFI_OFF); wifiState = W_IDLE; nextWifiTry = now + 60000; }
+        if (!timeKnown) {
+          configTime(0, 0, "pool.ntp.org", "time.google.com");
+          struct tm tmv;
+          if (getLocalTime(&tmv, 3000)) { time_t t; time(&t); setTime((int64_t)t * 1000); }
+        }
+        wifiState = W_ON; wifiIdleSince = 0;
+      } else if (now - wifiAt > 15000) { lastUpload = "couldn't join " + wifiName; wifiOff(liveWanted() ? 20000 : 60000); }
       return;
-    case W_SEND:
-      if (!uploadDone && now - wifiAt < 180000) return;
-      WiFi.disconnect(true); WiFi.mode(WIFI_OFF);
-      wifiState = W_IDLE; nextWifiTry = now + 120000;
+    case W_ON:
+      if (WiFi.status() != WL_CONNECTED) { wifiOff(5000); return; }
+      if (uploading) return;                                          // the upload has the connection to itself
+      if (uploadWanted() || now >= nextUpdateCheck) {
+        if (mqtt.connected()) mqtt.disconnect();
+        uploading = true; uploadDone = false;
+        xTaskCreatePinnedToCore(uploadTask, "upload", 16384, nullptr, 1, nullptr, 0);
+        return;
+      }
+      if (liveWanted()) {
+        // the live numbers, once a second, for Heep in any browser
+        wifiIdleSince = 0;
+        if (!mqtt.connected()) {
+          if (now - mqttTry < 10000) return;
+          mqttTry = now;
+          mqttTls.setInsecure();
+          mqtt.setServer(RELAY_HOST, RELAY_PORT);
+          mqtt.setBufferSize(600);
+          String id = "jeep-t3-" + String((uint32_t)ESP.getEfuseMac(), HEX);
+          mqtt.connect(id.c_str());
+          return;
+        }
+        mqtt.loop();
+        if (now - lastPub >= 1000) { lastPub = now; String m = liveJson(); mqtt.publish(liveTopic.c_str(), m.c_str()); }
+        return;
+      }
+      if (mqtt.connected()) mqtt.disconnect();
+      if (!wifiIdleSince) wifiIdleSince = now;
+      if (now - wifiIdleSince > 60000) wifiOff(30000);                // nothing to do for a minute: Wi-Fi off
       return;
   }
 }
@@ -569,7 +624,7 @@ void sendHi() {
             ",\"up\":\"" + lastUpload + "\",\"upAgo\":" + String(lastUploadAt ? (long)((millis() - lastUploadAt) / 1000) : -1) +
             ",\"fc\":" + String(fuelCal, 3) + ",\"dc\":" + String(distCal, 3) + ",\"totKm\":" + String(totalKm, 1) +
             ",\"ss\":" + String(screenSecs) + ",\"pk\":" + String(parkSecs) + ",\"br\":" + String(bright) + ",\"sp\":" + String(startPage) +
-            ",\"obdName\":\"" + obdName + "\",\"upd\":\"" + updStatus + "\",\"ssids\":" + ss + "}");
+            ",\"obdName\":\"" + obdName + "\",\"upd\":\"" + updStatus + "\",\"ssids\":" + ss + ",\"lw\":" + String(liveWifi ? 1 : 0) + "}");
 }
 void sendTrips() {
   xSemaphoreTake(fsLock, portMAX_DELAY);
@@ -612,6 +667,7 @@ void onPhoneLine(const String& j) {
     if (j.indexOf("\"ss\":") >= 0) prefs.putInt("ss", (int)numFieldOr(j, "ss", 60));
     if (j.indexOf("\"pk\":") >= 0) prefs.putInt("pk", constrain((int)numFieldOr(j, "pk", 90), 30, 1800));
     if (j.indexOf("\"br\":") >= 0) prefs.putInt("br", constrain((int)numFieldOr(j, "br", 2), 0, 2));
+    if (j.indexOf("\"lw\":") >= 0) prefs.putBool("lw", numFieldOr(j, "lw", 1) > 0);
     if (j.indexOf("\"sp\":") >= 0) prefs.putInt("sp", constrain((int)numFieldOr(j, "sp", 0), 0, 5));
     prefs.end();
     loadSettings();
@@ -631,6 +687,11 @@ void phoneStep() {
   static uint32_t lastLive = 0;
   if (phoneOn && millis() - lastLive > 500) {
     lastLive = millis();
+    phoneSend(liveJson());
+  }
+}
+String liveJson() {
+  {
     String m = "{\"t\":\"live\"";
     if (engineOn() || obdLinked) {
       if (car.kmh >= 0) m += ",\"kmh\":" + String(car.kmh, 0);
@@ -643,7 +704,7 @@ void phoneStep() {
       m += ",\"lph\":" + String(fuelNow(), 2);
     }
     m += ",\"trip\":{\"km\":" + String(trip.km, 2) + ",\"l\":" + String(trip.l, 2) + ",\"s\":" + String((long)trip.s) + ",\"idle\":" + String((long)trip.idle) + "}}";
-    phoneSend(m);
+    return m;
   }
 }
 
