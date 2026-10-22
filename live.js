@@ -63,6 +63,9 @@ function renderLive(v) {
         h('button', { class: 'btn btn-small btn-glass glass btn-danger', onclick: liveStop }, icon('stop'), LIVE.mode === 'demo' ? 'Stop demo' : 'Disconnect'))));
     updateLive();
   }
+  v.append(h('div', { class: 'btn-row' },
+    h('button', { class: 'btn btn-glass glass', onclick: t3Setup }, icon('sliders'), 'T3 setup'),
+    h('button', { class: 'btn btn-glass glass', onclick: t3Guide }, icon('info'), 'Hook-up guide')));
   // trips the T3 has logged
   const trips = S.data.trip.slice().sort((a, b) => (num(b.t1) || 0) - (num(a.t1) || 0)).slice(0, 20);
   if (trips.length) {
@@ -149,7 +152,8 @@ function onLine(line) {
   try { m = JSON.parse(line); } catch (e) { return; }
   if (!m || typeof m !== 'object') return;
   if (m.t === 'live') { LIVE.v = m; LIVE.at = Date.now(); updateLive(); }
-  else if (m.t === 'hi') { LIVE.fw = String(m.fw || ''); render(); }
+  else if (m.t === 'hi') { LIVE.fw = String(m.fw || ''); LIVE.t3 = m; if (LIVE.onHi) LIVE.onHi(); else render(); }
+  else if (m.t === 'cfg') toast('Saved on the T3', 'It sends trips by itself from now on');
   else if (m.t === 'trip') saveTrip(m);
 }
 // a finished trip from the T3: into the sheet, then tell the T3 it can forget it
@@ -230,4 +234,73 @@ async function copyText(text, btn) {
     try { document.execCommand('copy'); } catch (err) { /* nothing more to try */ }
     ta.remove();
   }
+}
+
+// ---------- T3 setup: Wi-Fi, the hotspot and the sheet link go to the T3 over Bluetooth, so it sends trips by itself
+function t3Setup() {
+  const saved = store.get('t3', {});
+  openSheet({
+    title: 'T3 setup',
+    onClose: () => { LIVE.onHi = null; },
+    build(b, sheet) {
+      const status = h('div', { class: 'card list' });
+      const paint = () => {
+        status.textContent = '';
+        const m = LIVE.t3, on = LIVE.mode === 'bt' && LIVE.rx;
+        const r = (k, val) => h('div', { class: 'row' }, h('div', { class: 'main' }, h('b', { text: k })), h('div', { class: 'end' }, h('span', { text: val })));
+        if (!on || !m) { status.append(r('T3', on ? 'Connected' : 'Not connected: Live > Connect first')); return; }
+        status.append(r('T3', 'Connected · ' + (m.fw || '')), r('iCar', m.obd ? 'Reading the engine' : 'Looking for it'),
+          r('Wi-Fi saved', m.nets ? m.nets + (m.nets > 1 ? ' networks' : ' network') : 'None yet'),
+          r('Trips waiting', String(m.queued || 0)), r('Last send', m.up || 'not yet'));
+      };
+      LIVE.onHi = paint;
+      const f = (label, key, ph) => textRow(label, { placeholder: ph, value: saved[key] || '', autocapitalize: 'off', autocorrect: 'off', spellcheck: 'false' });
+      const home = f('Name', 'hs', 'Your home Wi-Fi'), homeP = f('Password', 'hp', '');
+      const hot = f('Name', 'ps', 'e.g. Ben’s iPhone'), hotP = f('Password', 'pp', '');
+      const fuel = textRow('Fuel', { value: String(saved.fc || 100), inputmode: 'decimal' });
+      const err = h('div', { class: 'err' });
+      put(b, status,
+        h('div', { class: 'label', text: 'Home Wi-Fi' }), h('div', { class: 'group' }, home.row, homeP.row),
+        h('div', { class: 'label', text: 'iPhone hotspot' }), h('div', { class: 'group' }, hot.row, hotP.row),
+        h('div', { class: 'foot', text: 'The hotspot name is in Settings > General > About > Name. In Settings > Personal Hotspot, turn on Allow Others to Join and Maximize Compatibility (the T3 only sees 2.4 GHz Wi-Fi).' }),
+        h('div', { class: 'label', text: 'Fuel correction (%)' }), h('div', { class: 'group' }, fuel.row),
+        h('div', { class: 'foot', text: 'The CRD doesn’t report fuel used, so the T3 works it out. If after a full tank the T3 says 50 L and the pump said 55 L, put 110.' }),
+        err,
+        h('button', { class: 'btn btn-primary btn-wide', onclick: sendCfg }, icon('bt'), 'Send to the T3'));
+      paint();
+      if (LIVE.rx) send({ c: 'status' });
+      async function sendCfg() {
+        const v = { hs: home.input.value.trim(), hp: homeP.input.value, ps: hot.input.value.trim(), pp: hotP.input.value, fc: num(fuel.input.value) || 100 };
+        store.set('t3', v);
+        if (!(LIVE.mode === 'bt' && LIVE.rx)) { err.textContent = 'Saved on this phone. Connect to the T3 (Live > Connect) and send again.'; return; }
+        if (!S.conn) { err.textContent = 'Connect Heep to your Jeep log first, so the T3 knows where to send trips.'; return; }
+        err.textContent = '';
+        const wifi = [];
+        if (v.hs) wifi.push(v.hs, v.hp);
+        if (v.ps) wifi.push(v.ps, v.pp);
+        await send({ c: 'cfg', wifi, u: S.conn.u, k: S.conn.k, fc: Math.max(30, Math.min(300, v.fc)) / 100 });
+      }
+    },
+  });
+}
+// ---------- how to put the T3 in the Jeep, start to finish
+function t3Guide() {
+  const steps = [
+    ['What you need', 'The LilyGo T3 V1.6.1, a Vgate iCar Pro Bluetooth 4.0 (the BLE one, not Wi-Fi), the keyed 5 V buck converter, and if you like a push button. No battery, and no LoRa antenna: the T3 code keeps the radio asleep.'],
+    ['Put the code on the T3 (once)', 'On the PC open Documents\\Arduino\\T3\\T3.ino in the Arduino IDE. Tools > Board: TTGO LoRa32-OLED (Board revision: TTGO LoRa32 V2.1 (1.6.1)). Tools > Partition Scheme: Huge APP (3MB No OTA/1MB SPIFFS). Plug the T3 in by USB and press Upload. It uses Adafruit SSD1306, Adafruit GFX and LoRa, which you already have.'],
+    ['Wire it in', 'Buck converter 5 V to the T3’s 5V pin, ground to GND, so it runs only with the key on. Optional button: one side to IO4, the other to GND. Mount it where you can see the screen.'],
+    ['Plug in the iCar', 'Into the OBD port under the dash, left of the steering column. Turn the key: the T3 finds the iCar by itself. Its Status page says iCar reading.'],
+    ['Connect Heep', 'Open Heep in Bluefy, go to Live, tap Connect and pick Jeep T3.'],
+    ['T3 setup', 'Tap T3 setup, type your home Wi-Fi and your iPhone hotspot, and tap Send to the T3. The link to your Jeep log goes along by itself.'],
+    ['Hotspot', 'Settings > Personal Hotspot: Allow Others to Join on, Maximize Compatibility on.'],
+    ['Using it', 'Press the button for the next page: Economy, Trip, Engine, Speed, All trips, Status. Hold it 1.5 s on Economy or Trip to start a new trip; hold it on Status to send trips now.'],
+    ['Trips', 'Each key-on is a trip; parking 90 s with the key on ends one. Trips are saved on the T3, so nothing is lost when the key goes off. They go to your Jeep log at home, on your hotspot, or when Heep connects. Nothing to do.'],
+    ['Fuel accuracy', 'After a couple of full tanks, compare the T3’s litres with the pump and set Fuel correction in T3 setup.'],
+  ];
+  openSheet({
+    title: 'Hook-up guide',
+    build(b) {
+      put(b, h('ol', { class: 'steps' }, steps.map(([t, d]) => h('li', null, h('div', null, h('b', { text: t, style: 'display:block;margin-bottom:2px' }), h('span', { class: 'muted', style: 'font-size:15px', text: d }))))));
+    },
+  });
 }
