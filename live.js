@@ -293,7 +293,7 @@ function t3Guide() {
     ['Connect Heep', 'Open Heep in Bluefy, go to Live, tap Connect and pick Jeep T3.'],
     ['T3 setup', 'Tap T3 setup, type your home Wi-Fi and your iPhone hotspot, and tap Send to the T3. The link to your Jeep log goes along by itself.'],
     ['Hotspot', 'Settings > Personal Hotspot: Allow Others to Join on, Maximize Compatibility on.'],
-    ['Using it', 'Press the button for the next page: Economy, Trip, Engine, Speed, All trips, Status. Hold it 1.5 s on Economy or Trip to start a new trip; hold it on Status to send trips now.'],
+    ['Using it', 'The screen turns off after a minute; a press wakes it. Then press for the next page: Economy, Trip, Engine, Speed, All trips, Status. Hold it 1.5 s on Economy or Trip to start a new trip; hold it on Status to send trips now.'],
     ['Trips', 'Each key-on is a trip; parking 90 s with the key on ends one. Trips are saved on the T3, so nothing is lost when the key goes off. They go to your Jeep log at home, on your hotspot, or when Heep connects. Nothing to do.'],
     ['Fuel accuracy', 'After a couple of full tanks, compare the T3’s litres with the pump and set Fuel correction in T3 setup.'],
   ];

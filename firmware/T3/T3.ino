@@ -602,19 +602,28 @@ const int PAGES = 6;
 uint32_t pressAt = 0, msgUntil = 0;
 bool pressed = false, longDone = false;
 String msg;
+// the screen sleeps after a minute without a press; the next press only wakes it
+#define SCREEN_SECS 60
+bool screenOn = true, wakePress = false;
+uint32_t lastTouch = 0;
+void screenWake() { if (!screenOn) { screenOn = true; oled.ssd1306_command(SSD1306_DISPLAYON); } lastTouch = millis(); }
+void screenSleepStep() {
+  if (screenOn && millis() - lastTouch > SCREEN_SECS * 1000UL) { screenOn = false; oled.clearDisplay(); oled.display(); oled.ssd1306_command(SSD1306_DISPLAYOFF); }
+}
 
-void flash(const String& m) { msg = m; msgUntil = millis() + 1500; }
+void flash(const String& m) { msg = m; msgUntil = millis() + 1500; screenWake(); }
 void buttonStep() {
   bool down = digitalRead(BUTTON_PIN) == LOW;
   uint32_t now = millis();
-  if (down && !pressed) { pressed = true; pressAt = now; longDone = false; }
-  if (down && pressed && !longDone && now - pressAt > 1500) {
+  if (down && !pressed) { pressed = true; pressAt = now; longDone = false; wakePress = !screenOn; screenWake(); }
+  if (down && pressed) lastTouch = now;
+  if (down && pressed && !longDone && !wakePress && now - pressAt > 1500) {
     longDone = true;
     // hold: a new trip on the trip pages, send now on the status page
     if (page <= 1) { trip.t1 = nowMs(); queueTrip(trip); newTrip(); flash("New trip"); }
     else if (page == 5) { nextWifiTry = 0; flash("Sending..."); }
   }
-  if (!down && pressed) { pressed = false; if (!longDone && now - pressAt > 40) page = (page + 1) % PAGES; }
+  if (!down && pressed) { pressed = false; if (!longDone && !wakePress && now - pressAt > 40) page = (page + 1) % PAGES; }
 }
 String hm(float s) { long m = (long)(s / 60); char b[12]; snprintf(b, sizeof(b), "%ld:%02ld", m / 60, m % 60); return b; }
 String avgText(float l, float km) { return km >= 0.5 ? String(l / km * 100, 1) : "--"; }
@@ -728,6 +737,7 @@ void setup() {
   BLEDevice::startAdvertising();
   BLEDevice::getScan()->setAdvertisedDeviceCallbacks(new ScanCB());
   lastIntegrate = millis();
+  lastTouch = millis();   // on for a minute after the key goes on
 }
 
 void loop() {
@@ -739,7 +749,8 @@ void loop() {
   buttonStep();
   if (millis() - lastSnapshot > 30000) { lastSnapshot = millis(); snapshot(); }
   static uint32_t lastDraw = 0;
-  if (millis() - lastDraw > 250) { lastDraw = millis(); draw(); }
+  screenSleepStep();
+  if (screenOn && millis() - lastDraw > 250) { lastDraw = millis(); draw(); }
   digitalWrite(LED_PIN, obdLinked && (millis() / 500) % 2);
   delay(5);
 }
