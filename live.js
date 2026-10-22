@@ -22,6 +22,9 @@ function renderLive(v) {
   const on = !!LIVE.mode;
   v.append(titleRow('Live', on ? (LIVE.mode === 'demo' ? 'Demo, made-up numbers' : LIVE.status + (LIVE.fw ? ' · T3 ' + LIVE.fw : '')) : 'Straight from the T3 in the Jeep'));
   topBanners(v);
+  v.append(h('div', { class: 'btn-row' },
+    h('button', { class: 'btn btn-primary', onclick: t3Setup }, icon('sliders'), 'Wi-Fi & setup'),
+    h('button', { class: 'btn btn-glass glass', onclick: t3Guide }, icon('info'), 'Guide')));
   if (!on) {
     if (hasBT()) {
       v.append(card(h('div', { class: 'empty', style: 'padding:16px 6px' },
@@ -63,9 +66,6 @@ function renderLive(v) {
         h('button', { class: 'btn btn-small btn-glass glass btn-danger', onclick: liveStop }, icon('stop'), LIVE.mode === 'demo' ? 'Stop demo' : 'Disconnect'))));
     updateLive();
   }
-  v.append(h('div', { class: 'btn-row' },
-    h('button', { class: 'btn btn-glass glass', onclick: t3Setup }, icon('sliders'), 'T3 setup'),
-    h('button', { class: 'btn btn-glass glass', onclick: t3Guide }, icon('info'), 'Hook-up guide')));
   // trips the T3 has logged
   const trips = S.data.trip.slice().sort((a, b) => (num(b.t1) || 0) - (num(a.t1) || 0)).slice(0, 20);
   if (trips.length) {
@@ -250,13 +250,28 @@ function t3Setup() {
         const r = (k, val) => h('div', { class: 'row' }, h('div', { class: 'main' }, h('b', { text: k })), h('div', { class: 'end' }, h('span', { text: val })));
         if (!on || !m) { status.append(r('T3', on ? 'Connected' : 'Not connected: Live > Connect first')); return; }
         status.append(r('T3', 'Connected · ' + (m.fw || '')), r('iCar', m.obd ? 'Reading the engine' : 'Looking for it'),
-          r('Wi-Fi saved', m.nets ? m.nets + (m.nets > 1 ? ' networks' : ' network') : 'None yet'),
+          r('Wi-Fi saved', m.nets ? (Array.isArray(m.ssids) && m.ssids.length ? m.ssids.join(', ') : m.nets + (m.nets > 1 ? ' networks' : ' network')) : 'None yet'),
           r('Trips waiting', String(m.queued || 0)), r('Last send', m.up || 'not yet'));
       };
       LIVE.onHi = paint;
       const f = (label, key, ph) => textRow(label, { placeholder: ph, value: saved[key] || '', autocapitalize: 'off', autocorrect: 'off', spellcheck: 'false' });
-      const home = f('Name', 'hs', 'Your home Wi-Fi'), homeP = f('Password', 'hp', '');
-      const hot = f('Name', 'ps', 'e.g. Ben’s iPhone'), hotP = f('Password', 'pp', '');
+      // Wi-Fi networks, tried in this order (older versions saved home and hotspot separately)
+      let nets = Array.isArray(saved.nets) ? saved.nets.slice() : [[saved.hs || '', saved.hp || ''], [saved.ps || '', saved.pp || '']].filter(x => x[0]);
+      if (!nets.length) nets = [['', '']];
+      const netBox = h('div', { style: 'display:grid;gap:10px' });
+      const netRows = [];
+      const drawNets = () => {
+        netBox.textContent = ''; netRows.length = 0;
+        nets.forEach((n, i) => {
+          const name = textRow('Name', { placeholder: i === 0 ? 'Your home Wi-Fi' : 'Wi-Fi or iPhone hotspot name', value: n[0], autocapitalize: 'off', autocorrect: 'off', spellcheck: 'false' });
+          const pass = textRow('Password', { value: n[1], autocapitalize: 'off', autocorrect: 'off', spellcheck: 'false' });
+          netRows.push([name.input, pass.input]);
+          const del = h('button', { type: 'button', class: 'danger-link', style: 'padding:8px;font-size:15px', text: 'Remove', onclick: () => { readNets(); nets.splice(i, 1); if (!nets.length) nets = [['', '']]; drawNets(); } });
+          netBox.append(h('div', { class: 'group' }, name.row, pass.row, nets.length > 1 || n[0] ? del : null));
+        });
+      };
+      const readNets = () => { nets = netRows.map(([a, b2]) => [a.value.trim(), b2.value]); };
+      drawNets();
       const fuel = textRow('Fuel', { value: String(saved.fc || 100), inputmode: 'decimal' });
       const dist = textRow('Distance', { value: String(saved.dc || 100), inputmode: 'decimal' });
       const obdName = textRow('iCar name', { placeholder: 'Finds it by itself', value: saved.obd || '', autocapitalize: 'off', autocorrect: 'off' });
@@ -266,9 +281,9 @@ function t3Setup() {
       const choose = (key, opts) => seg(opts, pick[key], v2 => { pick[key] = v2; });
       const err = h('div', { class: 'err' });
       put(b, status,
-        h('div', { class: 'label', text: 'Home Wi-Fi' }), h('div', { class: 'group' }, home.row, homeP.row),
-        h('div', { class: 'label', text: 'iPhone hotspot' }), h('div', { class: 'group' }, hot.row, hotP.row),
-        h('div', { class: 'foot', text: 'The hotspot name is in Settings > General > About > Name. In Settings > Personal Hotspot, turn on Allow Others to Join and Maximize Compatibility (the T3 only sees 2.4 GHz Wi-Fi).' }),
+        h('div', { class: 'label', text: 'Wi-Fi networks (tried in this order)' }), netBox,
+        h('button', { type: 'button', class: 'btn btn-glass glass btn-wide', onclick: () => { readNets(); if (nets.length < 8) { nets.push(['', '']); drawNets(); } } }, icon('plus'), 'Add a Wi-Fi network'),
+        h('div', { class: 'foot', text: 'Add home, the shop, your iPhone hotspot: up to 8. The hotspot name is in Settings > General > About > Name; in Settings > Personal Hotspot turn on Allow Others to Join and Maximize Compatibility (the T3 only sees 2.4 GHz Wi-Fi). The iCar needs no password.' }),
         h('div', { class: 'label', text: 'Fuel correction (%)' }), h('div', { class: 'group' }, fuel.row),
         h('div', { class: 'foot', text: 'The CRD doesn’t report fuel used, so the T3 works it out. If after a full tank the T3 says 50 L and the pump said 55 L, put 110.' }),
         h('div', { class: 'label', text: 'Screen turns off after' }), choose('ss', [[30, '30 s'], [60, '1 min'], [120, '2 min'], [300, '5 min'], [0, 'Never']]),
@@ -283,15 +298,15 @@ function t3Setup() {
       paint();
       if (LIVE.rx) send({ c: 'status' });
       async function sendCfg() {
-        const v = { hs: home.input.value.trim(), hp: homeP.input.value, ps: hot.input.value.trim(), pp: hotP.input.value, fc: num(fuel.input.value) || 100,
+        readNets();
+        const v = { nets: nets.filter(x => x[0]), fc: num(fuel.input.value) || 100,
           dc: num(dist.input.value) || 100, obd: obdName.input.value.trim(), ss: pick.ss, br: pick.br, sp: pick.sp, pk: pick.pk };
         store.set('t3', v);
         if (!(LIVE.mode === 'bt' && LIVE.rx)) { err.textContent = 'Saved on this phone. Connect to the T3 (Live > Connect) and send again.'; return; }
         if (!S.conn) { err.textContent = 'Connect Heep to your Jeep log first, so the T3 knows where to send trips.'; return; }
         err.textContent = '';
         const wifi = [];
-        if (v.hs) wifi.push(v.hs, v.hp);
-        if (v.ps) wifi.push(v.ps, v.pp);
+        for (const [n2, p2] of v.nets) wifi.push(n2, p2);
         await send({ c: 'cfg', wifi, u: S.conn.u, k: S.conn.k, fc: Math.max(30, Math.min(300, v.fc)) / 100, dc: Math.max(50, Math.min(200, v.dc)) / 100,
           obd: v.obd, ss: v.ss, br: v.br, sp: v.sp, pk: v.pk });
       }
@@ -306,7 +321,7 @@ function t3Guide() {
     ['Wire it in', 'Buck converter 5 V to the T3’s 5V pin, ground to GND, so it runs only with the key on. Optional button: one side to IO4, the other to GND. Mount it where you can see the screen.'],
     ['Plug in the iCar', 'Into the OBD port under the dash, left of the steering column. Turn the key: the T3 finds the iCar by itself. Its Status page says iCar reading.'],
     ['Connect Heep', 'Open Heep in Bluefy, go to Live, tap Connect and pick Jeep T3.'],
-    ['T3 setup', 'Tap T3 setup, type your home Wi-Fi and your iPhone hotspot, and tap Send to the T3. The link to your Jeep log goes along by itself.'],
+    ['T3 setup', 'Tap Wi-Fi & setup, add your Wi-Fi networks (home, hotspot, any others) and tap Send to the T3. The link to your Jeep log goes along by itself. The iCar needs no password.'],
     ['Hotspot', 'Settings > Personal Hotspot: Allow Others to Join on, Maximize Compatibility on.'],
     ['Using it', 'The screen turns off after a while (set in T3 setup); a press wakes it. Then press for the next page: Economy, Trip, Engine, Speed, All trips, Status. Hold it 1.5 s on Economy or Trip to start a new trip; hold it on Status to send trips now.'],
     ['Trips', 'Each key-on is a trip; parking 90 s with the key on ends one. Trips are saved on the T3, so nothing is lost when the key goes off. They go to your Jeep log at home, on your hotspot, or when Heep connects. Nothing to do.'],

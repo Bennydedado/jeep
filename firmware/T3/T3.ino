@@ -39,7 +39,7 @@
 struct Trip;
 struct Live;
 
-#define FW "1.2"
+#define FW "1.3"
 // new versions are built on GitHub and fetched from here over Wi-Fi (no more uploading by USB)
 #define UPDATE_JSON "https://bennydedado.github.io/jeep/firmware/t3.json"
 
@@ -66,7 +66,7 @@ Preferences prefs;
 
 // ---------------------------------------------------------------- settings (sent from Heep, kept in flash)
 struct Net { String ssid, pass; };
-Net nets[4];
+Net nets[8];
 int netCount = 0;
 String sheetUrl, sheetKey, obdName;
 float fuelCal = 1.0, distCal = 1.0;
@@ -77,7 +77,7 @@ float totalKm = 0, totalL = 0;
 void loadSettings() {
   prefs.begin("t3", true);
   netCount = prefs.getInt("n", 0);
-  if (netCount > 4) netCount = 4;
+  if (netCount > 8) netCount = 8;
   for (int i = 0; i < netCount; i++) { nets[i].ssid = prefs.getString(("s" + String(i)).c_str(), ""); nets[i].pass = prefs.getString(("p" + String(i)).c_str(), ""); }
   sheetUrl = prefs.getString("u", "");
   sheetKey = prefs.getString("k", "");
@@ -559,13 +559,17 @@ int jStrings(const String& j, const char* key, String* out, int max) {
   }
   return n;
 }
+String jsonEsc(const String& v) { String o; for (size_t i = 0; i < v.length(); i++) { char c = v[i]; if (c == '"' || c == '\\') o += '\\'; if ((uint8_t)c >= 32) o += c; } return o; }
 void sendHi() {
+  String ss = "[";
+  for (int i = 0; i < netCount; i++) ss += String(i ? "," : "") + "\"" + jsonEsc(nets[i].ssid) + "\"";
+  ss += "]";
   phoneSend("{\"t\":\"hi\",\"fw\":\"" FW "\",\"obd\":" + String(obdLinked ? "true" : "false") + ",\"nets\":" + String(netCount) +
             ",\"sheet\":" + String(sheetUrl.length() ? "true" : "false") + ",\"queued\":" + String(queued) +
             ",\"up\":\"" + lastUpload + "\",\"upAgo\":" + String(lastUploadAt ? (long)((millis() - lastUploadAt) / 1000) : -1) +
             ",\"fc\":" + String(fuelCal, 3) + ",\"dc\":" + String(distCal, 3) + ",\"totKm\":" + String(totalKm, 1) +
             ",\"ss\":" + String(screenSecs) + ",\"pk\":" + String(parkSecs) + ",\"br\":" + String(bright) + ",\"sp\":" + String(startPage) +
-            ",\"obdName\":\"" + obdName + "\",\"upd\":\"" + updStatus + "\"}");
+            ",\"obdName\":\"" + obdName + "\",\"upd\":\"" + updStatus + "\",\"ssids\":" + ss + "}");
 }
 void sendTrips() {
   xSemaphoreTake(fsLock, portMAX_DELAY);
@@ -592,12 +596,12 @@ void onPhoneLine(const String& j) {
   else if (c == "status") sendHi();
   else if (c == "update") { nextUpdateCheck = 0; nextWifiTry = 0; }
   else if (c == "cfg") {
-    String w[8];
-    int n = jStrings(j, "wifi", w, 8);
+    String w[16];
+    int n = jStrings(j, "wifi", w, 16);
     prefs.begin("t3", false);
     if (n >= 0) {
       int k = 0;
-      for (int i = 0; i + 1 < n && k < 4; i += 2) if (w[i].length()) { prefs.putString(("s" + String(k)).c_str(), w[i]); prefs.putString(("p" + String(k)).c_str(), w[i + 1]); k++; }
+      for (int i = 0; i + 1 < n && k < 8; i += 2) if (w[i].length()) { prefs.putString(("s" + String(k)).c_str(), w[i]); prefs.putString(("p" + String(k)).c_str(), w[i + 1]); k++; }
       prefs.putInt("n", k);
     }
     if (j.indexOf("\"u\":") >= 0) prefs.putString("u", jStr(j, "u"));
