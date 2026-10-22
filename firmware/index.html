@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Install the Jeep T3</title>
+<meta name="robots" content="noindex, nofollow">
+<script type="module" src="https://unpkg.com/esp-web-tools@10.1.0/dist/web/install-button.js?module"></script>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; background: #050506; color: #fff; font: 17px/1.5 -apple-system, "Segoe UI", system-ui, sans-serif; }
+  main { max-width: 560px; margin: 0 auto; padding: 48px 20px; }
+  h1 { font-size: 30px; margin: 0 0 6px; }
+  p, li { color: rgba(235, 235, 245, .75); }
+  ol { padding-left: 22px; }
+  li { margin: 8px 0; }
+  .box { background: rgba(255, 255, 255, .06); border-radius: 18px; padding: 22px; margin: 22px 0; text-align: center; }
+  esp-web-install-button button[slot="activate"] { font: 600 17px inherit; background: #ff9f0a; color: #000; border: 0; border-radius: 999px; padding: 14px 30px; cursor: pointer; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Install the Jeep T3</h1>
+  <p>You only do this once. After that the T3 updates itself over Wi-Fi whenever the Jeep is stopped.</p>
+  <ol>
+    <li>Use Chrome or Edge on the PC.</li>
+    <li>Plug the T3 into the PC with its USB cable.</li>
+    <li>Click Install, pick the T3's COM port, and say yes to erasing it.</li>
+    <li>When it says done, unplug it and put it in the Jeep. Then use Heep's T3 setup.</li>
+  </ol>
+  <div class="box">
+    <esp-web-install-button manifest="manifest.json">
+      <button slot="activate">Install</button>
+      <span slot="unsupported">This browser can't do it: open this page in Chrome or Edge on the PC.</span>
+      <span slot="not-allowed">Open this page from its https:// address.</span>
+    </esp-web-install-button>
+  </div>
+  <p>If no COM port shows up, the PC may need the USB driver for the T3's CH9102 or CP2104 chip.</p>
+</main>
+</body>
+</html>

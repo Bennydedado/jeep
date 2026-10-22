@@ -1,0 +1,45 @@
+# Builds the T3 program whenever its code changes and puts it on the website:
+# the T3 fetches firmware/T3.bin over Wi-Fi by itself, and firmware/ has the one-time USB install.
+name: Build the T3
+on:
+  push:
+    paths: ['firmware/T3/**', '.github/workflows/t3.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency: t3-build
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+      - name: ESP32 boards and libraries
+        run: |
+          arduino-cli config init
+          arduino-cli config add board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32
+          arduino-cli lib install "Adafruit SSD1306" "Adafruit GFX Library" "LoRa"
+      - name: Build
+        id: build
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          arduino-cli compile --fqbn "esp32:esp32:esp32:PartitionScheme=min_spiffs" --export-binaries --output-dir out firmware/T3 2>&1 | tee build.log
+      - name: Publish
+        run: |
+          cp build.log firmware/build.log
+          ls out >> firmware/build.log 2>/dev/null || true
+          if [ "${{ steps.build.outcome }}" = "success" ]; then
+            V=$(grep -o '#define FW "[^"]*"' firmware/T3/T3.ino | cut -d'"' -f2)
+            cp out/T3.ino.bin firmware/T3.bin
+            if [ -f out/T3.ino.merged.bin ]; then cp out/T3.ino.merged.bin firmware/T3-full.bin; fi
+            printf '{"v":"%s","url":"https://bennydedado.github.io/jeep/firmware/T3.bin"}\n' "$V" > firmware/t3.json
+            printf '{"name":"Jeep T3","version":"%s","new_install_prompt_erase":true,"builds":[{"chipFamily":"ESP32","parts":[{"path":"T3-full.bin","offset":0}]}]}\n' "$V" > firmware/manifest.json
+          fi
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add firmware
+          git commit -m "T3 build: ${{ steps.build.outcome }}" || exit 0
+          git push

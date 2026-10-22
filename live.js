@@ -258,6 +258,12 @@ function t3Setup() {
       const home = f('Name', 'hs', 'Your home Wi-Fi'), homeP = f('Password', 'hp', '');
       const hot = f('Name', 'ps', 'e.g. Ben’s iPhone'), hotP = f('Password', 'pp', '');
       const fuel = textRow('Fuel', { value: String(saved.fc || 100), inputmode: 'decimal' });
+      const dist = textRow('Distance', { value: String(saved.dc || 100), inputmode: 'decimal' });
+      const obdName = textRow('iCar name', { placeholder: 'Finds it by itself', value: saved.obd || '', autocapitalize: 'off', autocorrect: 'off' });
+      const t3 = LIVE.t3 || {};
+      const pick = { ss: saved.ss != null ? saved.ss : (t3.ss != null ? t3.ss : 60), br: saved.br != null ? saved.br : (t3.br != null ? t3.br : 2),
+        sp: saved.sp != null ? saved.sp : (t3.sp || 0), pk: saved.pk != null ? saved.pk : (t3.pk || 90) };
+      const choose = (key, opts) => seg(opts, pick[key], v2 => { pick[key] = v2; });
       const err = h('div', { class: 'err' });
       put(b, status,
         h('div', { class: 'label', text: 'Home Wi-Fi' }), h('div', { class: 'group' }, home.row, homeP.row),
@@ -265,12 +271,20 @@ function t3Setup() {
         h('div', { class: 'foot', text: 'The hotspot name is in Settings > General > About > Name. In Settings > Personal Hotspot, turn on Allow Others to Join and Maximize Compatibility (the T3 only sees 2.4 GHz Wi-Fi).' }),
         h('div', { class: 'label', text: 'Fuel correction (%)' }), h('div', { class: 'group' }, fuel.row),
         h('div', { class: 'foot', text: 'The CRD doesn’t report fuel used, so the T3 works it out. If after a full tank the T3 says 50 L and the pump said 55 L, put 110.' }),
+        h('div', { class: 'label', text: 'Screen turns off after' }), choose('ss', [[30, '30 s'], [60, '1 min'], [120, '2 min'], [300, '5 min'], [0, 'Never']]),
+        h('div', { class: 'label', text: 'Screen brightness' }), choose('br', [[0, 'Low'], [1, 'Medium'], [2, 'High']]),
+        h('div', { class: 'label', text: 'Page at key-on' }), choose('sp', [[0, 'Economy'], [1, 'Trip'], [2, 'Engine'], [3, 'Speed']]),
+        h('div', { class: 'label', text: 'A trip ends after parking' }), choose('pk', [[60, '1 min'], [90, '1.5 min'], [180, '3 min'], [300, '5 min']]),
+        h('div', { class: 'label', text: 'Distance correction (%) and iCar' }), h('div', { class: 'group' }, dist.row, obdName.row),
+        h('div', { class: 'foot', text: 'Distance: if the T3 says 100 km when the odometer went 103, put 103. iCar name only if it doesn\u2019t find the adapter by itself.' }),
+        h('button', { class: 'btn btn-glass glass btn-wide', onclick: () => { if (LIVE.rx) { send({ c: 'update' }); toast('Checking for a T3 update', 'It installs over Wi-Fi when the Jeep is stopped', 'info'); } else err.textContent = 'Connect to the T3 first (Live > Connect).'; } }, icon('sync'), 'Update the T3 now'),
         err,
         h('button', { class: 'btn btn-primary btn-wide', onclick: sendCfg }, icon('bt'), 'Send to the T3'));
       paint();
       if (LIVE.rx) send({ c: 'status' });
       async function sendCfg() {
-        const v = { hs: home.input.value.trim(), hp: homeP.input.value, ps: hot.input.value.trim(), pp: hotP.input.value, fc: num(fuel.input.value) || 100 };
+        const v = { hs: home.input.value.trim(), hp: homeP.input.value, ps: hot.input.value.trim(), pp: hotP.input.value, fc: num(fuel.input.value) || 100,
+          dc: num(dist.input.value) || 100, obd: obdName.input.value.trim(), ss: pick.ss, br: pick.br, sp: pick.sp, pk: pick.pk };
         store.set('t3', v);
         if (!(LIVE.mode === 'bt' && LIVE.rx)) { err.textContent = 'Saved on this phone. Connect to the T3 (Live > Connect) and send again.'; return; }
         if (!S.conn) { err.textContent = 'Connect Heep to your Jeep log first, so the T3 knows where to send trips.'; return; }
@@ -278,7 +292,8 @@ function t3Setup() {
         const wifi = [];
         if (v.hs) wifi.push(v.hs, v.hp);
         if (v.ps) wifi.push(v.ps, v.pp);
-        await send({ c: 'cfg', wifi, u: S.conn.u, k: S.conn.k, fc: Math.max(30, Math.min(300, v.fc)) / 100 });
+        await send({ c: 'cfg', wifi, u: S.conn.u, k: S.conn.k, fc: Math.max(30, Math.min(300, v.fc)) / 100, dc: Math.max(50, Math.min(200, v.dc)) / 100,
+          obd: v.obd, ss: v.ss, br: v.br, sp: v.sp, pk: v.pk });
       }
     },
   });
@@ -287,13 +302,13 @@ function t3Setup() {
 function t3Guide() {
   const steps = [
     ['What you need', 'The LilyGo T3 V1.6.1, a Vgate iCar Pro Bluetooth 4.0 (the BLE one, not Wi-Fi), the keyed 5 V buck converter, and if you like a push button. No battery, and no LoRa antenna: the T3 code keeps the radio asleep.'],
-    ['Put the code on the T3 (once)', 'On the PC open Documents\\Arduino\\T3\\T3.ino in the Arduino IDE. Tools > Board: TTGO LoRa32-OLED (Board revision: TTGO LoRa32 V2.1 (1.6.1)). Tools > Partition Scheme: Huge APP (3MB No OTA/1MB SPIFFS). Plug the T3 in by USB and press Upload. It uses Adafruit SSD1306, Adafruit GFX and LoRa, which you already have.'],
+    ['Put the code on the T3 (once, ever)', 'On the PC, plug the T3 in by USB, open bennydedado.github.io/jeep/firmware/ in Chrome or Edge, click Install and pick the T3\u2019s COM port. After that it updates itself over Wi-Fi when the Jeep is stopped: no more uploading.'],
     ['Wire it in', 'Buck converter 5 V to the T3’s 5V pin, ground to GND, so it runs only with the key on. Optional button: one side to IO4, the other to GND. Mount it where you can see the screen.'],
     ['Plug in the iCar', 'Into the OBD port under the dash, left of the steering column. Turn the key: the T3 finds the iCar by itself. Its Status page says iCar reading.'],
     ['Connect Heep', 'Open Heep in Bluefy, go to Live, tap Connect and pick Jeep T3.'],
     ['T3 setup', 'Tap T3 setup, type your home Wi-Fi and your iPhone hotspot, and tap Send to the T3. The link to your Jeep log goes along by itself.'],
     ['Hotspot', 'Settings > Personal Hotspot: Allow Others to Join on, Maximize Compatibility on.'],
-    ['Using it', 'The screen turns off after a minute; a press wakes it. Then press for the next page: Economy, Trip, Engine, Speed, All trips, Status. Hold it 1.5 s on Economy or Trip to start a new trip; hold it on Status to send trips now.'],
+    ['Using it', 'The screen turns off after a while (set in T3 setup); a press wakes it. Then press for the next page: Economy, Trip, Engine, Speed, All trips, Status. Hold it 1.5 s on Economy or Trip to start a new trip; hold it on Status to send trips now.'],
     ['Trips', 'Each key-on is a trip; parking 90 s with the key on ends one. Trips are saved on the T3, so nothing is lost when the key goes off. They go to your Jeep log at home, on your hotspot, or when Heep connects. Nothing to do.'],
     ['Fuel accuracy', 'After a couple of full tanks, compare the T3’s litres with the pump and set Fuel correction in T3 setup.'],
   ];

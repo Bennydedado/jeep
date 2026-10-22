@@ -1,7 +1,7 @@
 // Keeps the app opening with no signal (gas stations up north). Your data never goes through here:
 // calls to the sheet go straight to Google.
-const CACHE = 'jeep-1.0.9';
-const SHELL = ['./', 'index.html', 'app.css?v=1.0.9', 'core.js?v=1.0.9', 'ui.js?v=1.0.9', 'views.js?v=1.0.9', 'live.js?v=1.0.9', 'app.js?v=1.0.9',
+const CACHE = 'jeep-1.0.10';
+const SHELL = ['./', 'index.html', 'app.css?v=1.0.10', 'core.js?v=1.0.10', 'ui.js?v=1.0.10', 'views.js?v=1.0.10', 'live.js?v=1.0.10', 'app.js?v=1.0.10',
   'manifest.webmanifest', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => {
@@ -11,7 +11,7 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== location.origin) return;
-  if (url.pathname.indexOf('/listen/') !== -1) return; // the Listening app has its own
+  if (url.pathname.indexOf('/listen/') !== -1 || url.pathname.indexOf('/firmware/') !== -1) return; // the Listening app and the T3 install page have their own
   const key = e.request.mode === 'navigate' ? 'index.html' : e.request;
   e.respondWith(caches.open(CACHE).then(async c => {
     const hit = await c.match(key);

@@ -13,8 +13,9 @@
 //
 // The LoRa radio is put to sleep and never transmits, so the T3 is safe to run without its antenna.
 //
-// Arduino IDE: board "TTGO LoRa32-OLED" (Board revision "TTGO LoRa32 V2.1 (1.6.1)"), or "ESP32 Dev Module",
-// Partition Scheme "Huge APP (3MB No OTA/1MB SPIFFS)". Libraries: Adafruit SSD1306, Adafruit GFX, LoRa (Sandeep Mistry).
+// Install once from https://bennydedado.github.io/jeep/firmware/ (Chrome, USB); after that it updates itself over Wi-Fi.
+// Building it yourself: board "ESP32 Dev Module", Partition Scheme "Minimal SPIFFS (1.9MB APP with OTA/190KB SPIFFS)",
+// libraries Adafruit SSD1306, Adafruit GFX, LoRa (Sandeep Mistry). GitHub builds it on every change (.github/workflows/t3.yml).
 
 #include <Arduino.h>
 #include <Wire.h>
@@ -26,6 +27,7 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
+#include <HTTPUpdate.h>
 #include <Preferences.h>
 #include <LittleFS.h>
 #include <BLEDevice.h>
@@ -34,7 +36,12 @@
 #include <BLE2902.h>
 #include <time.h>
 
-#define FW "1.0"
+struct Trip;
+struct Live;
+
+#define FW "1.1"
+// new versions are built on GitHub and fetched from here over Wi-Fi (no more uploading by USB)
+#define UPDATE_JSON "https://bennydedado.github.io/jeep/firmware/t3.json"
 
 // ---------------------------------------------------------------- pins on the T3 V1.6.1
 #define OLED_SDA 21
@@ -63,6 +70,7 @@ Net nets[4];
 int netCount = 0;
 String sheetUrl, sheetKey, obdName;
 float fuelCal = 1.0, distCal = 1.0;
+int screenSecs = 60, parkSecs = 90, bright = 2, startPage = 0;   // all set from Heep (T3 setup)
 uint32_t bootNo = 0;
 float totalKm = 0, totalL = 0;
 
@@ -78,6 +86,10 @@ void loadSettings() {
   distCal = prefs.getFloat("dc", 1.0);
   totalKm = prefs.getFloat("tk", 0);
   totalL = prefs.getFloat("tl", 0);
+  screenSecs = prefs.getInt("ss", 60);
+  parkSecs = prefs.getInt("pk", 90);
+  bright = prefs.getInt("br", 2);
+  startPage = prefs.getInt("sp", 0);
   prefs.end();
   if (fuelCal < 0.3 || fuelCal > 3) fuelCal = 1.0;
   if (distCal < 0.5 || distCal > 2) distCal = 1.0;
@@ -174,11 +186,12 @@ void snapshot() {
   if (f) { f.print(tripJson(trip)); f.close(); }
   xSemaphoreGive(fsLock);
 }
-float numField(const String& j, const char* key, float d = 0) {
+float numFieldOr(const String& j, const char* key, float d) {
   int i = j.indexOf("\"" + String(key) + "\":");
   if (i < 0) return d;
   return j.substring(i + strlen(key) + 3).toFloat();
 }
+float numField(const String& j, const char* key) { return numFieldOr(j, key, 0); }
 long long llField(const String& j, const char* key) {
   int i = j.indexOf("\"" + String(key) + "\":");
   if (i < 0) return 0;
@@ -308,12 +321,13 @@ int obdStage = 0;       // 0 = reset the adapter, then set it up, then ask for e
 int pollIdx = 0;
 bool pidMissing[256];
 
-void obdSendCmd(const String& cmd, uint32_t timeout = 1500) {
+void obdSendCmdT(const String& cmd, uint32_t timeout) {
   if (!obdWrite) return;
   String c = cmd + "\r";
   obdWrite->writeValue((uint8_t*)c.c_str(), c.length(), obdWriteResp);
   obdCmd = cmd; obdBusy = true; obdSentAt = millis(); obdTimeout = timeout; obdBuf = "";
 }
+void obdSendCmd(const String& cmd) { obdSendCmdT(cmd, 1500); }
 int hexByte(const String& s, int at) { return (int)strtol(s.substring(at, at + 2).c_str(), nullptr, 16); }
 void obdAnswer(String r) {
   r.replace(" ", ""); r.replace("\r", ""); r.replace("\n", ""); r.replace(">", ""); r.toUpperCase();
@@ -347,7 +361,7 @@ void obdStep() {
   if (obdBusy && millis() - obdSentAt > obdTimeout) obdBusy = false;
   if (obdBusy) return;
   const char* setup[] = { "ATZ", "ATE0", "ATL0", "ATS0", "ATH0", "ATAT1", "ATSP0", "0100" };
-  if (obdStage < 8) { obdSendCmd(setup[obdStage], obdStage == 0 ? 2500 : obdStage == 7 ? 9000 : 1500); obdStage++; return; }
+  if (obdStage < 8) { obdSendCmdT(setup[obdStage], obdStage == 0 ? 2500 : obdStage == 7 ? 9000 : 1500); obdStage++; return; }
   // speed, RPM and load all the time; the rest now and then
   static const int fast[] = { 0x0D, 0x0C, 0x04 };
   static const int slow[] = { 0x05, 0x0F, 0x0B, 0x33, 0x5E, -1 };
@@ -380,7 +394,7 @@ void integrate() {
   if (!engineOn()) {
     if (!engineOffSince) engineOffSince = now;
     // parked with the key on for 90 s: that trip is over (it goes to the sheet while the key is still on)
-    if (trip.km >= 0.2 && now - engineOffSince > 90000) { trip.t1 = nowMs(); queueTrip(trip); newTrip(); }
+    if (trip.km >= 0.2 && now - engineOffSince > (uint32_t)parkSecs * 1000) { trip.t1 = nowMs(); queueTrip(trip); newTrip(); }
     return;
   }
   engineOffSince = 0;
@@ -397,10 +411,30 @@ void integrate() {
 enum WifiState { W_IDLE, W_SCAN, W_JOIN, W_SEND };
 volatile WifiState wifiState = W_IDLE;
 uint32_t wifiAt = 0, nextWifiTry = 15000;
-String wifiName, lastUpload = "not yet";
+String wifiName, lastUpload = "not yet", updStatus = "";
+uint32_t nextUpdateCheck = 20000;     // soon after key-on, then every 6 hours
+volatile bool updating = false;
 uint32_t lastUploadAt = 0;
 volatile bool uploadDone = false;
 
+// a newer T3 program on GitHub? Fetch it and restart into it (only while the Jeep is stopped)
+void checkUpdate() {
+  WiFiClientSecure tls;
+  tls.setInsecure();
+  HTTPClient http;
+  String body;
+  if (http.begin(tls, UPDATE_JSON)) { if (http.GET() == 200) body = http.getString(); http.end(); }
+  String v = jStr(body, "v"), url = jStr(body, "url");
+  if (!v.length() || !url.length()) { updStatus = "couldn't check"; return; }
+  if (v == FW) { updStatus = "up to date"; return; }
+  updStatus = "updating to " + v;
+  updating = true;
+  snapshot();                              // the trip so far is safe in flash; it carries on after the restart
+  httpUpdate.rebootOnUpdate(true);
+  t_httpUpdate_return r = httpUpdate.update(tls, url);
+  updating = false;
+  updStatus = r == HTTP_UPDATE_NO_UPDATES ? "up to date" : "update failed";
+}
 void uploadTask(void*) {
   // every trip waiting, in one go
   xSemaphoreTake(fsLock, portMAX_DELAY);
@@ -448,6 +482,10 @@ void uploadTask(void*) {
     } else lastUpload = "bad sheet link";
   }
   if (ok) { dropTrips(ids); lastUploadAt = millis(); }
+  if (millis() >= nextUpdateCheck) {
+    if (car.kmh <= 0 || !engineOn()) { nextUpdateCheck = millis() + 6UL * 3600 * 1000; checkUpdate(); }
+    else nextUpdateCheck = millis() + 10UL * 60 * 1000;   // moving: try again in a bit
+  }
   uploadDone = true;
   vTaskDelete(nullptr);
 }
@@ -455,7 +493,7 @@ void wifiStep() {
   uint32_t now = millis();
   switch (wifiState) {
     case W_IDLE:
-      if (queued == 0 || netCount == 0 || sheetUrl.length() == 0 || now < nextWifiTry) return;
+      if (((queued == 0 || sheetUrl.length() == 0) && now < nextUpdateCheck) || netCount == 0 || now < nextWifiTry) return;
       WiFi.mode(WIFI_STA);
       WiFi.scanNetworks(true);
       wifiState = W_SCAN; wifiAt = now;
@@ -484,7 +522,7 @@ void wifiStep() {
       } else if (now - wifiAt > 15000) { lastUpload = "couldn't join " + wifiName; WiFi.disconnect(true); WiFi.mode(WIFI_OFF); wifiState = W_IDLE; nextWifiTry = now + 60000; }
       return;
     case W_SEND:
-      if (!uploadDone && now - wifiAt < 60000) return;
+      if (!uploadDone && now - wifiAt < 180000) return;
       WiFi.disconnect(true); WiFi.mode(WIFI_OFF);
       wifiState = W_IDLE; nextWifiTry = now + 120000;
       return;
@@ -525,7 +563,9 @@ void sendHi() {
   phoneSend("{\"t\":\"hi\",\"fw\":\"" FW "\",\"obd\":" + String(obdLinked ? "true" : "false") + ",\"nets\":" + String(netCount) +
             ",\"sheet\":" + String(sheetUrl.length() ? "true" : "false") + ",\"queued\":" + String(queued) +
             ",\"up\":\"" + lastUpload + "\",\"upAgo\":" + String(lastUploadAt ? (long)((millis() - lastUploadAt) / 1000) : -1) +
-            ",\"fc\":" + String(fuelCal, 3) + ",\"dc\":" + String(distCal, 3) + ",\"totKm\":" + String(totalKm, 1) + "}");
+            ",\"fc\":" + String(fuelCal, 3) + ",\"dc\":" + String(distCal, 3) + ",\"totKm\":" + String(totalKm, 1) +
+            ",\"ss\":" + String(screenSecs) + ",\"pk\":" + String(parkSecs) + ",\"br\":" + String(bright) + ",\"sp\":" + String(startPage) +
+            ",\"obdName\":\"" + obdName + "\",\"upd\":\"" + updStatus + "\"}");
 }
 void sendTrips() {
   xSemaphoreTake(fsLock, portMAX_DELAY);
@@ -550,6 +590,7 @@ void onPhoneLine(const String& j) {
   else if (c == "ack") dropTrips("|" + jStr(j, "id") + "|");
   else if (c == "reset") { trip.t1 = nowMs(); queueTrip(trip); newTrip(); }
   else if (c == "status") sendHi();
+  else if (c == "update") { nextUpdateCheck = 0; nextWifiTry = 0; }
   else if (c == "cfg") {
     String w[8];
     int n = jStrings(j, "wifi", w, 8);
@@ -562,10 +603,16 @@ void onPhoneLine(const String& j) {
     if (j.indexOf("\"u\":") >= 0) prefs.putString("u", jStr(j, "u"));
     if (j.indexOf("\"k\":") >= 0) prefs.putString("k", jStr(j, "k"));
     if (j.indexOf("\"obd\":") >= 0) prefs.putString("obd", jStr(j, "obd"));
-    if (j.indexOf("\"fc\":") >= 0) prefs.putFloat("fc", numField(j, "fc", 1));
-    if (j.indexOf("\"dc\":") >= 0) prefs.putFloat("dc", numField(j, "dc", 1));
+    if (j.indexOf("\"fc\":") >= 0) prefs.putFloat("fc", numFieldOr(j, "fc", 1));
+    if (j.indexOf("\"dc\":") >= 0) prefs.putFloat("dc", numFieldOr(j, "dc", 1));
+    if (j.indexOf("\"ss\":") >= 0) prefs.putInt("ss", (int)numFieldOr(j, "ss", 60));
+    if (j.indexOf("\"pk\":") >= 0) prefs.putInt("pk", constrain((int)numFieldOr(j, "pk", 90), 30, 1800));
+    if (j.indexOf("\"br\":") >= 0) prefs.putInt("br", constrain((int)numFieldOr(j, "br", 2), 0, 2));
+    if (j.indexOf("\"sp\":") >= 0) prefs.putInt("sp", constrain((int)numFieldOr(j, "sp", 0), 0, 5));
     prefs.end();
     loadSettings();
+    applyBright();
+    screenWake();
     nextWifiTry = millis() + 2000;
     phoneSend("{\"t\":\"cfg\",\"ok\":true}");
     sendHi();
@@ -603,12 +650,12 @@ uint32_t pressAt = 0, msgUntil = 0;
 bool pressed = false, longDone = false;
 String msg;
 // the screen sleeps after a minute without a press; the next press only wakes it
-#define SCREEN_SECS 60
 bool screenOn = true, wakePress = false;
 uint32_t lastTouch = 0;
+void applyBright() { const uint8_t lv[] = { 1, 70, 255 }; oled.ssd1306_command(SSD1306_SETCONTRAST); oled.ssd1306_command(lv[constrain(bright, 0, 2)]); }
 void screenWake() { if (!screenOn) { screenOn = true; oled.ssd1306_command(SSD1306_DISPLAYON); } lastTouch = millis(); }
 void screenSleepStep() {
-  if (screenOn && millis() - lastTouch > SCREEN_SECS * 1000UL) { screenOn = false; oled.clearDisplay(); oled.display(); oled.ssd1306_command(SSD1306_DISPLAYOFF); }
+  if (screenSecs > 0 && screenOn && millis() - lastTouch > (uint32_t)screenSecs * 1000UL) { screenOn = false; oled.clearDisplay(); oled.display(); oled.ssd1306_command(SSD1306_DISPLAYOFF); }
 }
 
 void flash(const String& m) { msg = m; msgUntil = millis() + 1500; screenWake(); }
@@ -692,6 +739,7 @@ void draw() {
       row(54, "Sheet", lastUpload.substring(0, 14));
       break;
   }
+  if (updating) { msg = "Updating T3..."; msgUntil = millis() + 500; }
   if (millis() < msgUntil) { oled.fillRect(14, 22, 100, 20, SSD1306_BLACK); oled.drawRect(14, 22, 100, 20, SSD1306_WHITE); oled.setCursor(64 - msg.length() * 3, 28); oled.print(msg); }
   oled.display();
 }
@@ -737,7 +785,9 @@ void setup() {
   BLEDevice::startAdvertising();
   BLEDevice::getScan()->setAdvertisedDeviceCallbacks(new ScanCB());
   lastIntegrate = millis();
-  lastTouch = millis();   // on for a minute after the key goes on
+  lastTouch = millis();   // on for a while after the key goes on
+  page = startPage;
+  applyBright();
 }
 
 void loop() {
