@@ -25,8 +25,9 @@
   <ol>
     <li>Use Chrome or Edge on the PC.</li>
     <li>Plug the T3 into the PC with its USB cable.</li>
-    <li>Click Install, pick the T3's COM port, and say yes to erasing it.</li>
-    <li>When it says done, unplug it and put it in the Jeep. Then use Heep's T3 setup.</li>
+    <li>Close the Arduino IDE (it holds the port). Click Install and pick the T3's COM port: the one that appears when you plug it in.</li>
+    <li>If it sits on "Connecting" or fails to start, hold the T3's BOOT (IO0) button while you click Install.</li>
+    <li>When it says Installation complete, unplug it for a few seconds and plug it back in: the screen says Jeep T3.</li>
   </ol>
   <div class="box">
     <esp-web-install-button manifest="manifest.json">
@@ -35,7 +36,7 @@
       <span slot="not-allowed">Open this page from its https:// address.</span>
     </esp-web-install-button>
   </div>
-  <p>If no COM port shows up, the PC may need the USB driver for the T3's CH9102 or CP2104 chip.</p>
+  <p>If no COM port shows up, the PC needs the T3's USB driver: search for the WCH CH343SER driver, install it, and plug the T3 in again. If a try gets stuck, unplug the T3, reload this page and try again.</p>
 </main>
 </body>
 </html>

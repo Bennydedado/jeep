@@ -34,9 +34,13 @@ jobs:
           if [ "${{ steps.build.outcome }}" = "success" ]; then
             V=$(grep -o '#define FW "[^"]*"' firmware/T3/T3.ino | cut -d'"' -f2)
             cp out/T3.ino.bin firmware/T3.bin
-            if [ -f out/T3.ino.merged.bin ]; then cp out/T3.ino.merged.bin firmware/T3-full.bin; fi
+            # the USB install writes four small pieces (no 4 MB image, no erase step)
+            cp out/T3.ino.bootloader.bin firmware/bootloader.bin
+            cp out/T3.ino.partitions.bin firmware/partitions.bin
+            cp "$(find ~/.arduino15 -name boot_app0.bin | head -1)" firmware/boot_app0.bin
+            rm -f firmware/T3-full.bin
             printf '{"v":"%s","url":"https://bennydedado.github.io/jeep/firmware/T3.bin"}\n' "$V" > firmware/t3.json
-            printf '{"name":"Jeep T3","version":"%s","new_install_prompt_erase":true,"builds":[{"chipFamily":"ESP32","parts":[{"path":"T3-full.bin","offset":0}]}]}\n' "$V" > firmware/manifest.json
+            printf '{"name":"Jeep T3","version":"%s","new_install_prompt_erase":false,"builds":[{"chipFamily":"ESP32","parts":[{"path":"bootloader.bin","offset":4096},{"path":"partitions.bin","offset":32768},{"path":"boot_app0.bin","offset":57344},{"path":"T3.bin","offset":65536}]}]}\n' "$V" > firmware/manifest.json
           fi
           git config user.name "github-actions"
           git config user.email "github-actions@users.noreply.github.com"
