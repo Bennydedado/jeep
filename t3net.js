@@ -68,7 +68,7 @@ function wifiSheet() {
   const ui = { phase: 'idle', pct: 0, text: '', v: '' };
   openSheet({
     title: 'Wi-Fi & update',
-    onClose: () => { LIVE.onWifi = null; clearInterval(LIVE.wifiTimer); if (!LIVE.otaBusy) LIVE.onHi = null; },
+    onClose: () => { LIVE.onWifi = null; LIVE.onUpd = null; clearInterval(LIVE.wifiTimer); if (!LIVE.otaBusy) LIVE.onHi = null; },
     build(b) {
       const head = h('div'), nets = h('div'), near = h('div'), tips = h('div'), prog = h('div');
       const scanBtn = h('button', { class: 'btn btn-primary', onclick: () => scanNow() }, icon('sync'), 'Scan now');
@@ -135,8 +135,45 @@ function wifiSheet() {
           else if (via === 'bt' && fw) prog.append(h('p', { class: 'foot', text: 'This T3 has ' + fw + ', which can only update over Wi-Fi or USB. Once it has ' + T3_BT_UPDATE_FROM + ' or newer, updates can come over Bluetooth from here. No Wi-Fi? Plug the T3 into a computer and use the USB installer once:' }),
             h('a', { class: 'btn btn-glass glass btn-wide', href: 'firmware/', target: '_blank', rel: 'noopener' }, icon('link'), 'USB installer (Chrome on a computer)'));
           else if (via === 'net') prog.append(h('p', { class: 'foot', text: 'Updating over Bluetooth needs Heep connected to the T3 by Bluetooth (Bluefy).' }));
-          if (via) prog.append(h('button', { class: 'btn btn-glass glass btn-wide', onclick: () => { t3Send({ c: 'update' }); toast('Asked the T3 to update over Wi-Fi', 'It installs when it gets onto Wi-Fi with the Jeep stopped', 'info'); } }, icon('download'), 'Update over Wi-Fi instead'));
         }
+        // ---- update over Wi-Fi: the T3 downloads it itself and reports how far it got (T3 2.4+)
+        const wuBusy = ['asked', 'wait', 'check', 'download', 'done'].includes(wu.phase) && !(wu.phase === 'done' && wu.confirmed);
+        if (wu.phase !== 'idle') {
+          const title = {
+            asked: 'Asking the T3…', wait: 'The T3 is getting on Wi-Fi…', check: 'The T3 is checking GitHub…',
+            download: 'Downloading ' + (wu.v || 'the update') + ' on the T3: ' + Math.max(0, wu.pct) + ' %',
+            done: wu.confirmed ? 'The T3 is running ' + wu.v + ' ✓' : 'Installed ' + (wu.v || '') + ' ✓ restarting…', current: 'Already up to date' + (wu.v ? ' (' + wu.v + ')' : ''),
+            fail: 'Didn’t update', old: 'Asked the T3 to update', quiet: 'Lost touch with the T3',
+          }[wu.phase] || wu.phase;
+          const pct = wu.phase === 'download' ? Math.max(0, wu.pct) / 100 : wu.phase === 'done' || wu.phase === 'current' ? 1 : wu.phase === 'check' ? .04 : wu.phase === 'wait' ? .02 : 0;
+          const text = {
+            asked: 'Sent. Waiting for the T3 to answer.', wait: (wu.text || 'Getting on Wi-Fi') + '. It uses your networks above.', check: 'Looking for a newer program.',
+            download: 'Keep the T3 powered. It installs and restarts by itself; Heep can close.', done: wu.confirmed ? 'Updated over Wi-Fi.' : 'Back in a few seconds' + (via === 'net' ? ' (the relay reconnects by itself)' : '') + '.',
+            current: 'Nothing new on GitHub.', fail: (wu.text || 'It stopped') + '. The T3 keeps the program it has.',
+            old: 'This T3 (' + (wu.from || '?') + ') doesn’t report progress: it downloads the update when it’s on Wi-Fi and restarts by itself. Watch “On the T3” above change.',
+            quiet: 'No word from the T3 for a minute. If it was downloading it carries on and restarts by itself.',
+          }[wu.phase] || '';
+          prog.append(h('div', { class: 'card ota' }, h('b', { text: title }),
+            h('div', { class: 'bar' + (wu.phase === 'fail' || wu.phase === 'quiet' ? ' due' : '') }, h('i', { style: 'width:' + Math.round(pct * 100) + '%' })),
+            h('p', { class: 'foot', style: 'margin:0', text })));
+        }
+        if (via && !wuBusy && ui.phase !== 'send' && ui.phase !== 'download') prog.append(h('button', { class: 'btn ' + (canBt ? 'btn-glass glass' : 'btn-primary') + ' btn-wide', onclick: () => {
+          Object.assign(wu, { phase: 'asked', pct: 0, text: '', v: latest && latest.v, from: fw, askedAt: Date.now(), lastAt: Date.now(), confirmed: false });
+          t3Send({ c: 'update' });
+          paintProg();
+        } }, icon('download'), 'Update over Wi-Fi' + (newer ? ' to ' + latest.v : '')),
+        h('p', { class: 'foot', text: 'The T3 downloads it itself on your Wi-Fi or hotspot. Works from Safari too (through the relay). Not while driving.' }));
+      };
+      const wu = { phase: 'idle', pct: 0 };
+      LIVE.onUpd = m => {
+        Object.assign(wu, { phase: m.phase === 'none' ? wu.phase : m.phase, pct: m.pct, text: m.text, v: m.v || wu.v, lastAt: Date.now() });
+        paintProg();
+      };
+      // older T3s never answer with progress; and a T3 that goes quiet mid-way is said so
+      const wuWatch = () => {
+        if (wu.phase === 'asked' && Date.now() - wu.askedAt > 20000) { wu.phase = 'old'; paintProg(); }
+        else if (['wait', 'check', 'download'].includes(wu.phase) && Date.now() - wu.lastAt > 60000) { wu.phase = 'quiet'; paintProg(); }
+        if ((wu.phase === 'done' || wu.phase === 'quiet' || wu.phase === 'old') && wu.v && LIVE.fw === wu.v && !wu.confirmed) { wu.phase = 'done'; wu.confirmed = true; paintProg(); }
       };
       const setUi = (phase, pct, title, text) => { Object.assign(ui, { phase, pct, title, text }); paintProg(); };
       const runBtUpdate = async () => {
@@ -159,6 +196,7 @@ function wifiSheet() {
       LIVE.wifiTimer = setInterval(() => {
         ask();
         if (ui.phase === 'done' && ui.v && LIVE.fw === ui.v && !ui.confirmed) { ui.confirmed = true; setUi('done', 1, 'The T3 is running ' + ui.v + ' ✓', 'Updated over Bluetooth and back on.'); }
+        wuWatch();
         paint();
       }, 3000);
       latestT3().then(x => { latest = x; latestTried = true; paintProg(); });

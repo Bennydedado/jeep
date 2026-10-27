@@ -349,6 +349,7 @@ async function netStart() {
   ws.onopen = () => {
     ws.send(mqPacket(0x10, [...mqStr('MQTT'), 4, 0x02, 0, 60, ...mqStr('heep-' + Math.random().toString(36).slice(2, 12))]));
     ws.send(mqPacket(0x82, [0, 1, ...mqStr(NET.topic), 0]));
+    NET.watchAt = 0; netWatch();   // tell a parked T3 someone's looking, so it starts sending
     clearInterval(NET.ping);
     NET.ping = setInterval(() => { try { ws.send(new Uint8Array([0xC0, 0])); } catch (e) { /* closing */ } }, 30000);
     if (S.tab === 'live' && !LIVE.mode) render();
@@ -413,7 +414,15 @@ function netCheck() {
   const want = S.tab === 'live' && !document.hidden && LIVE.mode !== 'bt' && LIVE.mode !== 'demo';
   if (!want) { if (NET.ws || LIVE.mode === 'net') netStop(); return; }
   if (!NET.ws) netStart();
+  netWatch();
   if (LIVE.mode === 'net' && Date.now() - NET.at > 15000) { LIVE.mode = null; LIVE.v = {}; LIVE.els = null; wake(false); render(); }
+}
+// every 30 s while Live is open: "I'm watching" (signed). A T3 2.4+ on Wi-Fi sends its live numbers for 90 s after each one,
+// even parked; older ones only send while driving and for 10 minutes after key-on.
+function netWatch() {
+  if (!NET.ws || NET.ws.readyState !== 1 || Date.now() - (NET.watchAt || 0) < 30000) return;
+  NET.watchAt = Date.now();
+  relayCommand({ c: 'watch' });
 }
 setInterval(netCheck, 3000);
 document.addEventListener('visibilitychange', netCheck);

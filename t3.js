@@ -19,6 +19,7 @@ function t3Message(m, via) {
   else if (m.t === 'diag') { LIVE.diag = m; LIVE.diagAt = Date.now(); if (LIVE.onDiag) LIVE.onDiag(); }
   else if (m.t === 'wifi') { LIVE.wifi = m; LIVE.wifiAt = Date.now(); if (LIVE.onWifi) LIVE.onWifi(); }
   else if (m.t === 'ota') { if (LIVE.onOta) LIVE.onOta(m); }
+  else if (m.t === 'upd') { LIVE.upd = m; LIVE.updAt = Date.now(); if (m.fw) LIVE.fw = String(m.fw); if (LIVE.onUpd) LIVE.onUpd(m); }
 }
 
 // can a command reach the T3 right now?
@@ -34,7 +35,12 @@ let t3Nonce = 0;
 async function t3Send(obj) {
   const via = t3Via();
   if (via === 'bt') { await send(obj); return true; }
-  if (via !== 'net' || !S.conn) return false;
+  if (via !== 'net') return false;
+  return relayCommand(obj);
+}
+// a signed command through the relay; works as soon as Heep is connected to it (the T3 doesn't have to have spoken yet)
+async function relayCommand(obj) {
+  if (!S.conn || !NET.ws || NET.ws.readyState !== 1 || !NET.topic) return false;
   const safe = Object.assign({}, obj);
   for (const k of ['wifi', 'u', 'k', 'tru', 'trk']) delete safe[k];
   const m = JSON.stringify(safe);
