@@ -115,7 +115,8 @@ static String obdProto;
 static uint32_t obdHeardAt = 0, supAskAt = 0;   // the adapter answered anything / when 0100 was last asked
 static bool askProto = false;
 static String raw0100, raw0C, raw0B;           // the engine's last answers, word for word (Diagnostics)
-static void scanAnswer(const String& r);        // "Scan the Jeep", further down
+static bool scanOn = false;                     // "Scan the Jeep" is running (further down)
+static void scanAnswer(const String& r);
 static void scanStep();
 static bool pidOk(int pid) { return !pidMissing(pid) && (!obdSup.known || obdSup.has(pid)); }
 // where boost comes from: intake pressure (PID 0B) on most engines; some diesels only offer PID 87 or PID 70
@@ -231,7 +232,6 @@ void obdStep() {
 // offers (0100/0120/0140), and sends each result to Heep: {"t":"obdscan","p":"5","a":"<0100>","b":"<0120>","c":"<0140>","d":"<ATDPN>"}.
 // Afterwards the adapter is set up again from scratch with the chosen protocol (setting "opr", 0 = auto).
 static const char SCAN_PROTOS[] = "254316";   // J1850 VPW, KWP2000 fast, KWP2000 5-baud, ISO 9141-2, J1850 PWM, CAN 11-bit 500k
-static bool scanOn = false;
 static int scanI = 0, scanS = 0;
 static String scanA, scanB, scanC, scanD;
 static int scanSrc = 0;
