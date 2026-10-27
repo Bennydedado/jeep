@@ -25,6 +25,7 @@ jobs:
       - name: Parser tests (run on the build machine, no hardware)
         run: |
           for t in nmea jlink screens; do g++ -std=c++17 -Wall -O1 -o /tmp/t_$t tests/firmware/test_$t.cpp && /tmp/t_$t; done
+          g++ -std=c++17 -Wall -O1 -I tests/firmware/mock -o /tmp/t_nano tests/firmware/test_nano_link.cpp && /tmp/t_nano
       - name: Build
         id: build
         continue-on-error: true
@@ -35,8 +36,12 @@ jobs:
         run: |
           cp build.log firmware/build.log
           ls out >> firmware/build.log 2>/dev/null || true
+          # the version lives in config.h (T3.ino before 2.0); an empty one would stop every T3 updating, so it must be there
+          V=$(cat firmware/T3/config.h firmware/T3/T3.ino 2>/dev/null | grep -o '#define FW "[^"]*"' | head -1 | cut -d'"' -f2)
+          if [ -z "$V" ]; then echo "No #define FW version found: not publishing" >> firmware/build.log; exit 1; fi
+          # safe updates need the bootloader's rollback switched on in this core: say so in the log
+          grep -h "APP_ROLLBACK_ENABLE" $(find ~/.arduino15 -path '*esp32-arduino-libs*' -path '*/esp32/sdkconfig' | head -1) >> firmware/build.log 2>/dev/null || echo "rollback setting not found" >> firmware/build.log
           if [ "${{ steps.build.outcome }}" = "success" ]; then
-            V=$(grep -o '#define FW "[^"]*"' firmware/T3/T3.ino | cut -d'"' -f2)
             cp out/T3.ino.bin firmware/T3.bin
             # the USB install writes four small pieces (no 4 MB image, no erase step)
             cp out/T3.ino.bootloader.bin firmware/bootloader.bin

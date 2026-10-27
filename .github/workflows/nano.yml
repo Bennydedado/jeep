@@ -1,0 +1,22 @@
+# Checks the Nano add-on (nano/) still compiles for an Arduino Nano (ATmega328P). Nothing is published:
+# the Nano is programmed by hand over USB, and only its add-on files live here (not Ben's own sketch).
+name: Check the Nano code
+on:
+  push:
+    paths: ['nano/**', 'tests/firmware/test_nano_link.cpp', '.github/workflows/nano.yml']
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+      - name: AVR boards
+        run: |
+          arduino-cli core update-index
+          arduino-cli core install arduino:avr
+      - name: Link test (PC)
+        run: g++ -std=c++17 -Wall -O1 -I tests/firmware/mock -o /tmp/t_nano tests/firmware/test_nano_link.cpp && /tmp/t_nano
+      - name: Compile
+        run: |
+          for s in nano/NanoT3Example nano/WheelCalibrate; do arduino-cli compile --fqbn arduino:avr:nano:cpu=atmega328 --warnings all "$s"; done
