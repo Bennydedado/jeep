@@ -17,6 +17,8 @@ function t3Message(m, via) {
   else if (m.t === 'scr') { if (LIVE.onScr) LIVE.onScr(m); }
   else if (m.t === 'scrd') { if (LIVE.onScrd) LIVE.onScrd(m); }
   else if (m.t === 'diag') { LIVE.diag = m; LIVE.diagAt = Date.now(); if (LIVE.onDiag) LIVE.onDiag(); }
+  else if (m.t === 'wifi') { LIVE.wifi = m; LIVE.wifiAt = Date.now(); if (LIVE.onWifi) LIVE.onWifi(); }
+  else if (m.t === 'ota') { if (LIVE.onOta) LIVE.onOta(m); }
 }
 
 // can a command reach the T3 right now?

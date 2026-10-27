@@ -21,6 +21,7 @@ class ServerCB : public NimBLEServerCallbacks {
 class RxCB : public NimBLECharacteristicCallbacks {
   void onWrite(NimBLECharacteristic* c, NimBLEConnInfo&) override {
     NimBLEAttValue v = c->getValue();
+    if (otaMode) { otaPacket(v.data(), v.length()); return; }   // during "Update over Bluetooth" every write is a program packet
     for (size_t i = 0; i < v.length(); i++) { char ch = (char)v.data()[i]; xQueueSend(rxQueue, &ch, 0); }
   }
 };
@@ -56,6 +57,8 @@ void phoneSend(const String& line) {
     if (i + n < s.length()) delay(2);
   }
 }
+// the biggest packet Heep may write (and the T3 notify) on this link
+int phoneChunk() { return constrain((int)phoneMtu - 3, 20, 244); }
 // answer the way the command came: 0 Bluetooth, 1 relay
 void reply(const String& line, int src) { if (src == 1) relaySend(line); else phoneSend(line); }
 
@@ -66,7 +69,7 @@ void phoneStep() {
     else if (rxLine.length() < 1500) rxLine += ch;
   }
   static uint32_t lastLive = 0;
-  if (phoneOn && millis() - lastLive > 500) { lastLive = millis(); phoneSend(liveJson()); }
+  if (phoneOn && !otaMode && millis() - lastLive > 500) { lastLive = millis(); phoneSend(liveJson()); }
 }
 
 // ---------------------------------------------------------------- what Heep can ask (T3.md has the full list)
@@ -82,6 +85,8 @@ void onCommand(const String& j, int src) {
   else if (c == "act") { doAction(jStr(j, "a"), "Heep"); screenWake(); }       // next prev home mark sleep bright peak send
   else if (c == "page") { pageGo((int)numField(j, "i")); screenWake(); }
   else if (c == "update") wifiNudge(true);
+  else if (c == "wifi") { if (numField(j, "scan") > 0) wifiScanNow(); reply(wifiJson(), src); }   // the Wi-Fi page
+  else if (c == "ota") { if (src == 0 && jStr(j, "do") == "begin") otaBegin(j); }                  // update over Bluetooth only
   else if (c == "cfg") { applySettings(j, src == 1); screenWake(); wifiNudge(false); reply("{\"t\":\"cfg\",\"ok\":true}", src); reply(hiJson(), src); }
   else if (c == "cfgreset") { resetSettings(); reply("{\"t\":\"cfg\",\"ok\":true,\"reset\":true}", src); reply(hiJson(), src); }
   else if (c == "scr") {

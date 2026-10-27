@@ -572,3 +572,14 @@ input.sw:checked::after { transform: translateX(20px); }
 .jeep-dot b { position: absolute; left: 50%; top: -12px; width: 0; height: 0; margin-left: -6px; border: 6px solid transparent; border-bottom: 10px solid #fff; transform-origin: 6px 23px; }
 .leaflet-container { font: 12px var(--font); }
 .leaflet-control-attribution { font-size: 10px; }
+
+/* Live > Wi-Fi & update */
+.row .main span.wrap { white-space: pre-line; overflow: visible; text-overflow: clip; }
+.sig { display: inline-flex; align-items: flex-end; gap: 2px; height: 14px; flex: none; }
+.sig i { width: 4px; border-radius: 1px; background: var(--track); }
+.sig i:nth-child(1) { height: 4px; } .sig i:nth-child(2) { height: 7px; } .sig i:nth-child(3) { height: 10px; } .sig i:nth-child(4) { height: 14px; }
+.sig i.on { background: var(--good); }
+.card.tips { display: grid; gap: 10px; }
+.card.tips p { margin: 0; font-size: 14px; line-height: 1.4; color: var(--ink-2); }
+.card.ota { display: grid; gap: 10px; }
+.card.ota .btn { justify-self: start; }

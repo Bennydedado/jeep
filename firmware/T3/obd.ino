@@ -83,6 +83,9 @@ void obdConnectStep() {
   }
   if (!obdFound) {
     if (NimBLEDevice::getScan()->isScanning() || now - lastScan < 8000) return;
+    // the ESP32 has one radio: a Bluetooth scan while Wi-Fi is looking or joining can make it miss the
+    // network's answers (handshake timeouts), so the iCar search waits until Wi-Fi is done
+    if (wifiState == W_SCAN || wifiState == W_JOIN || otaMode) return;
     lastScan = now;
     NimBLEDevice::getScan()->start(2000, false);   // runs by itself for 2 s; stops early when the iCar shows up
     return;

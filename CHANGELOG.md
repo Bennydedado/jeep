@@ -1,5 +1,19 @@
 # Changes
 
+## 27 Oct 2026 — T3 2.1, Heep 1.1.1: Wi-Fi page and update over Bluetooth
+
+- **Heep: Live > Wi-Fi & update.** What the T3 is connected to (signal, channel, address, how long), your saved networks
+  in the order it tries them (in range or not, signal, how the last try went), every 2.4 GHz network it can see (tap one to add
+  it with the exact name), and tips for what's wrong: wrong password, iPhone hotspot hidden or on 5 GHz/WPA3 (Maximize
+  Compatibility), a saved name that's nearly but not exactly the real one, weak signal. Scan now. Works with older T3s too (less detail).
+- **Update over Bluetooth** (T3 2.1+): Heep downloads the newest program from GitHub and sends it over the Bluetooth link in
+  numbered packets; lost ones are sent again, the T3 checks the SHA-256 and the ESP32's own image check before switching, and the
+  20 s rollback still applies. About 2-4 minutes. For when the T3 can't get onto Wi-Fi.
+- **T3 Wi-Fi:** remembers why a join failed (ESP-IDF reason), keeps the full scan, scans on request without dropping a connection,
+  asks for your networks by name when none show up in a scan (hidden iPhone hotspots), and pauses the iCar Bluetooth search while
+  Wi-Fi scans and joins (one radio: the search could make it miss the handshake).
+- Tests: `test_otarx.cpp` (packet bookkeeping), `tests/app/wifi_ota.js` (the page and a full update with a lost packet, restart and reconnect).
+
 ## 27 Oct 2026 — review before release (same versions: T3 2.0, Heep 1.1.0)
 
 Checked and fixed before merging the overnight work:

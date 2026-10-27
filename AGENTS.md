@@ -11,6 +11,7 @@ comments in plain English, explain changes in plain words, and never leave him w
 | `live.js` | Live tab: Bluetooth, the relay, the demo, the live dashboard | browser |
 | `t3.js` | Sending commands to the T3 (Bluetooth or signed over the relay), T3 settings sheet, Diagnostics | browser |
 | `t3screens.js` | T3 screen format, preview, screen/button editor | browser |
+| `t3net.js` | Live > Wi-Fi & update: the T3's Wi-Fi state and scan, update over Bluetooth (pairs with `firmware/T3/ota.ino` + `otarx.h`) | browser |
 | `map.js`, `trips.js` | Map & Trip History tab (Leaflet), and the track maths (pure functions, tested in Node) | browser |
 | `vendor/leaflet/` | Leaflet 1.9.4 (don't edit) | browser |
 | `listen/` | A separate app (listening stats). Leave it alone unless asked. | browser |
