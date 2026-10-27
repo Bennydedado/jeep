@@ -40,7 +40,8 @@ jobs:
           V=$(cat firmware/T3/config.h firmware/T3/T3.ino 2>/dev/null | grep -o '#define FW "[^"]*"' | head -1 | cut -d'"' -f2)
           if [ -z "$V" ]; then echo "No #define FW version found: not publishing" >> firmware/build.log; exit 1; fi
           # safe updates need the bootloader's rollback switched on in this core: say so in the log
-          grep -h "APP_ROLLBACK_ENABLE" $(find ~/.arduino15 -path '*esp32-arduino-libs*' -path '*/esp32/sdkconfig' | head -1) >> firmware/build.log 2>/dev/null || echo "rollback setting not found" >> firmware/build.log
+          R=$(grep -rhs "APP_ROLLBACK_ENABLE" ~/.arduino15/packages/esp32/tools/esp32-arduino-libs/*/esp32/ | sort -u | head -2)
+          echo "rollback: ${R:-not found in this core}" >> firmware/build.log
           if [ "${{ steps.build.outcome }}" = "success" ]; then
             cp out/T3.ino.bin firmware/T3.bin
             # the USB install writes four small pieces (no 4 MB image, no erase step)

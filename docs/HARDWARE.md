@@ -131,7 +131,7 @@ All pins live in **`firmware/T3/config.h`**. If you move a wire, change it there
 - The T3 reads it every 2 s without waiting (12-bit, 0.0625 °C steps), checks the CRC, ignores the 85.0 °C
   "not converted yet" value at power-on, and looks for the probe again every 10 s if it's missing.
 - Heep: T3 settings → Outside temperature: °C (default) or °F, and a correction if it reads off.
-- The old GPIO 4 push button: set "GPIO 4 = push button" in T3 settings if you'd rather keep it (then no probe).
+- The old GPIO 4 push button: set T3 settings → "GPIO 4 is wired to" → Push button if you'd rather keep it (then no probe).
 
 ## 6. Nano → T3 link
 
