@@ -119,7 +119,7 @@ void displayStep() {
   oled.setTextColor(SSD1306_WHITE);
   oled.setTextWrap(false);
   if (screenCount && page < screenCount) for (int i = 0; i < screens[page].n; i++) drawWidget(screens[page].w[i]);
-  if (updating) { msg = "Updating T3..."; msgUntil = now + 500; }
+  if (updating) { msg = otaMode ? "BT update " + String(otaPercent()) + "%" : String("Updating T3..."); msgUntil = now + 500; }
   if (now < msgUntil) {
     oled.setFont(); oled.setTextSize(1);
     oled.fillRect(10, 22, 108, 20, SSD1306_BLACK); oled.drawRect(10, 22, 108, 20, SSD1306_WHITE);

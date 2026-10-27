@@ -26,7 +26,8 @@ function renderLive(v) {
     h('button', { class: 'btn btn-primary', onclick: t3Setup }, icon('sliders'), 'T3 settings'),
     h('button', { class: 'btn btn-glass glass', onclick: screensSheet }, icon('odo'), 'Screens'),
     h('button', { class: 'btn btn-glass glass', onclick: diagSheet }, icon('warn'), 'Diagnostics'),
-    h('button', { class: 'btn btn-glass glass', onclick: t3Guide }, icon('info'), 'Guide')));
+    h('button', { class: 'btn btn-glass glass', onclick: t3Guide }, icon('info'), 'Guide'),
+    h('button', { class: 'btn btn-glass glass', style: 'grid-column:1 / -1', onclick: wifiSheet }, icon('wifi'), 'Wi-Fi & update')));
   if (!on) {
     if (hasBT()) {
       v.append(card(h('div', { class: 'empty', style: 'padding:16px 6px' },
@@ -219,6 +220,8 @@ function saveTrip(m) {
 // bytes into one broken line on the T3, or make Bluetooth refuse a write ("operation already in progress")
 let sendChain = Promise.resolve();
 function send(obj) {
+  // during an update over Bluetooth the T3 reads every write as program data: nothing else goes out
+  if (LIVE.otaBusy) return Promise.resolve();
   const data = new TextEncoder().encode(JSON.stringify(obj) + '\n');
   const run = sendChain.then(async () => {
     if (!LIVE.rx) return;

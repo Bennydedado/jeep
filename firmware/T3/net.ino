@@ -21,6 +21,69 @@ static QueueHandle_t evQ;
 static uint8_t encKey[32];
 static String encKeyFor;
 
+// ---------------------------------------------------------------- what Heep's Wi-Fi page shows ({"c":"wifi"})
+struct SeenNet { char ssid[33]; int8_t rssi; uint8_t ch; bool open; };
+static SeenNet seenNets[16];
+static int seenN = -1;                        // -1 = no scan yet
+static uint32_t scanAt = 0, joinAt = 0, onSince = 0, wifiWantUntil = 0;
+static volatile int wifiReason = 0;           // why the last join/connection ended (ESP-IDF reason code), set by the Wi-Fi task
+static int lastReason = 0, blindNext = 0;
+static String lastTrySsid, lastTryRes;        // the last network the T3 tried, and how it went
+static uint32_t lastTryAt = 0;
+static bool scanOnly = false, blindJoin = false;
+
+const char* wifiReasonText(int r) {
+  switch (r) {
+    case 0: return "";
+    case 2: case 14: case 15: case 23: case 202: case 204: return "wrong password?";
+    case 201: return "not found (switched off, too far, or 5 GHz only)";
+    case 210: case 211: return "found, but its security isn't supported (iPhone: turn on Maximize Compatibility)";
+    case 212: return "signal too weak";
+    case 4: case 200: return "lost the signal";
+    case 203: case 205: return "it wouldn't let the T3 join";
+    case 3: case 8: return "disconnected";
+    default: return "didn't connect";
+  }
+}
+// the last scan, kept for the Wi-Fi page (strongest first, no duplicates)
+static void keepScan(int found) {
+  seenN = 0; scanAt = millis();
+  for (int k = 0; k < found; k++) {
+    String nm = WiFi.SSID(k);
+    if (!nm.length()) continue;
+    int dup = -1;
+    for (int i = 0; i < seenN; i++) if (!strcmp(seenNets[i].ssid, nm.c_str())) dup = i;
+    int8_t rssi = (int8_t)WiFi.RSSI(k);
+    if (dup >= 0) { if (rssi > seenNets[dup].rssi) seenNets[dup].rssi = rssi; continue; }
+    if (seenN >= 16) continue;
+    SeenNet& s = seenNets[seenN++];
+    strlcpy(s.ssid, nm.c_str(), sizeof(s.ssid));
+    s.rssi = rssi; s.ch = (uint8_t)WiFi.channel(k); s.open = WiFi.encryptionType(k) == WIFI_AUTH_OPEN;
+  }
+  for (int i = 1; i < seenN; i++) for (int k = i; k > 0 && seenNets[k].rssi > seenNets[k - 1].rssi; k--) { SeenNet t = seenNets[k]; seenNets[k] = seenNets[k - 1]; seenNets[k - 1] = t; }
+}
+// Heep's "Scan now": Wi-Fi on for a minute, look, and join one of yours if it's there
+void wifiScanNow() {
+  wifiWantUntil = millis() + 60000;
+  nextWifiTry = 0;
+  if (wifiState == W_ON && !scanOnly && !uploading) { WiFi.scanNetworks(true); scanOnly = true; }
+}
+String wifiJson() {
+  uint32_t now = millis();
+  String m = "{\"t\":\"wifi\",\"fw\":\"" FW "\",\"state\":\"" + jsonEsc(wifiNow) + "\",\"on\":" + String(wifiState == W_ON ? "true" : "false");
+  if (wifiState == W_ON) m += ",\"ssid\":\"" + jsonEsc(wifiName) + "\",\"rssi\":" + String(WiFi.RSSI()) + ",\"ch\":" + String((int)WiFi.channel()) +
+                              ",\"ip\":\"" + WiFi.localIP().toString() + "\",\"onFor\":" + String((now - onSince) / 1000);
+  m += ",\"scanning\":" + String(wifiState == W_SCAN || scanOnly ? "true" : "false") + ",\"scanAgo\":" + String(seenN < 0 ? -1L : (long)((now - scanAt) / 1000)) + ",\"seen\":[";
+  for (int i = 0; i < seenN; i++) m += String(i ? "," : "") + "[\"" + jsonEsc(seenNets[i].ssid) + "\"," + String((int)seenNets[i].rssi) + "," + String((int)seenNets[i].ch) + "," + String(seenNets[i].open ? 1 : 0) + "]";
+  m += "],\"saved\":[";
+  for (int i = 0; i < cfg.netCount; i++) m += String(i ? "," : "") + "\"" + jsonEsc(cfg.nets[i].ssid) + "\"";
+  m += "]";
+  if (lastTrySsid.length()) m += ",\"last\":{\"ssid\":\"" + jsonEsc(lastTrySsid) + "\",\"res\":\"" + jsonEsc(lastTryRes) + "\",\"reason\":" + String(lastReason) + ",\"ago\":" + String((now - lastTryAt) / 1000) + "}";
+  m += ",\"relay\":" + String(relayUp() ? 1 : 0) + ",\"up\":\"" + jsonEsc(lastUpload) + "\",\"upd\":\"" + jsonEsc(updStatus) + "\",\"queued\":" + String(queued) + "}";
+  return m;
+}
+static void tryDone(const String& res) { lastTrySsid = wifiName; lastTryRes = res; lastTryAt = millis(); }
+
 void netBegin() {
   evQ = xQueueCreate(8, 96);
   // did the last update fail? "try" is set once a new program is fully downloaded, just before restarting into
@@ -38,7 +101,10 @@ void netBegin() {
   }
   lastNonce = p.getLong64("nonce", 0);
   p.end();
+  WiFi.onEvent([](arduino_event_id_t, arduino_event_info_t info) { wifiReason = info.wifi_sta_disconnected.reason; }, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
 }
+// a new program is in flash and the T3 is about to restart into it (Wi-Fi or Bluetooth update)
+void markUpdateTry(const String& v) { Preferences p; p.begin("t3", false); p.putString("try", v); p.end(); }
 // called once the new program has run 20 s (T3.ino): it's a keeper
 void updateConfirmed() { Preferences p; p.begin("t3", false); if (p.getString("try", "") == FW) { p.remove("try"); p.remove("tryv"); p.remove("tryn"); } p.end(); }
 
@@ -130,7 +196,7 @@ void checkUpdate() {
   httpUpdate.rebootOnUpdate(false);
   t_httpUpdate_return r = httpUpdate.update(tls, url);
   if (r == HTTP_UPDATE_OK) {
-    { Preferences p; p.begin("t3", false); p.putString("try", v); p.end(); }
+    markUpdateTry(v);
     delay(200);
     ESP.restart();
   }
@@ -273,8 +339,10 @@ static void netChores() {
 
 void wifiStep() {
   netChores();
+  if (otaMode) return;                                               // an update over Bluetooth has the radio
   uint32_t now = millis();
-  bool want = uploadWanted() || now >= nextUpdateCheck || liveWanted();
+  bool asked = now < wifiWantUntil;                                  // Heep's Wi-Fi page asked for a look
+  bool want = uploadWanted() || now >= nextUpdateCheck || liveWanted() || asked;
   switch (wifiState) {
     case W_IDLE:
       if (!want || cfg.netCount == 0 || now < nextWifiTry) return;
@@ -292,21 +360,49 @@ void wifiStep() {
       wifiSeen = "";
       for (int k = 0, n = 0; k < found && n < 8; k++) { String nm = WiFi.SSID(k); if (nm.length() && wifiSeen.indexOf(nm) < 0) { wifiSeen += (n++ ? ", " : "") + nm + " (" + String(WiFi.RSSI(k)) + ")"; } }
       if (found <= 0) wifiSeen = "no Wi-Fi at all";
+      keepScan(found);
       WiFi.scanDelete();
-      if (pick < 0) { wifiNow = "none of yours in range"; wifiOff(liveWanted() ? 30000 : 90000); return; }
+      blindJoin = pick < 0;
+      if (pick < 0) {
+        // none of yours in the scan. An iPhone hotspot often stops showing up in scans while it still lets known
+        // devices join, so ask for one of yours by name anyway (a different one each time round).
+        pick = blindNext++ % cfg.netCount;
+      }
       wifiName = cfg.nets[pick].ssid;
+      wifiReason = 0;
       WiFi.begin(cfg.nets[pick].ssid.c_str(), cfg.nets[pick].pass.c_str());
-      wifiState = W_JOIN; wifiAt = now; wifiNow = "joining " + wifiName;
+      wifiState = W_JOIN; wifiAt = joinAt = now;
+      wifiNow = blindJoin ? "none of yours seen; asking for " + wifiName + " by name" : "joining " + wifiName;
       return;
     }
-    case W_JOIN:
+    case W_JOIN: {
       if (WiFi.status() == WL_CONNECTED) {
         if (timeSrc != 'g') configTime(0, 0, "pool.ntp.org", "time.google.com");   // answers arrive by themselves
-        wifiState = W_ON; wifiIdleSince = 0; wifiNow = "on " + wifiName; nextNtpAt = now + 2000;
-      } else if (now - wifiAt > 15000) { lastUpload.set("couldn't join " + wifiName); wifiNow = "couldn't join " + wifiName + " (password?)"; wifiOff(liveWanted() ? 30000 : 90000); }
+        wifiState = W_ON; wifiIdleSince = 0; wifiNow = "on " + wifiName; nextNtpAt = now + 2000; onSince = now;
+        lastReason = 0; tryDone("joined");
+        return;
+      }
+      // the Wi-Fi task said why it failed: give it a moment in case it gets in anyway, then say so
+      int why = wifiReason;
+      if ((why && now - wifiAt > 4000) || now - wifiAt > 15000) {
+        lastReason = why;
+        String res = why ? String(wifiReasonText(why)) : String("no answer");
+        tryDone(res + (blindJoin ? " (wasn't in the scan)" : ""));
+        wifiNow = "couldn't join " + wifiName + ": " + res;
+        lastUpload.set("couldn't join " + wifiName);
+        wifiOff(asked ? 5000 : liveWanted() ? 30000 : 90000);
+      }
       return;
+    }
     case W_ON:
-      if (WiFi.status() != WL_CONNECTED) { wifiNow = "lost " + wifiName; wifiOff(5000); return; }
+      if (WiFi.status() != WL_CONNECTED) {
+        lastReason = wifiReason; tryDone(String("dropped: ") + wifiReasonText(wifiReason));
+        wifiNow = "lost " + wifiName; scanOnly = false; wifiOff(5000); return;
+      }
+      if (scanOnly) {   // Heep's "Scan now" while already on: look around without dropping the connection
+        int found = WiFi.scanComplete();
+        if (found != WIFI_SCAN_RUNNING) { if (found >= 0) keepScan(found); WiFi.scanDelete(); scanOnly = false; }
+      }
       // internet time, once a minute, to the millisecond (the GPS's time wins when there is one)
       if (timeSrc != 'g' && now >= nextNtpAt) {
         nextNtpAt = now + 60000;
@@ -315,7 +411,7 @@ void wifiStep() {
         else nextNtpAt = now + 2000;
       }
       if (uploading) return;                                          // the upload has the connection (and the memory) to itself
-      if (uploadWanted() || now >= nextUpdateCheck) {
+      if (!scanOnly && (uploadWanted() || now >= nextUpdateCheck)) {
         if (mqtt.connected()) mqtt.disconnect();
         uploading = true;
         if (xTaskCreatePinnedToCore(uploadTask, "upload", 16384, nullptr, 1, nullptr, 0) != pdPASS) { uploading = false; nextUploadTry = now + 60000; }
@@ -343,6 +439,7 @@ void wifiStep() {
         return;
       }
       if (mqtt.connected()) mqtt.disconnect();
+      if (asked || scanOnly) { wifiIdleSince = 0; return; }           // Heep's Wi-Fi page is watching: stay on
       if (!wifiIdleSince) wifiIdleSince = now;
       if (now - wifiIdleSince > 60000) { wifiNow = "off (nothing to send)"; wifiOff(30000); }
       return;

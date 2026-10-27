@@ -288,7 +288,12 @@ Open your own sketch with the T3Link additions and upload as usual.
   `firmware/T3.bin` + `t3.json`. The T3 checks about 20 s after key-on and every 6 h, only installs a **newer**
   version, and only while the Jeep is stopped.
 - **New in 2.0 – automatic rollback:** a new program must run for 20 s before it's kept. If it crashes or
-  restarts before that, the ESP32 goes back to the previous program by itself, and that version isn't fetched again.
+  restarts before that, the ESP32 goes back to the previous program by itself. A version that fails that way 3 times
+  isn't fetched again (a key-off in those 20 s counts as one failure, so a single power cut doesn't block a version).
+- **New in 2.1 – update over Bluetooth:** Live > Wi-Fi & update > "Update over Bluetooth" (Heep in Bluefy, connected by
+  Bluetooth). The phone downloads the program from GitHub and sends it to the T3; about 2-4 minutes; same checks and rollback.
+  Use it when the T3 can't get onto Wi-Fi. A T3 still on 1.5 or 2.0 can't do this yet: it needs one update by Wi-Fi or USB first.
+- **Live > Wi-Fi & update** also shows what Wi-Fi the T3 is on, what it can see, and why one of yours won't join.
 - Not tested on the device yet: the first OTA from 1.5 to 2.0 will be the first real test (1.5 does the
   download; 2.0's rollback protection applies from then on).
 

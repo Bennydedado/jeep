@@ -1,1 +1,1 @@
-{"name":"Jeep T3","version":"2.0","new_install_prompt_erase":false,"builds":[{"chipFamily":"ESP32","parts":[{"path":"bootloader.bin?v=2.0","offset":4096},{"path":"partitions.bin?v=2.0","offset":32768},{"path":"boot_app0.bin?v=2.0","offset":57344},{"path":"T3.bin?v=2.0","offset":65536}]}]}
+{"name":"Jeep T3","version":"2.1","new_install_prompt_erase":false,"builds":[{"chipFamily":"ESP32","parts":[{"path":"bootloader.bin?v=2.1","offset":4096},{"path":"partitions.bin?v=2.1","offset":32768},{"path":"boot_app0.bin?v=2.1","offset":57344},{"path":"T3.bin?v=2.1","offset":65536}]}]}

@@ -9,7 +9,7 @@
 //  - sends finished trips to your Jeep log sheet and GPS tracks to your track store over home Wi-Fi or the
 //    iPhone hotspot; Heep can also collect trips over Bluetooth (the same trip never lands twice)
 //  - talks to Heep over Bluetooth and, on Wi-Fi, through a relay (see T3.md)
-//  - updates itself over Wi-Fi from GitHub when the Jeep is stopped (USB install stays as the fallback)
+//  - updates itself over Wi-Fi from GitHub when the Jeep is stopped, or over Bluetooth from Heep (USB stays the fallback)
 //
 // Nothing to edit for normal use: Wi-Fi, the sheet link, screens, buttons and units are all set from Heep.
 // Pins are in config.h. How the tabs fit together is in t3.h. Build: see firmware/README.md.
@@ -133,6 +133,7 @@ void loop() {
   wifiStep();
   sdStep();
   displayStep();
+  otaStep();
   confirmUpdateStep();
   digitalWrite(LED_PIN, obdLinked && (millis() / 500) % 2);
   delay(2);

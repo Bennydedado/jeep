@@ -14,6 +14,7 @@
 //   trip.ino      the trip: start, pause, resume, end, distance, fuel
 //   display.ino   drawing the screens        sdlog.ino    the SD card log and the track files
 //   net.ino       Wi-Fi, uploads, updates, the live relay
+//   ota.ino       update over Bluetooth (otarx.h: the packet bookkeeping)
 //
 // Everything runs from loop() in small non-blocking steps, except uploads/updates, which run in their
 // own task while Wi-Fi is on so the screen and buttons never freeze.
@@ -30,6 +31,9 @@
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <HTTPUpdate.h>
+#include <Update.h>
+#include "esp_ota_ops.h"
+#include <freertos/message_buffer.h>
 #include <PubSubClient.h>
 #include "mbedtls/sha256.h"
 #include "mbedtls/md.h"
@@ -48,6 +52,7 @@
 #include "screens.h"
 #include "nmea.h"
 #include "jlink.h"
+#include "otarx.h"
 
 // ---------------------------------------------------------------- settings (Heep sends them; kept in flash)
 struct Net { String ssid, pass; };
@@ -165,6 +170,7 @@ extern Txt lastUpload, updStatus, trkStatus;
 void taskEvent(const String& what);   // log an event from the upload task (passed to loop())
 bool uploadBusy();
 extern volatile bool phoneOn, obdLinked, updating;
+extern volatile bool otaMode;          // an update over Bluetooth is coming in (ota.ino)
 extern uint32_t bootNo;
 extern String resetWhy;
 
