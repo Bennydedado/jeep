@@ -108,6 +108,29 @@ static uint32_t pidMissClear = 0;
 // a PID counts as missing (not asked for any more) after 3 "NO DATA" in a row: one miss while cranking or a
 // busy bus mustn't blank boost or speed for the whole drive. Everything gets another chance every 2 minutes.
 static bool pidMissing(int pid) { return pidMiss[pid & 0xFF] >= 3; }
+// what the engine computer says it offers (answers to 0100, 0120...): only those are asked for
+static ObdSupport obdSup;
+static int supNext = -1, mapPid = -1;
+static String obdProto;
+static bool pidOk(int pid) { return !pidMissing(pid) && (!obdSup.known || obdSup.has(pid)); }
+// where boost comes from: intake pressure (PID 0B) on most engines; some diesels only offer PID 87 or PID 70
+static int boostPid() {
+  if (pidOk(0x0B)) return 0x0B;
+  if (obdSup.known && obdSup.has(0x87) && !pidMissing(0x87)) return 0x87;
+  if (obdSup.known && obdSup.has(0x70) && !pidMissing(0x70)) return 0x70;
+  return -1;
+}
+// for Diagnostics: what the engine offers and where boost comes from
+String obdDiagJson() {
+  char sup[200]; obdSup.list(sup, sizeof(sup));
+  String miss;
+  for (int p = 1; p < 0xA0; p++) if (pidMissing(p)) { char b[4]; snprintf(b, sizeof(b), "%02X", p); miss += (miss.length() ? " " : "") + String(b); }
+  int bp = boostPid();
+  char bps[4]; snprintf(bps, sizeof(bps), "%02X", bp < 0 ? 0 : bp);
+  return "\"obd\":{\"proto\":\"" + jsonEsc(obdProto) + "\",\"known\":" + String(obdSup.known ? 1 : 0) + ",\"sup\":\"" + String(sup) + "\",\"boost\":\"" +
+         (bp < 0 ? String("-") : String(bps)) + "\",\"map\":" + num(car.mapKpa >= 0 ? car.mapKpa : NAN, 1) + ",\"baro\":" + num(car.baro > 0 ? car.baro : NAN, 0) +
+         ",\"miss\":\"" + miss + "\"}";
+}
 
 void obdSendCmdT(const String& cmd, uint32_t timeout) {
   if (!obdWrite) return;
@@ -121,21 +144,22 @@ void obdAnswer(String r) {
   r.replace(" ", ""); r.replace("\r", ""); r.replace("\n", ""); r.replace(">", ""); r.toUpperCase();
   car.at = millis();
   if (obdCmd == "ATRV") { car.volts = r.toFloat(); return; }
+  if (obdCmd == "ATDPN") { obdProto = r.substring(0, 6); return; }
   if (!obdCmd.startsWith("01")) return;
   int pid = (int)strtol(obdCmd.substring(2, 4).c_str(), nullptr, 16);
-  String want = "41" + obdCmd.substring(2, 4);
-  int i = r.indexOf(want);
-  if (i < 0) { if ((r.indexOf("NODATA") >= 0 || r.indexOf("?") >= 0) && pidMiss[pid] < 255) pidMiss[pid]++; return; }
+  if (pid % 32 == 0) { int nx = obdSup.feed(r.c_str(), pid); if (nx > 0) supNext = nx; return; }   // which values it offers
+  uint8_t b[9];
+  int n = obdBytes(r.c_str(), pid, b, 9);
+  if (!n) { if ((r.indexOf("NODATA") >= 0 || r.indexOf("?") >= 0) && pidMiss[pid] < 255) pidMiss[pid]++; return; }
   pidMiss[pid] = 0;
-  i += 4;
-  int A = r.length() >= (unsigned)i + 2 ? hexByte(r, i) : 0, B = r.length() >= (unsigned)i + 4 ? hexByte(r, i + 2) : 0;
+  int A = b[0], B = n > 1 ? b[1] : 0;
   switch (pid) {
     case 0x0D: car.kmh = A; break;
     case 0x0C: car.rpm = (256 * A + B) / 4.0; break;
     case 0x04: car.load = A * 100.0 / 255; break;
     case 0x05: car.ect = A - 40; break;
     case 0x0F: car.iat = A - 40; break;
-    case 0x0B: car.mapKpa = A; break;
+    case 0x0B: case 0x87: case 0x70: { float k = obdMapKpa(pid, b, n); if (k >= 0) { car.mapKpa = k; mapPid = pid; } break; }
     case 0x33: car.baro = A; break;
     case 0x5E: car.lph = (256 * A + B) / 20.0; break;
   }
@@ -143,11 +167,11 @@ void obdAnswer(String r) {
 void obdStep() {
   obdConnectStep();
   // a link that died between connecting and attaching, or an adapter that went silent: start over
-  if (obdLinked && obdClient && (!obdClient->isConnected() || (obdStage >= 8 && car.at && millis() - car.at > 20000))) {
+  if (obdLinked && obdClient && (!obdClient->isConnected() || (obdStage >= 9 && car.at && millis() - car.at > 20000))) {
     if (obdClient->isConnected()) obdClient->disconnect();
     obdLinked = false;
   }
-  if (!obdLinked) { obdStage = 0; obdBusy = false; memset(pidMiss, 0, sizeof(pidMiss)); return; }
+  if (!obdLinked) { obdStage = 0; obdBusy = false; supNext = -1; memset(pidMiss, 0, sizeof(pidMiss)); return; }
   if (millis() - pidMissClear > 120000) { pidMissClear = millis(); memset(pidMiss, 0, sizeof(pidMiss)); }
   char ch;
   while (xQueueReceive(obdQueue, &ch, 0) == pdTRUE) {
@@ -156,15 +180,17 @@ void obdStep() {
   }
   if (obdBusy && millis() - obdSentAt > obdTimeout) obdBusy = false;
   if (obdBusy) return;
-  const char* setup[] = { "ATZ", "ATE0", "ATL0", "ATS0", "ATH0", "ATAT1", "ATSP0", "0100" };
-  if (obdStage < 8) { obdSendCmdT(setup[obdStage], obdStage == 0 ? 2500 : obdStage == 7 ? 9000 : 1500); obdStage++; return; }
-  // speed, RPM and boost (MAP) all the time; the rest now and then
-  static const int fast[] = { 0x0D, 0x0C, 0x0B, 0x04 };
+  // set the adapter up, ask which values the engine offers (0100), and which protocol it found (ATDPN)
+  const char* setup[] = { "ATZ", "ATE0", "ATL0", "ATS0", "ATH0", "ATAT1", "ATSP0", "0100", "ATDPN" };
+  if (obdStage < 9) { if (obdStage == 0) obdSup = ObdSupport(); obdSendCmdT(setup[obdStage], obdStage == 0 ? 2500 : obdStage == 7 ? 9000 : 1500); obdStage++; return; }
+  if (supNext > 0) { char c[6]; snprintf(c, sizeof(c), "01%02X", supNext); supNext = -1; obdSendCmd(c); return; }   // the next block of offered values
+  // speed, RPM and boost all the time; the rest now and then; only what the engine offers
+  const int fast[] = { 0x0D, 0x0C, boostPid(), 0x04 };
   static const int slow[] = { 0x05, 0x0F, 0x33, 0x5E, -1 };
   int k = pollIdx++ % 12;
   int pid = k < 10 ? fast[k % 4] : slow[(pollIdx / 12) % 5];
-  if (pid == -1) { obdSendCmd("ATRV"); return; }
-  if (pidMissing(pid)) pid = fast[k % 2];
+  if (k >= 10 && pid == -1) { obdSendCmd("ATRV"); return; }
+  if (pid < 0 || !pidOk(pid)) pid = fast[k % 2];
   char c[6]; snprintf(c, sizeof(c), "01%02X", pid);
   obdSendCmd(c);
 }
@@ -173,7 +199,7 @@ void obdStep() {
 // (a 2.8 CRD makes about 400 Nm; diesel burns about 240 g per kWh). Heep's fuel correction trims it.
 float fuelNow() {
   if (car.rpm <= 0) return 0;
-  if (!pidMissing(0x5E) && car.lph >= 0) return car.lph * cfg.fuelCal;
+  if (pidOk(0x5E) && car.lph >= 0) return car.lph * cfg.fuelCal;
   float load = car.load < 0 ? 20 : car.load;
   float lph = load / 100.0 * car.rpm * 0.0105;
   if (lph < 0.6) lph = 0.6;

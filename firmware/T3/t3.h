@@ -53,6 +53,7 @@
 #include "nmea.h"
 #include "jlink.h"
 #include "otarx.h"
+#include "obdpid.h"
 
 // ---------------------------------------------------------------- settings (Heep sends them; kept in flash)
 struct Net { String ssid, pass; };

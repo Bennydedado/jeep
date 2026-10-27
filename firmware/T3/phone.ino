@@ -185,6 +185,7 @@ String diagJson() {
        "\",\"lastAgo\":" + String(wheel.lastAt ? (long)(millis() - wheel.lastAt) / 1000 : -1) + ",\"presses\":" + String(wheel.presses) + "}";
   m += ",\"wifi\":{\"state\":\"" + jsonEsc(wifiNow) + "\",\"rssi\":" + String(wifiState == W_ON ? WiFi.RSSI() : 0) + ",\"ip\":\"" + (wifiState == W_ON ? WiFi.localIP().toString() : String("")) +
        "\",\"seen\":\"" + jsonEsc(wifiSeen) + "\",\"relay\":" + String(relayUp() ? 1 : 0) + "}";
+  m += "," + obdDiagJson();
   m += ",\"ble\":{\"phone\":" + String(phoneOn ? 1 : 0) + ",\"icar\":" + String(obdLinked ? 1 : 0) + ",\"icarAge\":" + String(car.at ? (long)(millis() - car.at) / 1000 : -1) + "}";
   m += ",\"sd\":{\"ok\":" + String(sd.ok ? 1 : 0) + ",\"totalMB\":" + String((uint32_t)(sd.total / 1048576)) + ",\"usedMB\":" + String((uint32_t)(sd.used / 1048576)) +
        ",\"rows\":" + String(sd.rows) + ",\"err\":" + String(sd.errors) + ",\"last\":\"" + jsonEsc(sd.err) + "\",\"file\":\"" + jsonEsc(sd.file) + "\",\"waiting\":" + String(sd.tracksWaiting) + "}";

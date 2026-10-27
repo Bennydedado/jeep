@@ -170,6 +170,21 @@ function selectNum(k, opts, v, keep) {
   return s;
 }
 
+// standard OBD-II values by PID (mode 01), for Diagnostics
+const OBD_PIDS = { '01': 'Check-engine status', '03': 'Fuel system', '04': 'Engine load', '05': 'Coolant temp', '06': 'Fuel trim', '07': 'Fuel trim (long)',
+  '0B': 'Intake pressure (boost)', '0C': 'RPM', '0D': 'Speed', '0E': 'Timing', '0F': 'Intake air temp', '10': 'Air flow (MAF)', '11': 'Throttle',
+  '13': 'O2 sensors', '1C': 'OBD standard', '1F': 'Run time', '21': 'Distance with check-engine on', '22': 'Fuel rail pressure', '23': 'Fuel rail pressure',
+  '2C': 'EGR commanded', '2D': 'EGR error', '2F': 'Fuel level', '30': 'Warm-ups since codes cleared', '31': 'Distance since codes cleared',
+  '33': 'Air pressure (baro)', '42': 'Module voltage', '43': 'Absolute load', '45': 'Throttle (relative)', '46': 'Outside air temp', '49': 'Pedal position',
+  '4A': 'Pedal position B', '4C': 'Throttle commanded', '51': 'Fuel type', '5C': 'Oil temp', '5E': 'Fuel rate', '61': 'Torque demanded', '62': 'Torque actual',
+  '63': 'Reference torque', '70': 'Boost pressure', '87': 'Intake pressure' };
+const obdNames = list => String(list || '').split(' ').filter(Boolean).map(p => OBD_PIDS[p] ? OBD_PIDS[p] + ' (' + p + ')' : p).join(', ');
+function obdProtoName(p) {
+  const n = { '1': 'J1850 PWM', '2': 'J1850 VPW', '3': 'ISO 9141-2', '4': 'KWP2000 (5-baud)', '5': 'KWP2000 (fast)', '6': 'CAN 11-bit 500k', '7': 'CAN 29-bit 500k', '8': 'CAN 11-bit 250k', '9': 'CAN 29-bit 250k' };
+  const k = String(p).replace(/^A/, '');
+  return (n[k] || p) + (/^A/.test(p) ? ' (found by itself)' : '');
+}
+
 // ---------------------------------------------------------------- diagnostics: is everything wired and working?
 function diagSheet() {
   openSheet({
@@ -198,6 +213,12 @@ function diagSheet() {
           sec('Wi-Fi and relay', [['Wi-Fi', w.state], w.rssi ? ['Signal', w.rssi + ' dBm' + (w.rssi > -60 ? ' (strong)' : w.rssi > -75 ? ' (ok)' : ' (weak)')] : null, w.ip ? ['T3 address', w.ip] : null,
             ['Networks the last scan saw', w.seen || '-'], ['Relay', w.relay ? 'Connected' : 'Not connected']]),
           sec('Bluetooth', [['Heep', bl.phone ? 'Connected' : 'Not connected'], ['iCar', bl.icar ? 'Connected' + (bl.icarAge >= 0 ? ', last answer ' + bl.icarAge + ' s ago' : '') : 'Not connected', bl.icar ? 'ok' : 'soon']]),
+          d.obd ? sec('Engine (through the iCar)', [
+            ['Boost from', d.obd.boost === '-' ? (d.obd.known ? 'Not offered by this engine (standard OBD)' : 'Not known yet') : (OBD_PIDS[d.obd.boost] || 'PID ' + d.obd.boost) + ' · PID ' + d.obd.boost, d.obd.boost === '-' ? 'due' : 'ok'],
+            ['Intake / air pressure', (d.obd.map == null ? '-' : d.obd.map + ' kPa') + ' / ' + (d.obd.baro == null ? '-' : d.obd.baro + ' kPa')],
+            ['Protocol', d.obd.proto ? obdProtoName(d.obd.proto) : '-'],
+            ['Offers', d.obd.known ? obdNames(d.obd.sup) : 'Not asked yet (key on, iCar connected?)'],
+            d.obd.miss ? ['No answer for', obdNames(d.obd.miss)] : null]) : null,
           sec('SD card', [['Card', sd.ok ? 'Logging' : (sd.last || 'No card'), sd.ok ? 'ok' : 'due'], sd.ok ? ['Space', sd.usedMB + ' of ' + sd.totalMB + ' MB used'] : null,
             ['Rows written', sd.rows], ['Current file', sd.file || '-'], ['Write errors', sd.err], ['Tracks waiting to upload', sd.waiting]]),
           sec('Uploads', [['Trips to the sheet', up.sheet], ['Trips waiting', up.queued], ['Tracks', up.tracks], ['Program update', up.fw || '-']]),
