@@ -190,7 +190,7 @@ function sampleTrack(seed = 1, startMs = Date.now() - 864e5) {
   let x = seed * 9301 + 49297;
   const rnd = () => (x = (x * 9301 + 49297) % 233280) / 233280;
   const head = ['ms,up,tq,lat,lon,fix,sats,hdop,alt,kmh,crs,obd_kmh,rpm,boost,ect,iat,volt,load,lph,otemp,trip_km,ev'];
-  let lat = 56.2058 + rnd() * 0.01, lon = -120.6872, crs = 90, v = 0, km = 0, t = 0, up = 30000;
+  let lat = 56.2465 + rnd() * 0.01, lon = -120.8476, crs = 90, v = 0, km = 0, t = 0, up = 30000;
   const legs = [[0, 20, 90], [60, 140, 90], [0, 150, 90], [80, 400, 75], [0, 40, 75], [50, 160, 0], [90, 300, 10], [0, 30, 10]];
   const rows = [];
   for (const [target, secs, dir] of legs) {

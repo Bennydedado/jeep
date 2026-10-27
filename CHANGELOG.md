@@ -1,5 +1,24 @@
 # Changes
 
+## 27 Oct 2026 — review before release (same versions: T3 2.0, Heep 1.1.0)
+
+Checked and fixed before merging the overnight work:
+- **Build:** the workflow looked for the version in `T3.ino`, but 2.0 keeps it in `config.h`, so `t3.json` said `"v":""` and no
+  T3 would ever have updated. It now reads `config.h`, refuses to publish without a version, logs whether the core's bootloader
+  rollback is on, and runs the Nano link test too. New `nano.yml` compiles `nano/` for an ATmega328P Nano.
+- **T3 updates:** a version was marked "bad" if the key went off during the download or the first 20 s. Now "try" is only
+  written once the whole program is in flash, and a version needs to fail 3 times before it's skipped (no battery: power cuts happen).
+- **T3 iCar:** one "NO DATA" (cranking, busy bus) blanked that value (boost, speed...) until the next restart. Now it takes 3 in a
+  row, and missing values are asked for again every 2 minutes and after reconnecting.
+- **T3 Bluetooth:** messages go out in pieces as big as the phone allows (2-3 per live message instead of 25 with pauses), so
+  loop() isn't held up ~75 ms twice a second. GPS buffer doubled to 2 KB. The engine starting wakes the screen.
+- **Heep:** lists inside long sheets were squeezed to nothing (the T3 screen list didn't show at all); some sheets and the Live
+  page were wider than the phone. Bluetooth messages are now sent one at a time (overlapping sends could mix their bytes).
+  In the screen editor, tapping "+ Add" right after typing a number was lost; the 15 s wait for the T3 starts after the upload.
+- **Tests:** `tests/app/editor.js` builds and sends screens through the editor to a pretend T3 that checks them with the T3's own
+  screen code (`tests/firmware/scrtool.cpp`), incl. 12 full screens, reordering, hiding, loading back and button settings.
+- Sample GPS data moved to downtown Fort St. John.
+
 ## 27 Oct 2026 — T3 2.0, Heep 1.1.0, Nano link 1 (overnight session)
 
 Compiled and tested on a PC with simulated data only; not yet run on the Jeep's hardware.

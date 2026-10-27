@@ -12,7 +12,7 @@ const ok = (c, m) => { n++; if (!c) { fails++; console.log('FAIL', m); } };
   // the T3 encrypts like relaySend()
   const key = nodeCrypto.createHash('sha256').update('heep-enc:' + sheetKey).digest();
   const iv = nodeCrypto.randomBytes(12);
-  const line = '{"t":"live","kmh":87,"lat":56.205760,"lon":-120.687242,"ot":-12.5}';
+  const line = '{"t":"live","kmh":87,"lat":56.246500,"lon":-120.847600,"ot":-12.5}';
   const c = nodeCrypto.createCipheriv('aes-256-gcm', key, iv);
   const ct = Buffer.concat([c.update(line, 'utf8'), c.final()]);
   const wire = JSON.stringify({ e: Buffer.concat([iv, ct, c.getAuthTag()]).toString('base64') });
