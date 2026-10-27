@@ -12,7 +12,7 @@ void tempBegin() {
   if (ow) { delete ow; ow = nullptr; }
   owFound = false; owAsked = false; owFirst = true;
   otemp = Temp();
-  if (cfg.io4 != 0) return;   // GPIO 4 is the old push button instead
+  if (cfg.io4 != 0) { pinMode(ONEWIRE_PIN, INPUT_PULLUP); return; }   // GPIO 4 is the old push button instead
   ow = new OneWire(ONEWIRE_PIN);
   owSearchAt = 0;
 }

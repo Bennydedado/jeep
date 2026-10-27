@@ -9,7 +9,7 @@
 //   "short,long;short,long;short,long" for buttons 1, 2, 3, e.g. "prev,home;mark,pause;next,end"
 // Actions: none next prev home mark pause end sleep bright peak send
 
-HardwareSerial nanoSerial(2);
+#define nanoSerial Serial2   // UART2, receive only, on NANO_RX_PIN
 static const long NANO_BAUDS[] = { 9600, 19200, 38400, 57600, 115200 };
 static int nanoBaudIdx = 0;
 static uint32_t nanoBaudAt = 0, nanoGoodAtSwitch = 0, nanoLastByte = 0;

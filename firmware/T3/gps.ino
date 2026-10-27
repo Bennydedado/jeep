@@ -8,7 +8,7 @@
 // is only trusted above the "heading speed" setting (5 km/h by default). Below that, screens show the
 // last trusted heading in brackets, or "--" (setting "Keep last heading when stopped").
 
-HardwareSerial gpsSerial(1);
+#define gpsSerial Serial1   // UART1, on the pins in config.h
 static const long GPS_BAUDS[] = { 115200, 9600, 38400, 57600, 230400 };
 static int gpsBaudIdx = 0;
 static uint32_t gpsBaudAt = 0, gpsLastByte = 0, gpsClockAt = 0;
