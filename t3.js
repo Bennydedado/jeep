@@ -19,6 +19,7 @@ function t3Message(m, via) {
   else if (m.t === 'diag') { LIVE.diag = m; LIVE.diagAt = Date.now(); if (LIVE.onDiag) LIVE.onDiag(); }
   else if (m.t === 'wifi') { LIVE.wifi = m; LIVE.wifiAt = Date.now(); if (LIVE.onWifi) LIVE.onWifi(); }
   else if (m.t === 'ota') { if (LIVE.onOta) LIVE.onOta(m); }
+  else if (m.t === 'obdscan') { obdScanMsg(m); }
   else if (m.t === 'upd') { LIVE.upd = m; LIVE.updAt = Date.now(); if (m.fw) LIVE.fw = String(m.fw); if (LIVE.onUpd) LIVE.onUpd(m); }
 }
 
@@ -62,14 +63,14 @@ function t3Act(a) { return t3Send({ c: 'act', a }); }
 // ---------------------------------------------------------------- settings
 // everything kept on this phone under 't3' and sent as one cfg message
 const T3_DEFAULTS = { fc: 100, dc: 100, ss: 60, pk: 90, br: 2, bn: 0, nf: -1, nt: 7, tz: -420, sp: 0, lw: 1, spd: 0, hm: 5, h16: 0, hh: 1, tf: 0, to: 0,
-  gb: 0, li: 1, lis: 10, lfl: 5, sdm: 90, rot: 0, rf: 250, bm: 'prev,home;mark,pause;next,end', io4: 0, obd: '' };
+  gb: 0, li: 1, lis: 10, lfl: 5, sdm: 90, rot: 0, rf: 250, bm: 'prev,home;mark,pause;next,end', io4: 0, obd: '', opr: 0 };
 function t3Cfg() { return Object.assign({}, T3_DEFAULTS, store.get('t3', {})); }
 async function t3SendSettings() {
   const v = t3Cfg();
   const via = t3Via();
   if (!via) { toast('Saved on this phone', 'Connect to the T3 (Bluetooth, or the T3 on your hotspot) and send again', 'info'); return false; }
   const msg = { c: 'cfg', fc: Math.max(30, Math.min(300, num(v.fc) || 100)) / 100, dc: Math.max(50, Math.min(200, num(v.dc) || 100)) / 100 };
-  for (const k of ['ss', 'pk', 'br', 'bn', 'nf', 'nt', 'tz', 'sp', 'lw', 'spd', 'hm', 'h16', 'hh', 'tf', 'to', 'gb', 'li', 'lis', 'lfl', 'sdm', 'rot', 'rf', 'io4']) msg[k] = Number(v[k]);
+  for (const k of ['ss', 'pk', 'br', 'bn', 'nf', 'nt', 'tz', 'sp', 'lw', 'spd', 'hm', 'h16', 'hh', 'tf', 'to', 'gb', 'li', 'lis', 'lfl', 'sdm', 'rot', 'rf', 'io4', 'opr']) msg[k] = Number(v[k]);
   msg.bm = String(v.bm); msg.obd = String(v.obd || '');
   if (via === 'bt') {
     // the secrets only ever go over Bluetooth
@@ -160,7 +161,9 @@ function t3Setup() {
         h('div', { class: 'group' },
           h('label', { class: 'gr' }, h('span', { text: 'Time zone' }), selectNum('tz', [[-480, 'Pacific (UTC-8)'], [-420, 'Mountain / Fort St. John (UTC-7)'], [-360, 'Central (UTC-6)'], [-300, 'Eastern (UTC-5)'], [0, 'UTC']], v, keep)),
           h('label', { class: 'gr' }, h('span', { text: 'GPS speed' }), selectNum('gb', [[0, 'Find it by itself'], [9600, '9600'], [38400, '38400'], [57600, '57600'], [115200, '115200']], v, keep))),
-        h('div', { class: 'label', text: 'iCar' }), h('div', { class: 'group' }, txtIn('iCar name', 'obd', 'Finds it by itself')),
+        h('div', { class: 'label', text: 'iCar' }), h('div', { class: 'group' }, txtIn('iCar name', 'obd', 'Finds it by itself'),
+          h('label', { class: 'gr' }, h('span', { text: 'Talk to the Jeep on' }), selectNum('opr', SCAN_PROTOS.map(([p, n]) => [Number(p), n]), v, keep))),
+        h('div', { class: 'foot', text: 'Auto uses the first protocol that answers. Diagnostics > Scan the Jeep shows which computer answers on which, and what each offers.' }),
         h('button', { class: 'btn btn-primary btn-wide', onclick: () => t3SendSettings() }, icon('bt'), 'Send settings to the T3'),
         h('button', { class: 'btn btn-glass glass btn-wide', onclick: () => { if (!t3CanSend()) { toast('Not connected to the T3', '', 'bad'); return; } t3Send({ c: 'update' }); toast('Checking for a T3 update', 'It installs over Wi-Fi when the Jeep is stopped', 'info'); } }, icon('sync'), 'Try Wi-Fi and update now'),
         confirmButton('Put T3 settings back to new', 'Tap again: screens, units and logging go back to new; Wi-Fi and links stay', () => { const s = store.get('t3', {}); store.set('t3', { nets: s.nets }); t3Send({ c: 'cfgreset' }); }));
@@ -179,7 +182,7 @@ function selectNum(k, opts, v, keep) {
 // standard OBD-II values by PID (mode 01), for Diagnostics
 const OBD_PIDS = { '01': 'Check-engine status', '03': 'Fuel system', '04': 'Engine load', '05': 'Coolant temp', '06': 'Fuel trim', '07': 'Fuel trim (long)',
   '0B': 'Intake pressure (boost)', '0C': 'RPM', '0D': 'Speed', '0E': 'Timing', '0F': 'Intake air temp', '10': 'Air flow (MAF)', '11': 'Throttle',
-  '13': 'O2 sensors', '1C': 'OBD standard', '1F': 'Run time', '21': 'Distance with check-engine on', '22': 'Fuel rail pressure', '23': 'Fuel rail pressure',
+  '13': 'O2 sensors', '14': 'O2 sensor 1', '15': 'O2 sensor 2', '1C': 'OBD standard', '1F': 'Run time', '21': 'Distance with check-engine on', '22': 'Fuel rail pressure', '23': 'Fuel rail pressure',
   '2C': 'EGR commanded', '2D': 'EGR error', '2F': 'Fuel level', '30': 'Warm-ups since codes cleared', '31': 'Distance since codes cleared',
   '33': 'Air pressure (baro)', '42': 'Module voltage', '43': 'Absolute load', '45': 'Throttle (relative)', '46': 'Outside air temp', '49': 'Pedal position',
   '4A': 'Pedal position B', '4C': 'Throttle commanded', '51': 'Fuel type', '5C': 'Oil temp', '5E': 'Fuel rate', '61': 'Torque demanded', '62': 'Torque actual',
@@ -190,6 +193,68 @@ function obdProtoName(p) {
   const k = String(p).replace(/^A/, '');
   if (k === '0') return 'Not found yet: the engine hasn\u2019t answered';
   return (n[k] || p) + (/^A/.test(p) ? ' (found by itself)' : '');
+}
+
+// ---------------------------------------------------------------- Scan the Jeep: every protocol, who answers, what they offer
+const SCAN_PROTOS = [['0', 'Auto (first that answers)'], ['2', 'J1850 VPW (Chrysler bus)'], ['5', 'KWP2000 fast (K-line)'], ['4', 'KWP2000 slow (K-line)'],
+  ['3', 'ISO 9141-2 (K-line)'], ['1', 'J1850 PWM'], ['6', 'CAN 11-bit 500k']];
+const scanProtoName = p => (SCAN_PROTOS.find(x => x[0] === String(p)) || [0, 'protocol ' + p])[1];
+const MODULE_GUESS = { '10': 'engine', '11': 'engine', '12': 'engine', '15': 'engine', '17': 'engine', '18': 'transmission', '19': 'transmission', '28': 'ABS', '7E8': 'engine', '7E9': 'transmission' };
+// every "41 00/20/40 <mask>" in a protocol's answers, grouped by the computer that sent it
+function scanParse(it) {
+  const mods = {};
+  for (const raw of [it.a, it.b, it.c]) {
+    const re = it.p >= '6' ? /([0-9A-F]{3})[0-9A-F]{2}41(00|20|40)([0-9A-F]{8})/g : /([0-9A-F]{2})41(00|20|40)([0-9A-F]{8})/g;
+    let m;
+    while ((m = re.exec(raw || ''))) {
+      const src = m[1], base = parseInt(m[2], 16), mask = parseInt(m[3], 16);
+      const set = mods[src] || (mods[src] = new Set());
+      for (let i = 0; i < 31; i++) if ((mask >>> (31 - i)) & 1) set.add((base + 1 + i).toString(16).toUpperCase().padStart(2, '0'));
+    }
+  }
+  return Object.entries(mods).map(([src, set]) => ({ src, pids: [...set].sort() }));
+}
+function obdScanMsg(m) {
+  if (m.error) { toast('Couldn\u2019t scan', m.error, 'bad'); return; }
+  if (m.start) LIVE.scan = { running: true, n: m.n, items: [], at: Date.now() };
+  else if (LIVE.scan && m.p) { LIVE.scan.items.push(m); LIVE.scan.at = Date.now(); }
+  if (m.done && LIVE.scan) { LIVE.scan.running = false; store.set('obdscan', LIVE.scan); toast('Scan finished', 'See Diagnostics > Engine', 'info'); }
+  if (LIVE.onDiag) LIVE.onDiag();
+}
+function scanCard() {
+  const sc = LIVE.scan || store.get('obdscan', null);
+  const wrap = h('div', null, h('div', { class: 'label', text: 'Scan the Jeep' }));
+  const box = h('div', { class: 'card ota' });
+  wrap.append(box);
+  if (!sc) {
+    box.append(h('p', { class: 'foot', style: 'margin:0', text: 'Tries every protocol the iCar knows, one after another, and shows which of the Jeep\u2019s computers answers on each and what it offers. About 1-2 minutes, with the engine running.' }));
+  } else {
+    const running = sc.running && Date.now() - sc.at < 60000;
+    if (running) box.append(h('b', { text: 'Scanning: protocol ' + (sc.items.length + 1) + ' of ' + sc.n + '…' }), h('div', { class: 'bar' }, h('i', { style: 'width:' + Math.round(sc.items.length / sc.n * 100) + '%' })),
+      h('p', { class: 'foot', style: 'margin:0', text: 'Keep the engine running and Heep open. Live numbers pause until it\u2019s done.' }));
+    const rows = sc.items.map(it => ({ it, mods: scanParse(it) }));
+    const best = rows.reduce((b, r) => { const n = r.mods.reduce((a, m) => a + m.pids.length, 0); return n > b.n ? { n, p: r.it.p } : b; }, { n: 0, p: null });
+    const cur = String(t3Cfg().opr || 0);
+    for (const { it, mods } of rows) {
+      const n = mods.reduce((a, m) => a + m.pids.length, 0);
+      const card = h('div', { class: 'card list' }, h('div', { class: 'row' },
+        h('div', { class: 'main' }, h('b', { text: scanProtoName(it.p) + (it.p === best.p && n ? '  ★ most' : '') }),
+          h('span', { class: 'wrap', text: !mods.length ? 'No answer' : mods.map(m => 'Computer ' + m.src + (MODULE_GUESS[m.src] ? ' (' + MODULE_GUESS[m.src] + '?)' : '') + ': ' + m.pids.length + ' values\n' + obdNames(m.pids.join(' '))).join('\n\n') })),
+        h('span', { class: 'pill ' + (n ? 'ok' : 'due') }, h('i'))));
+      if (n) card.append(h('div', { class: 'row' }, cur === it.p ? h('span', { class: 'foot', text: 'Using this one' }) :
+        h('button', { class: 'btn btn-small btn-glass glass', onclick: async () => { const v = store.get('t3', {}); v.opr = Number(it.p); store.set('t3', v); await t3SendSettings(); toast('The T3 talks on ' + scanProtoName(it.p) + ' now', 'Back to Auto any time in T3 settings', 'info'); } }, 'Use this one')));
+      box.append(card);
+    }
+    if (!running && sc.items.length) box.append(h('p', { class: 'foot', style: 'margin:0', text: 'Scanned ' + ago(sc.at) + '. Send Claude a screenshot of this to go further (the Jeep\u2019s own extra values).' }));
+  }
+  if (!sc || !(sc.running && Date.now() - sc.at < 60000)) box.append(h('button', { class: 'btn btn-primary btn-wide', onclick: () => {
+    if (!t3CanSend()) { toast('Not connected to the T3', '', 'bad'); return; }
+    if (!verAtLeast(LIVE.fw, '2.5')) { toast('Update the T3 first', 'Scanning needs T3 2.5 (Wi-Fi & update)', 'bad'); return; }
+    LIVE.scan = { running: true, n: 6, items: [], at: Date.now() };
+    t3Send({ c: 'obdscan' });
+    if (LIVE.onDiag) LIVE.onDiag();
+  } }, icon('sync'), sc ? 'Scan again' : 'Scan the Jeep\u2019s computers'));
+  return wrap;
 }
 
 // ---------------------------------------------------------------- diagnostics: is everything wired and working?
@@ -228,6 +293,7 @@ function diagSheet() {
             ['Offers', d.obd.known ? obdNames(d.obd.sup) : 'Not asked yet (key on, iCar connected?)'],
             d.obd.miss ? ['No answer for', obdNames(d.obd.miss)] : null,
             d.obd.raw ? ['Last answers', Object.entries(d.obd.raw).map(([k, v]) => k + ': ' + (v || '-')).join('\n')] : null]) : null,
+          scanCard(d),
           sec('SD card', [['Card', sd.ok ? 'Logging' : (sd.last || 'No card'), sd.ok ? 'ok' : 'due'], sd.ok ? ['Space', sd.usedMB + ' of ' + sd.totalMB + ' MB used'] : null,
             ['Rows written', sd.rows], ['Current file', sd.file || '-'], ['Write errors', sd.err], ['Tracks waiting to upload', sd.waiting]]),
           sec('Uploads', [['Trips to the sheet', up.sheet], ['Trips waiting', up.queued], ['Tracks', up.tracks], ['Program update', up.fw || '-']]),

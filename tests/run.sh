@@ -14,5 +14,6 @@ if node -e "require('playwright')" 2>/dev/null; then
   SHOTS=$T/shots node tests/app/wifi_ota.js            # Wi-Fi page and update over Bluetooth against a pretend T3
   node tests/app/usb_install.js                         # the step-by-step USB installer page (firmware/usb.html)
   SHOTS=$T/shots node tests/app/relay_live.js          # Safari: live numbers and Update over Wi-Fi through the relay
+  SHOTS=$T/shots node tests/app/obd_scan.js            # Diagnostics > Scan the Jeep: protocols, computers, values, Use this one
 else echo "smoke.js, editor.js and wifi_ota.js skipped (no Playwright)"; fi
 echo "ALL PASSED"
