@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Install the Jeep T3 step by step</title>
+<meta name="robots" content="noindex, nofollow">
+<style>
+  :root { color-scheme: dark; --ink2: rgba(235, 235, 245, .72); --line: rgba(255, 255, 255, .1); --ok: #30d158; --bad: #ff453a; --now: #ff9f0a; }
+  body { margin: 0; background: #050506; color: #fff; font: 16px/1.5 -apple-system, "Segoe UI", system-ui, sans-serif; }
+  main { max-width: 620px; margin: 0 auto; padding: 40px 18px 60px; }
+  h1 { font-size: 28px; margin: 0 0 6px; }
+  p { color: var(--ink2); }
+  a { color: #ff9f0a; }
+  .box { background: rgba(255, 255, 255, .06); border-radius: 18px; padding: 18px; margin: 18px 0; }
+  .opt { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; cursor: pointer; }
+  .opt input { margin-top: 5px; accent-color: #ff9f0a; }
+  .opt b { display: block; }
+  .opt span { color: var(--ink2); font-size: 14px; }
+  button.go { font-weight: 600; font-size: 17px; font-family: inherit; background: #ff9f0a; color: #000; border: 0; border-radius: 999px; padding: 13px 28px; cursor: pointer; width: 100%; margin-top: 10px; }
+  button.go:disabled { opacity: .45; cursor: default; }
+  button.small { font-weight: 500; font-size: 14px; font-family: inherit; background: rgba(255, 255, 255, .1); color: #fff; border: 0; border-radius: 999px; padding: 7px 14px; cursor: pointer; }
+  ol.steps { list-style: none; padding: 0; margin: 0; }
+  ol.steps li { display: grid; grid-template-columns: 26px 1fr; gap: 10px; padding: 9px 0; border-top: 1px solid var(--line); }
+  ol.steps li:first-child { border-top: 0; }
+  ol.steps i { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--line); box-sizing: border-box; margin-top: 1px; }
+  ol.steps li.now i { border-color: var(--now); border-top-color: transparent; animation: spin 1s linear infinite; }
+  ol.steps li.ok i { background: var(--ok); border-color: var(--ok); }
+  ol.steps li.bad i { background: var(--bad); border-color: var(--bad); }
+  ol.steps small { display: block; color: var(--ink2); font-size: 14px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .bar { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; margin-top: 6px; }
+  .bar b { display: block; height: 100%; width: 0; background: var(--ok); transition: width .3s; }
+  .msg { border-radius: 14px; padding: 14px 16px; margin: 14px 0 0; display: none; }
+  .msg.show { display: block; }
+  .msg.bad { background: rgba(255, 69, 58, .14); }
+  .msg.ok { background: rgba(48, 209, 88, .14); }
+  .msg p { color: #fff; margin: 6px 0 0; }
+  details { margin-top: 14px; }
+  summary { cursor: pointer; color: var(--ink2); }
+  pre { background: #000; border: 1px solid var(--line); border-radius: 10px; padding: 10px; max-height: 260px; overflow: auto; font: 12px/1.45 ui-monospace, Consolas, monospace; white-space: pre-wrap; word-break: break-all; color: #cfd; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Install the Jeep T3, step by step</h1>
+  <p>Same program as the <a href="./">regular installer</a>, but you can see every step, it can't get stuck forever, and it has
+     two ways around a fussy USB connection. Chrome or Edge on a computer; close the Arduino IDE first. Your saved Wi-Fi and
+     sheet link stay on the T3 (nothing is erased).</p>
+
+  <div class="box">
+    <label class="opt"><input type="radio" name="mode" value="auto" checked><div><b>The page resets the T3</b><span>Just plug it in. Try this first.</span></div></label>
+    <label class="opt"><input type="radio" name="mode" value="boot"><div><b>I'm holding BOOT</b><span>Unplug the T3, hold its BOOT button, plug it in, keep holding until it says "Connected", then let go.</span></div></label>
+    <label class="opt"><input type="checkbox" id="nostub"><div><b>Skip the helper program</b><span>Slower (about 3 minutes) but works when the T3 connects and then freezes. Tick this if a try got stuck at "Starting the helper".</span></div></label>
+    <button class="go" id="go">Connect and install</button>
+    <div class="msg" id="msg"></div>
+  </div>
+
+  <div class="box">
+    <ol class="steps">
+      <li id="s-dl"><i></i><div>Download the T3 program<small></small></div></li>
+      <li id="s-conn"><i></i><div>Connect to the T3<small></small></div></li>
+      <li id="s-stub"><i></i><div>Start the helper<small></small></div></li>
+      <li id="s-write"><i></i><div>Write the program<small></small><div class="bar"><b id="bar"></b></div></div></li>
+      <li id="s-done"><i></i><div>Restart the T3<small></small></div></li>
+    </ol>
+    <details id="det"><summary>Details (send Claude a screenshot of this if something goes wrong)</summary>
+      <pre id="log"></pre><button class="small" id="copy">Copy</button></details>
+  </div>
+  <p>No COM port to pick? The computer needs the T3's USB driver: install <b>WCH CH343SER</b> (wch-ic.com), then plug the T3 in again.</p>
+</main>
+<script type="module">
+// The flashing itself is Espressif's esptool-js (the same tool ESP Web Tools uses inside). Pinned version.
+const ESPTOOL = ['https://unpkg.com/esptool-js@0.5.4/bundle.js', 'https://cdn.jsdelivr.net/npm/esptool-js@0.5.4/bundle.js'];
+async function loadEsptool() {   // two places to get it from, in case one is down
+  for (const u of ESPTOOL) { try { return await import(u); } catch (e) { log('couldn\'t load ' + u + ': ' + e.message); } }
+  throw new Error('couldn\'t load the flashing tool');
+}
+const $ = s => document.querySelector(s);
+const logEl = $('#log');
+const log = s => { logEl.textContent += s + '\n'; logEl.scrollTop = 1e9; };
+const term = { clean() {}, writeLine: s => log(s), write: s => { logEl.textContent += s; logEl.scrollTop = 1e9; } };
+const step = (id, state, text) => { const li = $('#s-' + id); li.className = state || ''; if (text != null) li.querySelector('small').textContent = text; };
+const say = (kind, title, text) => { const m = $('#msg'); m.className = 'msg show ' + kind; m.innerHTML = ''; const b = document.createElement('b'); b.textContent = title; const p = document.createElement('p'); p.textContent = text; m.append(b, p); };
+class Stuck extends Error {}
+const limit = (p, ms, what) => Promise.race([p, new Promise((_, no) => setTimeout(() => no(new Stuck(what)), ms))]);
+const bin = u8 => { let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return s; };
+
+if (!('serial' in navigator)) { say('bad', 'This browser can\'t talk to USB', 'Open this page in Chrome or Edge on a computer.'); $('#go').disabled = true; }
+$('#copy').onclick = () => navigator.clipboard.writeText(logEl.textContent).catch(() => {});
+
+let busy = false;
+$('#go').onclick = async () => {
+  if (busy) return;
+  busy = true; $('#go').disabled = true; $('#msg').className = 'msg';
+  logEl.textContent = ''; ['dl', 'conn', 'stub', 'write', 'done'].forEach(s => step(s, '', '')); $('#bar').style.width = '0';
+  const holdBoot = document.querySelector('input[name=mode]:checked').value === 'boot', noStub = $('#nostub').checked;
+  let transport = null, at = 'conn';
+  try {
+    // the port first: Chrome only opens its port picker straight after a click
+    step('conn', 'now', 'Pick the T3\'s port in the box that opens…');
+    const port = await navigator.serial.requestPort();
+    step('conn', '', 'Port picked');
+
+    // 1. the program, before touching the T3 (so a download problem can't leave it half done)
+    at = 'dl';
+    step('dl', 'now', 'From this website…');
+    const { ESPLoader, Transport } = await limit(loadEsptool(), 30000, 'dl');
+    const man = await limit(fetch('manifest.json?t=' + Date.now(), { cache: 'no-store' }).then(r => r.json()), 30000, 'dl');
+    const parts = [];
+    for (const p of man.builds[0].parts) {
+      const r = await limit(fetch(p.path, { cache: 'no-store' }), 60000, 'dl');
+      if (!r.ok) throw new Error('Downloading ' + p.path + ' failed (' + r.status + ')');
+      const u8 = new Uint8Array(await limit(r.arrayBuffer(), 60000, 'dl'));
+      parts.push({ data: bin(u8), address: p.offset, name: p.path.split('?')[0], size: u8.length });
+      log('downloaded ' + p.path.split('?')[0] + ' (' + u8.length + ' bytes) for 0x' + p.offset.toString(16));
+    }
+    const total = parts.reduce((a, p) => a + p.size, 0);
+    step('dl', 'ok', 'T3 ' + man.version + ', ' + Math.round(total / 1024) + ' KB');
+
+    // 2. connect
+    at = 'conn';
+    transport = new Transport(port, false);
+    const loader = new ESPLoader({ transport, baudrate: 115200, romBaudrate: 115200, terminal: term, debugLogging: false });
+    step('conn', 'now', holdBoot ? 'Talking to the T3 (keep holding BOOT)…' : 'Resetting the T3 into install mode…');
+    await limit(loader.detectChip(holdBoot ? 'no_reset' : 'default_reset'), 30000, 'conn');
+    step('conn', 'ok', 'Connected: ' + loader.chip.CHIP_NAME + (holdBoot ? ' · you can let go of BOOT now' : ''));
+
+    // 3. the helper program (fast flashing), or straight to the chip's own loader
+    at = 'stub';
+    if (noStub) {
+      step('stub', 'now', 'Skipped: using the T3\'s built-in loader');
+      await limit(loader.flashSpiAttach(0), 15000, 'stub');
+      step('stub', 'ok', 'Skipped (built-in loader, slower)');
+    } else {
+      step('stub', 'now', 'Starting the helper…');
+      await limit(loader.runStub(), 30000, 'stub');
+      step('stub', 'ok', 'Running');
+    }
+
+    // 4. write; it's only "stuck" if nothing moves for 45 s
+    at = 'write';
+    step('write', 'now', 'Starting…');
+    const before = parts.map((p, i) => parts.slice(0, i).reduce((a, q) => a + q.size, 0));
+    let lastMove = Date.now(), lastPct = -1;
+    const watch = new Promise((_, no) => { const t = setInterval(() => { if (!busy) clearInterval(t); else if (Date.now() - lastMove > 45000) { clearInterval(t); no(new Stuck('write')); } }, 1000); });
+    await Promise.race([watch, loader.writeFlash({
+      fileArray: parts.map(p => ({ data: p.data, address: p.address })),
+      flashSize: 'keep', flashMode: 'keep', flashFreq: 'keep', eraseAll: false, compress: true,
+      reportProgress: (i, written, size) => {
+        lastMove = Date.now();
+        const pct = Math.min(100, Math.floor((before[i] + written / size * parts[i].size) / total * 100));
+        if (pct !== lastPct) { lastPct = pct; $('#bar').style.width = pct + '%'; step('write', 'now', parts[i].name + ' · ' + pct + ' %'); }
+      },
+    })]);
+    $('#bar').style.width = '100%';
+    step('write', 'ok', 'All ' + Math.round(total / 1024) + ' KB written');
+
+    // 5. restart into it
+    at = 'done';
+    step('done', 'now', 'Restarting…');
+    if (holdBoot) log('If BOOT is still held, let go now.');
+    await limit(loader.after('hard_reset'), 10000, 'done').catch(() => {});
+    await limit(transport.disconnect(), 5000, 'done').catch(() => {});
+    transport = null;
+    step('done', 'ok', 'Done');
+    say('ok', 'Installed T3 ' + man.version + ' ✓', 'The T3 restarts and its screen says "Jeep T3 ' + man.version + ' starting". If the screen doesn\'t change within 10 seconds, unplug it and plug it back in. Then in Heep: Live > Wi-Fi & update.');
+  } catch (e) {
+    console.error(e);
+    log('STOPPED at ' + at + ': ' + (e && e.message));
+    step(at, 'bad');
+    const stuck = e instanceof Stuck;
+    const tips = {
+      dl: ['Couldn\'t download the program', 'Check the computer is online and reload this page. (' + (e && e.message) + ')'],
+      conn: e && e.name === 'NotFoundError'
+        ? ['No port picked', 'Click Connect and install again and pick the T3\'s port (it appears when you plug the T3 in). None there? Install the CH343SER driver.']
+        : ['Couldn\'t get the T3 into install mode', 'Unplug the T3. Choose "I\'m holding BOOT", hold BOOT, plug the T3 in, keep holding, then click Connect and install. Also try a USB port on the back of the computer.'],
+      stub: ['The T3 connected, then the helper didn\'t start', 'This is where the other installer freezes, usually because of Windows\' built-in driver. Unplug the T3, plug it back in, tick "Skip the helper program" and try again. Installing the CH343SER driver fixes it for good.'],
+      write: [stuck ? 'Writing stopped moving' : 'Writing failed', 'Unplug the T3, plug it back in and start again (tick "Skip the helper program" if it was ticked off). The T3 needs one complete install to start normally.'],
+      done: ['Couldn\'t restart it', 'The program is written: unplug the T3 and plug it back in.'],
+    }[at];
+    say('bad', tips[0], tips[1]);
+    $('#det').open = true;
+    if (transport) { await limit(transport.disconnect(), 3000, 'x').catch(() => {}); }
+  } finally {
+    busy = false; $('#go').disabled = false;
+  }
+};
+</script>
+</body>
+</html>

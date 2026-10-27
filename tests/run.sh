@@ -12,5 +12,6 @@ if node -e "require('playwright')" 2>/dev/null; then
   SHOTS=$T/shots node tests/app/smoke.js
   SHOTS=$T/shots node tests/app/editor.js $T/scrtool   # the screen editor against a pretend T3 using the firmware's own parser
   SHOTS=$T/shots node tests/app/wifi_ota.js            # Wi-Fi page and update over Bluetooth against a pretend T3
+  node tests/app/usb_install.js                         # the step-by-step USB installer page (firmware/usb.html)
 else echo "smoke.js, editor.js and wifi_ota.js skipped (no Playwright)"; fi
 echo "ALL PASSED"
