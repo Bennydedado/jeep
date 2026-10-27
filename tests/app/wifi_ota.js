@@ -17,10 +17,10 @@ const BIN = Buffer.alloc(60000); for (let i = 0; i < BIN.length; i++) BIN[i] = (
 const NEW_V = '2.2';
 
 // ---------------------------------------------------------------- the pretend T3
-const T3 = { fw: '1.5', cmds: [], cfg: null, bytes: [], junk: 0,
+const T3 = { fw: '1.5', cmds: [], cfg: null, bytes: [], junk: 0, lw: 1, lwLog: [],
   ota: { on: false, size: 0, got: 0, acked: 0, sha: '', data: null, pkts: 0, dropped: false, needs: 0, lastNeed: 0, v: '' } };
 let notify = async () => {}, dropLink = async () => {};
-const hi = () => ({ t: 'hi', fw: T3.fw, proto: 2, obd: false, queued: 0, up: 'not yet', upd: '-', wifi: T3.fw === '1.5' ? "couldn't join Bens iPhone (password?)" : 'off (nothing to send)',
+const hi = () => ({ t: 'hi', fw: T3.fw, lw: T3.lw, proto: 2, obd: false, queued: 0, up: 'not yet', upd: '-', wifi: T3.fw === '1.5' ? "couldn't join Bens iPhone (password?)" : 'off (nothing to send)',
   seen: "Ben’s iPhone (-63), SHAW-1234 (-81)", ssids: ['Home', 'Bens iPhone'], nets: 2, scrh: '0', scrn: 10, sheet: true, trkSet: false, sp: 0 });
 const wifi = () => ({ t: 'wifi', fw: T3.fw, state: "couldn't join Home: wrong password?", on: false, scanning: false, scanAgo: 4,
   seen: [['Home', -58, 6, 0], ['Ben’s iPhone', -63, 11, 0], ['SHAW-1234', -81, 1, 0], ['Neighbours', -88, 6, 1]],
@@ -30,7 +30,12 @@ async function onT3Line(line) {
   T3.cmds.push(m);
   if (m.c === 'hello' || m.c === 'status') await notify(hi());
   else if (m.c === 'wifi' && T3.fw !== '1.5') await notify(wifi());
-  else if (m.c === 'cfg') { T3.cfg = m; await notify({ t: 'cfg', ok: true }); await notify(hi()); }
+  else if (m.c === 'cfg') { if (m.lw != null) { T3.lw = m.lw; T3.lwLog.push(m.lw); } if (m.wifi) T3.cfg = m; await notify({ t: 'cfg', ok: true }); await notify(hi()); }
+  else if (m.c === 'ota' && m.do === 'begin' && T3.fw !== '1.5' && T3.lw) {
+    // like T3 2.4/2.5 with Wi-Fi and the relay running: no room for the receive buffer
+    T3.memRefused = (T3.memRefused || 0) + 1;
+    await notify({ t: 'ota', ok: false, why: 'not enough memory' });
+  }
   else if (m.c === 'ota' && m.do === 'begin' && T3.fw !== '1.5') {
     Object.assign(T3.ota, { on: true, size: m.size, got: 0, acked: 0, sha: m.sha, data: Buffer.alloc(m.size), pkts: 0, v: m.v });
     await notify({ t: 'ota', ok: true, ready: true, chunk: 182, ack: 4096 });
@@ -147,6 +152,7 @@ const srv = http.createServer((q, r) => {
   const before = T3.cmds.length;
   const btn = page.locator(W + ' button', { hasText: 'over Bluetooth' });
   check(await btn.count() === 1 && /Update to 2\.2 over Bluetooth/.test(await btn.innerText()), '2.1: Bluetooth update offered');
+  await page.evaluate(() => { LIVE.otaRetryMs = 400; });                                  // the real wait is 15 s
   await btn.click(); await page.waitForTimeout(150);
   await page.locator(W + ' button', { hasText: 'Tap again to start' }).click();          // tap twice to start
   const t0 = Date.now();
@@ -154,6 +160,7 @@ const srv = http.createServer((q, r) => {
   check(!!T3.installed && T3.installed.equals(BIN), 'the T3 got the program byte for byte (SHA-256 checked)');
   check(T3.ota.needs >= 1, 'a lost packet was asked for again and resent (' + T3.ota.needs + ' resend request)');
   check(T3.junk === 0, 'nothing else was written to the T3 during the update');
+  check(T3.memRefused >= 1 && T3.lwLog.includes(0), 'out of memory: Heep switched the T3\'s live-over-Wi-Fi off to make room, then went ahead');
   await page.waitForTimeout(600);
   await page.screenshot({ path: shots + '/wifi-3-updated.png' });
   check(/Installed 2\.2 ✓/.test(await text()), 'Heep says it is installed');
@@ -162,6 +169,8 @@ const srv = http.createServer((q, r) => {
   while (Date.now() - t1 < 15000 && !/running 2\.2 ✓/.test(await text())) await page.waitForTimeout(300);
   check(/running 2\.2 ✓/.test(await text()), 'after the restart Heep reconnects and sees 2.2');
   check(T3.cmds.slice(before).filter(c => c.c === 'hello').length >= 1, 'reconnected with hello');
+  await page.waitForTimeout(800);
+  check(T3.lw === 1 && T3.lwLog.slice(-1)[0] === 1, 'after the update live-over-Wi-Fi is switched back on: ' + JSON.stringify(T3.lwLog));
   await page.screenshot({ path: shots + '/wifi-4-running.png' });
 
   check(!errors.length, 'no errors in the page: ' + errors.join(' | '));

@@ -244,6 +244,30 @@ function otaWrite(p) {
   if (!rx) return Promise.reject(new Error('gone'));
   return rx.writeValueWithoutResponse ? rx.writeValueWithoutResponse(p) : rx.writeValue(p);
 }
+// T3 2.4 and 2.5 keep Wi-Fi and the relay running, which can leave too little memory to take an update over Bluetooth.
+// Switch "Live over Wi-Fi" off on the T3 for a minute (that closes Wi-Fi and frees the memory), try again, and put it back
+// after the update (t3Message, on the first "hi" from the new program).
+async function makeRoom(ui, begin) {
+  const lw = Number(t3Cfg().lw) ? 1 : 0;
+  store.set('restoreLw', lw);
+  LIVE.makingRoom = true;   // until the update is over: the T3's "hi" mustn't switch it straight back on
+  const quiet = LIVE.onCfg; LIVE.onCfg = () => {};
+  await send({ c: 'cfg', lw: 0 });
+  LIVE.onCfg = quiet;
+  const step = LIVE.otaRetryMs || 15000;
+  let ready = { ok: false };
+  for (let i = 0; i < 6 && !ready.ok; i++) {
+    for (let t = step; t > 0; t -= 1000) {
+      ui('send', 0, 'Making room on the T3', 'Its Wi-Fi is switching off for a moment so the update fits in its memory. Trying again in ' + Math.ceil(t / 1000) + ' s…');
+      await pause(Math.min(1000, t));
+    }
+    if (!LIVE.rx) break;
+    ready = await otaAsk(begin, 8000);
+    if (!ready.ok && !/memory|busy/.test(ready.why || '')) break;
+  }
+  if (!ready.ok) { LIVE.makingRoom = false; await send({ c: 'cfg', lw }); store.del('restoreLw'); }
+  return ready;
+}
 // download the newest program, send it in numbered packets, go back when the T3 says one went missing
 async function btUpdate(ui) {
   if (t3Via() !== 'bt') throw new Error('Connect to the T3 over Bluetooth first.');
@@ -256,9 +280,11 @@ async function btUpdate(ui) {
   if (bin.length < 4096 || bin[0] !== 0xE9) throw new Error('The download isn’t a T3 program.');
   const sha = [...new Uint8Array(await crypto.subtle.digest('SHA-256', bin))].map(x => x.toString(16).padStart(2, '0')).join('');
   ui('send', 0, 'Starting', 'Asking the T3 to get ready…');
-  const ready = await otaAsk({ c: 'ota', do: 'begin', size: bin.length, sha, v: meta.v }, 8000);
+  const begin = { c: 'ota', do: 'begin', size: bin.length, sha, v: meta.v };
+  let ready = await otaAsk(begin, 8000);
+  if (!ready.ok && /memory/.test(ready.why || '')) ready = await makeRoom(ui, begin);
   if (!ready.ok) throw new Error('The T3 said: ' + (ready.why || 'no'));
-  const body = Math.max(16, (ready.chunk || 20) - 4), WINDOW = 16384;
+  const body = Math.max(16, (ready.chunk || 20) - 4), WINDOW = Math.min(16384, ready.win || 16384);
   const st = { acked: 0, need: null, done: false, fail: null, last: Date.now() };
   LIVE.otaBusy = true; LIVE.otaCancel = false;
   LIVE.onOta = m => { st.last = Date.now(); if (m.got != null) st.acked = Math.max(st.acked, m.got); if (m.need != null) st.need = m.need; if (m.done) st.done = true; if (m.ok === false) st.fail = m.why || 'stopped'; };
@@ -288,7 +314,7 @@ async function btUpdate(ui) {
       }
     }
     if (st.fail) throw new Error('The T3 stopped: ' + st.fail + '. It keeps the program it has.');
-  } finally { LIVE.otaBusy = false; LIVE.onOta = null; }
+  } finally { LIVE.otaBusy = false; LIVE.onOta = null; LIVE.makingRoom = false; }
   ui('done', 1, 'Installed ' + meta.v + ' ✓', 'The T3 is restarting into it and Heep reconnects by itself. If it doesn’t start properly, it goes back to the old program on its own.');
   toast('T3 updated to ' + meta.v, 'Restarting…');
   return meta.v;

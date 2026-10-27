@@ -11,7 +11,14 @@ function t3Message(m, via) {
     LIVE.v = m; LIVE.at = Date.now();
     if (m.lat != null && m.lon != null) store.set('lastPos', { lat: m.lat, lon: m.lon, hdg: m.hdg, at: Date.now() });
     updateLive();
-  } else if (m.t === 'hi') { LIVE.fw = String(m.fw || ''); LIVE.t3 = m; LIVE.t3At = Date.now(); if (LIVE.onHi) LIVE.onHi(); else if (S.tab === 'live') render(); }
+  } else if (m.t === 'hi') {
+    LIVE.fw = String(m.fw || ''); LIVE.t3 = m; LIVE.t3At = Date.now();
+    // after an update that had to switch "Live over Wi-Fi" off to make room (t3net.js makeRoom): put it back
+    const lw = store.get('restoreLw', null);
+    if (lw != null && via === 'bt' && !LIVE.otaBusy && !LIVE.makingRoom && Number(m.lw) !== lw) { store.del('restoreLw'); send({ c: 'cfg', lw }); }
+    else if (lw != null && Number(m.lw) === lw) store.del('restoreLw');
+    if (LIVE.onHi) LIVE.onHi(); else if (S.tab === 'live') render();
+  }
   else if (m.t === 'cfg') { if (LIVE.onCfg) LIVE.onCfg(m); else toast('Saved on the T3', m.reset ? 'Settings back to new' : 'It uses them from now on'); }
   else if (m.t === 'trip' && via === 'bt') saveTrip(m);
   else if (m.t === 'scr') { if (LIVE.onScr) LIVE.onScr(m); }

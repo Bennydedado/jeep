@@ -13,6 +13,7 @@
 
 volatile bool otaMode = false;
 static MessageBufferHandle_t otaBuf = nullptr;   // packets from the Bluetooth task, drained by loop()
+static size_t otaBufSize = 0;
 static OtaRx otaRx;
 static mbedtls_sha256_context otaSha;
 static bool otaShaOn = false;
@@ -47,8 +48,15 @@ void otaBegin(const String& j) {
   else if (updating || uploadBusy()) why = "busy with a Wi-Fi update or upload: try again in a minute";
   else if (!next || size < 4096 || size > next->size) why = "the program is the wrong size";
   else if (sha.length() != 64) why = "no checksum";
-  else if (!otaBuf && !(otaBuf = xMessageBufferCreate(24576))) why = "not enough memory";
-  else if (!Update.begin(size, U_FLASH)) why = String("can't start: ") + Update.errorString();
+  if (!why.length()) {
+    // Wi-Fi and the relay's secure connection use a lot of memory: switch them off first. Then the receive buffer:
+    // made once and kept; as big as memory allows (Heep keeps less than its size in flight, "win" below).
+    wifiOff(180000);
+    static const size_t sizes[] = { 24576, 16384, 12288 };
+    for (size_t k = 0; k < 3 && !otaBuf; k++) if ((otaBuf = xMessageBufferCreate(sizes[k]))) otaBufSize = sizes[k];
+    if (!otaBuf) why = relayUp() || WiFi.getMode() != WIFI_OFF ? "not enough memory yet (Wi-Fi still closing): try again in a few seconds" : "not enough memory";
+    else if (!Update.begin(size, U_FLASH)) why = String("can't start: ") + Update.errorString();
+  }
   if (why.length()) { phoneSend("{\"t\":\"ota\",\"ok\":false,\"why\":\"" + jsonEsc(why) + "\"}"); return; }
   xMessageBufferReset(otaBuf);
   mbedtls_sha256_init(&otaSha); mbedtls_sha256_starts(&otaSha, 0); otaShaOn = true;
@@ -56,10 +64,11 @@ void otaBegin(const String& j) {
   otaWant = sha; otaVer = v.substring(0, 12);
   otaDropped = 0; otaLastPkt = millis(); otaLastNeed = 0;
   updating = true;
-  wifiOff(180000);   // the radio and the memory to ourselves until it's done
-  sdEvent("bluetooth update to " + otaVer + " (" + String(size) + " bytes)");
+  sdEvent("bluetooth update to " + otaVer + " (" + String(size) + " bytes, buffer " + String(otaBufSize) + ")");
   otaMode = true;    // from here every write from Heep is a packet
-  phoneSend("{\"t\":\"ota\",\"ok\":true,\"ready\":true,\"chunk\":" + String(phoneChunk()) + ",\"ack\":" + String(OtaRx::ACK_EVERY) + "}");
+  // win: how far ahead of the last "got" Heep may run, leaving room for the 4-byte length of each buffered packet
+  phoneSend("{\"t\":\"ota\",\"ok\":true,\"ready\":true,\"chunk\":" + String(phoneChunk()) + ",\"ack\":" + String(OtaRx::ACK_EVERY) +
+            ",\"win\":" + String(otaBufSize - 4096) + "}");
 }
 
 static void otaFinish() {
