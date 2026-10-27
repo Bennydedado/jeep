@@ -29,7 +29,7 @@ const FIELD = Object.fromEntries(FIELDS.map(f => [f.id, f]));
 // what the preview draws when there are no live numbers
 const SAMPLE = { kmh: 87, kmhg: 86, kmho: 87, hdg: 'NE', hdgd: '047°', otemp: -12.5, clock: '18:42', date: '2026-10-27', rpm: 1850, boost: 14.2, bmax: 21.6,
   ect: 86, iat: 8, volt: 14.1, load: 52, lph: 7.4, econ: 8.5, tstate: 'RUNNING', tkm: 42.7, ttime: '0:38', tl: 3.94, tavg: 9.2, tavgs: 67, tvmax: 104,
-  tidle: '0:03', totkm: 15204, totl: 1421, totavg: 9.3, gfix: '3D FIX', sats: '9/14', hdop: 0.9, alt: 702, lat: 56.20576, lon: -120.68724,
+  tidle: '0:03', totkm: 15204, totl: 1421, totavg: 9.3, gfix: '3D FIX', sats: '9/14', hdop: 0.9, alt: 702, lat: 56.24650, lon: -120.84760,
   obd: 'reading', ble: 'Heep on', wifi: 'Ben iPhone', nano: 'ok', sd: 'logging', sdfree: 29811, logn: 2311, queue: 0, fw: '2.0', up: '0:41', heap: 92, btn: '3S' };
 
 // same screens a new T3 starts with: keep in step with DEFAULT_SCREENS in firmware/T3/screens.h
@@ -212,17 +212,20 @@ function sendScreens(st) {
     const list = st.list.slice(0, MAX_SCREENS);
     const hash = screensHash(list);
     st.sentHash = hash; scrSave(st);
-    let done = false;
-    const timer = setTimeout(() => { if (done) return; done = true; LIVE.onScr = null; toast('The T3 didn\'t confirm', 'Check it\'s on and connected, then send again', 'bad'); resolve(false); }, 15000);
+    let done = false, timer = null;
+    const giveUp = () => { if (done) return; done = true; LIVE.onScr = null; toast('The T3 didn\'t confirm', 'Check it\'s on and connected, then send again', 'bad'); resolve(false); };
     LIVE.onScr = m => {
       if (done) return;
       done = true; clearTimeout(timer); LIVE.onScr = null;
       if (m.ok && m.h === hash) { st.ackHash = hash; st.ackAt = Date.now(); scrSave(st); if (LIVE.t3) LIVE.t3.scrh = hash; toast('Screens are on the T3', list.length + ' screens'); resolve(true); }
       else { toast('The T3 refused the screens', m.why || 'fingerprint different', 'bad'); resolve(false); }
     };
+    toast('Sending ' + list.length + ' screens…', 'Keep Heep open until the T3 confirms', 'info');
     (async () => {
       for (let i = 0; i < list.length; i++) await t3Send({ c: 'scr', i, n: list.length, d: list[i] });
       await t3Send({ c: 'scrok', n: list.length, h: hash });
+      // a big set takes a few seconds over Bluetooth: the wait for the answer starts once it's all sent
+      if (!done) timer = setTimeout(giveUp, 15000);
     })();
   });
 }
@@ -309,17 +312,20 @@ function screenEditor(st, idx, after) {
       const props = h('div', { style: 'display:grid;gap:12px' });
       const wl = h('div', { class: 'chips' });
       const redraw = () => { drawScreen(ctx, sc, SC, previewLive(), sel); };
+      const chipText = w => (w.type === 'l' ? '"' + (w.text || 'label') + '"' : w.type === 'n' ? 'line' : (FIELD[w.field] ? FIELD[w.field].label : w.field)) + (w.type === 'n' ? '' : ' · ' + ({ v: 'value', r: 'row', b: 'bar', l: 'text' })[w.type]);
+      // a change only renames its own chip: rebuilding the row while a number box loses focus would eat the tap
+      // that caused it (type a number, tap "+ Add": the Add button was gone before the tap landed)
+      const relabel = () => { const c = wl.children[sel]; if (c && sc.w[sel]) c.textContent = chipText(sc.w[sel]); };
       const paintList = () => {
         wl.textContent = '';
-        sc.w.forEach((w, i) => wl.append(h('button', { class: 'chip' + (i === sel ? ' on' : ''), onclick: () => { sel = i; paintAll(); } },
-          (w.type === 'l' ? '"' + (w.text || 'label') + '"' : w.type === 'n' ? 'line' : (FIELD[w.field] ? FIELD[w.field].label : w.field)) + ' · ' + ({ v: 'value', r: 'row', b: 'bar', l: 'text', n: '' })[w.type])));
+        sc.w.forEach((w, i) => wl.append(h('button', { class: 'chip' + (i === sel ? ' on' : ''), onclick: () => { sel = i; paintAll(); } }, chipText(w))));
         if (sc.w.length < MAX_WIDGETS) wl.append(h('button', { class: 'chip', onclick: () => { sc.w.push(newWidget({ y: Math.min(56, sc.w.length * 10), h: 8 })); sel = sc.w.length - 1; save(); paintAll(); } }, icon('plus'), 'Add'));
       };
       const paintProps = () => {
         props.textContent = '';
         const w = sc.w[sel];
         if (!w) { props.append(h('div', { class: 'foot', text: 'Tap Add to put a value on this screen, then drag it on the preview.' })); return; }
-        const set = (k, v) => { w[k] = v; if (w.x + w.w > SCR_W) w.w = SCR_W - w.x; if (w.y + w.h > SCR_H) w.h = SCR_H - w.y; save(); redraw(); paintList(); };
+        const set = (k, v) => { w[k] = v; if (w.x + w.w > SCR_W) w.w = SCR_W - w.x; if (w.y + w.h > SCR_H) w.h = SCR_H - w.y; save(); redraw(); relabel(); };
         const numRow = (label, k, lo, hi) => {
           const inp = h('input', { inputmode: 'numeric', value: String(w[k]) });
           inp.addEventListener('change', () => { set(k, clampI(inp.value, lo, hi)); inp.value = String(w[k]); });

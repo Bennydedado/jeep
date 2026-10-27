@@ -215,10 +215,17 @@ function saveTrip(m) {
   commit({ op: 'put', tab: 'trip', row: { id, t0, t1, km: num(m.km) || 0, lit: num(m.l) == null ? '' : num(m.l), vmax: num(m.vmax) == null ? '' : num(m.vmax), idle: num(m.idle) == null ? '' : Math.round(num(m.idle) / 60), note: '' } });
   send({ c: 'ack', id });
 }
-async function send(obj) {
-  if (!LIVE.rx) return;
+// one message at a time: two sends overlapping (a status poll during a screen upload, say) would mix their
+// bytes into one broken line on the T3, or make Bluetooth refuse a write ("operation already in progress")
+let sendChain = Promise.resolve();
+function send(obj) {
   const data = new TextEncoder().encode(JSON.stringify(obj) + '\n');
-  try { for (let i = 0; i < data.length; i += 20) await LIVE.rx.writeValue(data.slice(i, i + 20)); } catch (e) { /* the drop handler deals with it */ }
+  const run = sendChain.then(async () => {
+    if (!LIVE.rx) return;
+    try { for (let i = 0; i < data.length; i += 20) await LIVE.rx.writeValue(data.slice(i, i + 20)); } catch (e) { /* the drop handler deals with it */ }
+  });
+  sendChain = run.catch(() => {});
+  return run;
 }
 
 // ---------- demo: a drive through town and down the highway, made up
