@@ -8,6 +8,7 @@ the code was compiled and tested on a PC with simulated data (see section 17). E
 **PROVISIONAL** must be checked on your own board before you connect power.
 
 > **Warnings before you start**
+>
 > - Never connect a 5 V signal straight to a T3 pin. The ESP32 is a 3.3 V chip; 5 V on a GPIO can destroy it.
 >   The Nano is a 5 V board: its TX goes through the resistor divider in section 6.
 > - Never use GPIO 16 or 17 on the T3 V1.6.1. They are wired to the chip's own flash memory; touching them crashed the T3 before (firmware 1.2).
@@ -342,6 +343,7 @@ Note: the T3 never installs an *older* version by itself, so after a manual down
 ## 18. Installation checklist and first test
 
 **Before power**
+
 - [ ] T3 silkscreen says V1.6.1; GPIO 34, 39 (or 36), 4, 3V3, GND located on the headers
 - [ ] GPS: VCC→3V3, GND, TX→34 (by the pad labels)
 - [ ] Probe: red→3V3, black→GND, yellow→4, 4.7 kΩ 4↔3V3
@@ -351,6 +353,7 @@ Note: the T3 never installs an *older* version by itself, so after a manual down
 - [ ] T3 installed by USB with 2.0 (or let 1.5 update itself over Wi-Fi once pushed)
 
 **First key-on (parked, outside)**
+
 - [ ] T3 shows "Temp & dir": temperature appears within 2–3 s
 - [ ] Nano: stereo, pedal and headlights work as before (also with the T3 unplugged!)
 - [ ] Heep → Connect → chips; Diagnostics: GPS bytes increasing, sentences good, baud found
@@ -360,6 +363,7 @@ Note: the T3 never installs an *older* version by itself, so after a manual down
 - [ ] Wi-Fi: joins the hotspot; Live works in Safari (relay)
 
 **First drive**
+
 - [ ] Heading shows live above 5 km/h, brackets when stopped
 - [ ] Speed matches the speedometer (or GPS); distance roughly matches the odometer
 - [ ] Mark a spot with button 2; end the trip with a long press on button 3
