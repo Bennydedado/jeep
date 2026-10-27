@@ -16,7 +16,7 @@ static uint32_t gpsSentencesAtSwitch = 0;
 
 void gpsOpen(long baud) {
   gpsSerial.end();
-  gpsSerial.setRxBufferSize(1024);
+  gpsSerial.setRxBufferSize(2048);   // room for 0.3 s or more of NMEA even at 10 Hz, so a slow loop() pass never drops sentences
   gpsSerial.begin(baud, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
   gps.baud = baud;
   gpsBaudAt = millis();

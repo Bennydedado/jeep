@@ -23,17 +23,24 @@ static String encKeyFor;
 
 void netBegin() {
   evQ = xQueueCreate(8, 96);
-  // did the last update fail? The old program sets "try" before updating; if we're not that version now,
-  // the new one didn't survive its first 20 s and the ESP32 rolled back: don't fetch it again.
+  // did the last update fail? "try" is set once a new program is fully downloaded, just before restarting into
+  // it; if we're not that version now, it didn't last its first 20 s and the ESP32 went back to this one.
+  // The T3 has no battery, so the key going off (or the starter dipping the power) in those 20 s looks the
+  // same as a crash: a version only counts as bad after failing 3 times.
   Preferences p; p.begin("t3", false);
   String tried = p.getString("try", "");
   badVersion = p.getString("bad", "");
-  if (tried.length() && tried != FW) { badVersion = tried; p.putString("bad", tried); p.remove("try"); }
+  if (tried.length() && tried != FW) {
+    int fails = (p.getString("tryv", "") == tried ? p.getInt("tryn", 0) : 0) + 1;
+    p.putString("tryv", tried); p.putInt("tryn", fails);
+    if (fails >= 3) { badVersion = tried; p.putString("bad", tried); }
+    p.remove("try");
+  }
   lastNonce = p.getLong64("nonce", 0);
   p.end();
 }
 // called once the new program has run 20 s (T3.ino): it's a keeper
-void updateConfirmed() { Preferences p; p.begin("t3", false); if (p.getString("try", "") == FW) p.remove("try"); p.end(); }
+void updateConfirmed() { Preferences p; p.begin("t3", false); if (p.getString("try", "") == FW) { p.remove("try"); p.remove("tryv"); p.remove("tryn"); } p.end(); }
 
 void wifiNudge(bool update) { nextWifiTry = 0; nextUploadTry = 0; if (update) nextUpdateCheck = 0; }
 void wifiNudge() { wifiNudge(false); }
@@ -118,11 +125,16 @@ void checkUpdate() {
   flushReq = true;
   for (int i = 0; i < 40 && flushReq; i++) vTaskDelay(pdMS_TO_TICKS(50));
   updating = true;
-  { Preferences p; p.begin("t3", false); p.putString("try", v); p.end(); }
-  httpUpdate.rebootOnUpdate(true);
+  // restart ourselves (not inside httpUpdate) so "try" is only written once the whole program is in flash:
+  // a download cut short by the key never counts against that version
+  httpUpdate.rebootOnUpdate(false);
   t_httpUpdate_return r = httpUpdate.update(tls, url);
+  if (r == HTTP_UPDATE_OK) {
+    { Preferences p; p.begin("t3", false); p.putString("try", v); p.end(); }
+    delay(200);
+    ESP.restart();
+  }
   updating = false;
-  { Preferences p; p.begin("t3", false); p.remove("try"); p.end(); }
   updStatus.set(r == HTTP_UPDATE_NO_UPDATES ? "up to date" : "update failed");
   taskEvent("update: " + String(updStatus));
 }

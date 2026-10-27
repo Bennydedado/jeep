@@ -11,10 +11,12 @@ static QueueHandle_t rxQueue;   // bytes Heep wrote, read in loop()
 static String rxLine;
 static String pendingScr[MAX_SCREENS];   // a screen set arriving one screen per message
 static int pendingScrN = 0;
+static volatile uint16_t phoneMtu = 23;   // what Heep's phone agreed to; notifications carry up to MTU - 3 bytes
 
 class ServerCB : public NimBLEServerCallbacks {
-  void onConnect(NimBLEServer*, NimBLEConnInfo&) override { phoneOn = true; }
-  void onDisconnect(NimBLEServer*, NimBLEConnInfo&, int) override { phoneOn = false; NimBLEDevice::startAdvertising(); }
+  void onConnect(NimBLEServer*, NimBLEConnInfo&) override { phoneMtu = 23; phoneOn = true; }
+  void onDisconnect(NimBLEServer*, NimBLEConnInfo&, int) override { phoneOn = false; phoneMtu = 23; NimBLEDevice::startAdvertising(); }
+  void onMTUChange(uint16_t mtu, NimBLEConnInfo&) override { phoneMtu = mtu; }
 };
 class RxCB : public NimBLECharacteristicCallbacks {
   void onWrite(NimBLECharacteristic* c, NimBLEConnInfo&) override {
@@ -41,14 +43,17 @@ void phoneBegin() {
   adv->start();
 }
 
+// one message, cut into notifications as big as the link allows (a live message is 2-3 of them on an iPhone,
+// instead of 25 with a pause after each: loop() is held up for a few ms, not ~75 ms twice a second)
 void phoneSend(const String& line) {
   if (!phoneOn || !txChar) return;
   String s = line + "\n";
-  for (size_t i = 0; i < s.length(); i += 20) {
-    String part = s.substring(i, i + 20);
-    txChar->setValue((const uint8_t*)part.c_str(), part.length());
+  size_t chunk = constrain((int)phoneMtu - 3, 20, 240);
+  for (size_t i = 0; i < s.length(); i += chunk) {
+    size_t left = s.length() - i, n = left < chunk ? left : chunk;
+    txChar->setValue((const uint8_t*)s.c_str() + i, n);
     txChar->notify();
-    delay(3);
+    if (i + n < s.length()) delay(2);
   }
 }
 // answer the way the command came: 0 Bluetooth, 1 relay

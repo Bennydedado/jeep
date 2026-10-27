@@ -100,7 +100,11 @@ static bool obdBusy = false;
 static uint32_t obdSentAt = 0, obdTimeout = 1500;
 static int obdStage = 0;   // 0 = reset the adapter, then set it up, then ask for engine values
 static int pollIdx = 0;
-static bool pidMissing[256];
+static uint8_t pidMiss[256];   // "NO DATA" answers in a row for each PID
+static uint32_t pidMissClear = 0;
+// a PID counts as missing (not asked for any more) after 3 "NO DATA" in a row: one miss while cranking or a
+// busy bus mustn't blank boost or speed for the whole drive. Everything gets another chance every 2 minutes.
+static bool pidMissing(int pid) { return pidMiss[pid & 0xFF] >= 3; }
 
 void obdSendCmdT(const String& cmd, uint32_t timeout) {
   if (!obdWrite) return;
@@ -118,7 +122,8 @@ void obdAnswer(String r) {
   int pid = (int)strtol(obdCmd.substring(2, 4).c_str(), nullptr, 16);
   String want = "41" + obdCmd.substring(2, 4);
   int i = r.indexOf(want);
-  if (i < 0) { if (r.indexOf("NODATA") >= 0 || r.indexOf("?") >= 0) pidMissing[pid] = true; return; }
+  if (i < 0) { if ((r.indexOf("NODATA") >= 0 || r.indexOf("?") >= 0) && pidMiss[pid] < 255) pidMiss[pid]++; return; }
+  pidMiss[pid] = 0;
   i += 4;
   int A = r.length() >= (unsigned)i + 2 ? hexByte(r, i) : 0, B = r.length() >= (unsigned)i + 4 ? hexByte(r, i + 2) : 0;
   switch (pid) {
@@ -139,7 +144,8 @@ void obdStep() {
     if (obdClient->isConnected()) obdClient->disconnect();
     obdLinked = false;
   }
-  if (!obdLinked) { obdStage = 0; obdBusy = false; return; }
+  if (!obdLinked) { obdStage = 0; obdBusy = false; memset(pidMiss, 0, sizeof(pidMiss)); return; }
+  if (millis() - pidMissClear > 120000) { pidMissClear = millis(); memset(pidMiss, 0, sizeof(pidMiss)); }
   char ch;
   while (xQueueReceive(obdQueue, &ch, 0) == pdTRUE) {
     obdBuf += ch;
@@ -155,7 +161,7 @@ void obdStep() {
   int k = pollIdx++ % 12;
   int pid = k < 10 ? fast[k % 4] : slow[(pollIdx / 12) % 5];
   if (pid == -1) { obdSendCmd("ATRV"); return; }
-  if (pidMissing[pid]) pid = fast[k % 2];
+  if (pidMissing(pid)) pid = fast[k % 2];
   char c[6]; snprintf(c, sizeof(c), "01%02X", pid);
   obdSendCmd(c);
 }
@@ -164,7 +170,7 @@ void obdStep() {
 // (a 2.8 CRD makes about 400 Nm; diesel burns about 240 g per kWh). Heep's fuel correction trims it.
 float fuelNow() {
   if (car.rpm <= 0) return 0;
-  if (!pidMissing[0x5E] && car.lph >= 0) return car.lph * cfg.fuelCal;
+  if (!pidMissing(0x5E) && car.lph >= 0) return car.lph * cfg.fuelCal;
   float load = car.load < 0 ? 20 : car.load;
   float lph = load / 100.0 * car.rpm * 0.0105;
   if (lph < 0.6) lph = 0.6;

@@ -104,6 +104,11 @@ void applyBright() {
 
 void displayStep() {
   uint32_t now = millis();
+  // the engine starting wakes the screen, like a press (so it's never dark at the start of a drive)
+  static bool engineWas = false;
+  bool eng = engineOn();
+  if (eng && !engineWas) screenWake();
+  engineWas = eng;
   // sleep after "screenSecs" without a press (0 = never)
   if (cfg.screenSecs > 0 && screenOn && now - lastTouch > (uint32_t)cfg.screenSecs * 1000UL) screenToggle();
   static uint32_t lastBright = 0;
