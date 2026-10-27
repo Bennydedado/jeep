@@ -40,7 +40,7 @@ void bootUpdateStep() {
 }
 
 static void bootShow(const String& a, const String& b, int pct) {   // pct -1: no bar
-  oled.setRotation(cfg.flip ? 2 : 0, -1);
+  oled.setRotation(cfg.flip ? 2 : 0);
   oled.clearDisplay(); oled.setTextColor(SSD1306_WHITE); oled.setTextSize(1);
   oled.setCursor(0, 0); oled.print("Update over Wi-Fi");
   oled.drawFastHLine(0, 10, 128, SSD1306_WHITE);
