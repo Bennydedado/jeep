@@ -35,7 +35,7 @@
   .msg.show { display: block; }
   .msg.bad { background: rgba(255, 69, 58, .14); }
   .msg.ok { background: rgba(48, 209, 88, .14); }
-  .msg p { color: #fff; margin: 6px 0 0; }
+  .msg p { color: #fff; margin: 6px 0 0; white-space: pre-line; }
   details { margin-top: 14px; }
   summary { cursor: pointer; color: var(--ink2); }
   pre { background: #000; border: 1px solid var(--line); border-radius: 10px; padding: 10px; max-height: 260px; overflow: auto; font: 12px/1.45 ui-monospace, Consolas, monospace; white-space: pre-wrap; word-break: break-all; color: #cfd; }
@@ -169,17 +169,19 @@ $('#go').onclick = async () => {
     console.error(e);
     log('STOPPED at ' + at + ': ' + (e && e.message));
     step(at, 'bad');
-    const stuck = e instanceof Stuck;
+    const stuck = e instanceof Stuck, em = (e && e.message) || '';
+    const busyPort = at === 'conn' && /open|already|busy|InvalidState|NetworkError|locked/i.test(em) && !stuck;
     const tips = {
       dl: ['Couldn\'t download the program', 'Check the computer is online and reload this page. (' + (e && e.message) + ')'],
       conn: e && e.name === 'NotFoundError'
         ? ['No port picked', 'Click Connect and install again and pick the T3\'s port (it appears when you plug the T3 in). None there? Install the CH343SER driver.']
-        : ['Couldn\'t get the T3 into install mode', 'Unplug the T3. Choose "I\'m holding BOOT", hold BOOT (or put a jumper wire from pin 0 to GND), plug the T3 in, then click Connect and install. Also try a USB port on the back of the computer.'],
+        : busyPort ? ['The T3\'s port is busy', 'Something else has it open: close the other installer tab, the Arduino IDE and any Serial Monitor, unplug the T3, plug it back in, reload this page and try again.']
+        : ['Couldn\'t get the T3 into install mode', 'The T3 didn\'t answer the reset. Usually Windows\' built-in driver ignores it: install the WCH CH343SER driver, replug and try again. Or: a jumper wire from pin 0 to GND (or hold BOOT if your board has one), replug, choose "I\'m holding BOOT" and try again.'],
       stub: ['The T3 connected, then the helper didn\'t start', 'This is where the other installer freezes, usually because of Windows\' built-in driver. Unplug the T3, plug it back in, tick "Skip the helper program" and try again. Installing the CH343SER driver fixes it for good.'],
       write: [stuck ? 'Writing stopped moving' : 'Writing failed', 'Unplug the T3, plug it back in and start again (tick "Skip the helper program" if it was ticked off). The T3 needs one complete install to start normally.'],
       done: ['Couldn\'t restart it', 'The program is written: unplug the T3 and plug it back in.'],
     }[at];
-    say('bad', tips[0], tips[1]);
+    say('bad', tips[0], tips[1] + (em ? '\n\nWhat it said: ' + (stuck ? 'no answer after waiting' : em) : ''));
     $('#det').open = true;
     if (transport) { await limit(transport.disconnect(), 3000, 'x').catch(() => {}); }
   } finally {
