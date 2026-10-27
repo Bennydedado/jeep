@@ -1,5 +1,5 @@
-Sketch uses 1550920 bytes (78%) of program storage space. Maximum is 1966080 bytes.
-Global variables use 70340 bytes (21%) of dynamic memory, leaving 257340 bytes for local variables. Maximum is 327680 bytes.
+Sketch uses 1555196 bytes (79%) of program storage space. Maximum is 1966080 bytes.
+Global variables use 70412 bytes (21%) of dynamic memory, leaving 257268 bytes for local variables. Maximum is 327680 bytes.
 T3.ino.bin
 T3.ino.bootloader.bin
 T3.ino.elf
