@@ -111,6 +111,7 @@ static bool pidMissing(int pid) { return pidMiss[pid & 0xFF] >= 3; }
 // what the engine computer says it offers (answers to 0100, 0120...): only those are asked for
 static ObdSupport obdSup;
 static int supNext = -1, mapPid = -1;
+static float baroLearned = -1;                  // outside air pressure learned from intake pressure (obdpid.h learnBaro)
 static String obdProto;
 static uint32_t obdHeardAt = 0, supAskAt = 0;   // the adapter answered anything / when 0100 was last asked
 static bool askProto = false;
@@ -136,7 +137,8 @@ String obdDiagJson() {
   return "\"obd\":{\"proto\":\"" + jsonEsc(obdProto) + "\",\"known\":" + String(obdSup.known ? 1 : 0) +
          ",\"raw\":{\"0100\":\"" + jsonEsc(raw0100) + "\",\"0C\":\"" + jsonEsc(raw0C) + "\",\"0B\":\"" + jsonEsc(raw0B) + "\"}" +
          ",\"data\":" + String(car.at && millis() - car.at < 5000 ? 1 : 0) + ",\"sup\":\"" + String(sup) + "\",\"boost\":\"" +
-         (bp < 0 ? String("-") : String(bps)) + "\",\"map\":" + num(car.mapKpa >= 0 ? car.mapKpa : NAN, 1) + ",\"baro\":" + num(car.baro > 0 ? car.baro : NAN, 0) +
+         (bp < 0 ? String("-") : String(bps)) + "\",\"map\":" + num(car.mapKpa >= 0 ? car.mapKpa : NAN, 1) + ",\"baro\":" + num(baroNow(), 1) +
+         ",\"baroSrc\":\"" + String(car.baro > 0 && pidOk(0x33) ? "ecu" : baroLearned > 0 ? "learned" : "assumed") + "\"" +
          ",\"miss\":\"" + miss + "\"}";
 }
 
@@ -176,7 +178,13 @@ void obdAnswer(String r) {
     case 0x04: car.load = A * 100.0 / 255; break;
     case 0x05: car.ect = A - 40; break;
     case 0x0F: car.iat = A - 40; break;
-    case 0x0B: case 0x87: case 0x70: { float k = obdMapKpa(pid, b, n); if (k >= 0) { car.mapKpa = k; mapPid = pid; } break; }
+    case 0x0B: case 0x87: case 0x70: {
+      float k = obdMapKpa(pid, b, n);
+      if (k >= 0) { car.mapKpa = k; mapPid = pid; if (!pidOk(0x33)) baroLearned = learnBaro(baroLearned, k, car.rpm, car.kmh, car.load); }
+      break;
+    }
+    case 0x10: car.maf = (256 * A + B) / 100.0; break;
+    case 0x23: car.rail = (256 * A + B) * 10.0; break;
     case 0x33: car.baro = A; break;
     case 0x5E: car.lph = (256 * A + B) / 20.0; break;
   }
@@ -216,10 +224,14 @@ void obdStep() {
   if (!obdSup.known && millis() - supAskAt > 20000) { supAskAt = millis(); obdSendCmdT("0100", 9000); return; }
   // speed, RPM and boost all the time; the rest now and then; only what the engine offers
   const int fast[] = { 0x0D, 0x0C, boostPid(), 0x04 };
-  static const int slow[] = { 0x05, 0x0F, 0x33, 0x5E, -1 };
+  static const int slow[] = { 0x05, 0x0F, 0x10, 0x23, 0x33, 0x5E, -1 };
+  static int slowIdx = 0;
   int k = pollIdx++ % 12;
-  int pid = k < 10 ? fast[k % 4] : slow[(pollIdx / 12) % 5];
-  if (k >= 10 && pid == -1) { obdSendCmd("ATRV"); return; }
+  int pid = fast[k % 4];
+  if (k >= 10) {   // the next slow value the engine offers (battery voltage from the adapter in between)
+    pid = -1;
+    for (int t = 0; t < 7 && pid < 0; t++) { int c = slow[slowIdx++ % 7]; if (c == -1) { obdSendCmd("ATRV"); return; } if (pidOk(c)) pid = c; }
+  }
   if (pid < 0 || !pidOk(pid)) pid = fast[k % 2];
   char c[6]; snprintf(c, sizeof(c), "01%02X", pid);
   obdSendCmd(c);
@@ -282,4 +294,6 @@ float fuelNow() {
   if (lph < 0.6) lph = 0.6;
   return lph * cfg.fuelCal;
 }
-float boostPsi() { if (car.mapKpa < 0 || millis() - car.at > 5000) return -1; float b = (car.mapKpa - (car.baro > 0 ? car.baro : 101)) * 0.145038; return b < 0 ? 0 : b; }
+// outside air pressure: the engine's own (PID 33), else learned at idle / key-on (about 93 kPa at Fort St. John), else sea level
+float baroNow() { return car.baro > 0 && pidOk(0x33) ? car.baro : baroLearned > 0 ? baroLearned : 101.3; }
+float boostPsi() { if (car.mapKpa < 0 || millis() - car.at > 5000) return -1; float b = (car.mapKpa - baroNow()) * 0.145038; return b < 0 ? 0 : b; }

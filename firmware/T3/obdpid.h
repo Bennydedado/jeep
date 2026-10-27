@@ -74,3 +74,16 @@ inline float obdMapKpa(int pid, const uint8_t* b, int n) {
   if (pid == 0x70 && n >= 5 && (b[0] & 2)) return ((b[3] << 8) | b[4]) * 0.03125f;   // boost pressure sensor A
   return -1;
 }
+
+// Outside air pressure (kPa) for boost, when the engine doesn't report it (PID 33). With the key on and the engine
+// stopped, intake pressure IS outside pressure; at idle a diesel makes no boost and has no throttle, so it's within a
+// kPa or two. Anything in the intake can only pull it lower, so it rises quickly and sinks slowly. Returns the new
+// estimate (or the old one when this reading can't tell: driving, revving). -1 = none yet. Fort St. John (~700 m) ~ 93.
+inline float learnBaro(float learned, float mapKpa, float rpm, float kmh, float load) {
+  if (mapKpa < 60 || mapKpa > 110) return learned;              // not a believable outside pressure
+  if (rpm >= 0 && rpm < 50) return mapKpa;                      // key on, engine stopped: exact
+  bool idle = rpm > 400 && rpm < 1000 && kmh < 2 && (load < 0 || load < 40);
+  if (!idle) return learned;
+  if (learned < 0) return mapKpa;
+  return mapKpa > learned ? learned * 0.8f + mapKpa * 0.2f : learned * 0.98f + mapKpa * 0.02f;
+}

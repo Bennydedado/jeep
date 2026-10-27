@@ -241,7 +241,8 @@ void drawWidget(const Widget& w) {
 // ---------------------------------------------------------------- what each field shows
 String unitFor(int f) {
   const char* id = FIELDS[f].id;
-  if (!strcmp(id, "otemp") || !strcmp(id, "ect") || !strcmp(id, "iat")) return cfg.tempF && !strcmp(id, "otemp") ? "F" : "C";
+  if (!strcmp(id, "otemp")) return cfg.tempF ? "F" : "C";
+  if (!strcmp(id, "ect") || !strcmp(id, "iat")) return cfg.engF ? "F" : "C";
   return FIELDS[f].unit;
 }
 static String fmt(float v, int dp) { return isnan(v) ? String("--") : String(v, dp); }
@@ -258,8 +259,10 @@ float fieldNumber(int f) {
   if (!strcmp(id, "rpm")) return obdOk && car.rpm >= 0 ? car.rpm : NAN;
   if (!strcmp(id, "boost")) { float b = boostPsi(); return b < 0 ? NAN : b; }
   if (!strcmp(id, "bmax")) return trip.boostMax;
-  if (!strcmp(id, "ect")) return obdOk && car.ect > -100 ? car.ect : NAN;
-  if (!strcmp(id, "iat")) return obdOk && car.iat > -100 ? car.iat : NAN;
+  if (!strcmp(id, "ect")) return obdOk && car.ect > -100 ? (cfg.engF ? car.ect * 9 / 5 + 32 : car.ect) : NAN;
+  if (!strcmp(id, "iat")) return obdOk && car.iat > -100 ? (cfg.engF ? car.iat * 9 / 5 + 32 : car.iat) : NAN;
+  if (!strcmp(id, "maf")) return obdOk && car.maf >= 0 ? car.maf : NAN;
+  if (!strcmp(id, "rail")) return obdOk && car.rail >= 0 ? car.rail / 100 : NAN;
   if (!strcmp(id, "volt")) return obdOk && car.volts > 0 ? car.volts : NAN;
   if (!strcmp(id, "load")) return obdOk && car.load >= 0 ? car.load : NAN;
   if (!strcmp(id, "lph")) return engineOn() ? fuelNow() : NAN;

@@ -198,13 +198,30 @@ bool verNewer(const String& a, const String& b) {
 
 // a newer T3 program on GitHub? Fetch it and restart into it (only while the Jeep is stopped)
 void checkUpdate() {
-  WiFiClientSecure tls;
-  tls.setInsecure();
-  HTTPClient http;
-  String body;
-  if (http.begin(tls, UPDATE_JSON)) { if (http.GET() == 200) body = http.getString(); http.end(); }
+  // t3.json: up to 3 tries with generous timeouts (a weak signal at the edge of the yard is slow, not dead);
+  // the ?t= makes GitHub's cache hand over the newest copy
+  String body, why;
+  for (int attempt = 0; attempt < 3 && !body.length(); attempt++) {
+    if (attempt) { updStatus.set("checking GitHub (try " + String(attempt + 1) + " of 3)"); vTaskDelay(pdMS_TO_TICKS(3000)); }
+    WiFiClientSecure tls;
+    tls.setInsecure();
+    tls.setHandshakeTimeout(20);
+    HTTPClient http;
+    http.setConnectTimeout(15000);
+    http.setTimeout(15000);
+    if (!http.begin(tls, String(UPDATE_JSON) + "?t=" + String(millis()))) { why = "bad address"; continue; }
+    int code = http.GET();
+    if (code == 200) body = http.getString();
+    else if (code < 0) why = HTTPClient::errorToString(code);
+    else why = "GitHub said " + String(code);
+    http.end();
+  }
   String v = jStr(body, "v"), url = jStr(body, "url");
-  if (!v.length() || !url.length()) { updStatus.set("couldn't reach GitHub"); updPhase = UP_FAIL; return; }
+  if (!v.length() || !url.length()) {
+    updStatus.set("couldn't reach GitHub: " + (why.length() ? why : String("no answer")) + " (signal " + String(WiFi.RSSI()) + " dBm, " + String(ESP.getFreeHeap() / 1024) + " KB free)");
+    updPhase = UP_FAIL;
+    return;
+  }
   updVer.set(v);
   if (!verNewer(v, FW)) { updStatus.set("up to date (" FW ")"); updPhase = UP_CURRENT; return; }   // never goes backwards
   if (v == badVersion) { updStatus.set(v + " failed before; waiting for a newer one"); updPhase = UP_FAIL; return; }
@@ -215,9 +232,13 @@ void checkUpdate() {
   updating = true;
   // restart ourselves (not inside httpUpdate) so "try" is only written once the whole program is in flash:
   // a download cut short by the key never counts against that version
-  httpUpdate.rebootOnUpdate(false);
-  httpUpdate.onProgress([](int cur, int total) { if (total > 0) updPct = (int)((int64_t)cur * 100 / total); });
-  t_httpUpdate_return r = httpUpdate.update(tls, url);
+  HTTPUpdate up(30000);   // a slow hotspot can pause for a while mid-download
+  up.rebootOnUpdate(false);
+  up.onProgress([](int cur, int total) { if (total > 0) updPct = (int)((int64_t)cur * 100 / total); });
+  WiFiClientSecure tls;
+  tls.setInsecure();
+  tls.setHandshakeTimeout(20);
+  t_httpUpdate_return r = up.update(tls, url);
   if (r == HTTP_UPDATE_OK) {
     markUpdateTry(v);
     updStatus.set("installed " + v + ", restarting"); updPct = 100; updPhase = UP_DONE;
@@ -225,7 +246,7 @@ void checkUpdate() {
     ESP.restart();
   }
   updating = false;
-  updStatus.set(r == HTTP_UPDATE_NO_UPDATES ? String("up to date") : "download failed: " + httpUpdate.getLastErrorString());
+  updStatus.set(r == HTTP_UPDATE_NO_UPDATES ? String("up to date") : "download failed: " + up.getLastErrorString());
   updPhase = r == HTTP_UPDATE_NO_UPDATES ? UP_CURRENT : UP_FAIL;
   taskEvent("update: " + String(updStatus));
 }
@@ -410,7 +431,7 @@ static void relayKeep(uint32_t now) {
   if (relayBusy) return;
   if (mqtt.connected() && subscribed != cmdTopic) mqtt.disconnect();   // the sheet key changed: listen on the new channel
   if (!mqtt.connected()) {
-    if (now - mqttTry < 10000 || (uploading && ESP.getFreeHeap() < 110000)) return;
+    if (now - mqttTry < 10000 || (uploading && ESP.getFreeHeap() < 150000)) return;
     mqttTry = now;
     relayBusy = true;
     if (xTaskCreatePinnedToCore(relayConnectTask, "relay", 12288, nullptr, 1, nullptr, 0) != pdPASS) relayBusy = false;
@@ -496,7 +517,8 @@ void wifiStep() {
       }
       if (uploading) { if (liveWanted()) relayKeep(now); return; }   // the upload has its own connection; the relay can carry its progress
       if (!scanOnly && (uploadWanted() || now >= nextUpdateCheck)) {
-        if (mqtt.connected() && ESP.getFreeHeap() < 110000) mqtt.disconnect();   // short of memory: the upload goes first
+        // two secure connections at once need a lot of memory: unless there's plenty, the relay waits (an update most of all)
+        if (mqtt.connected() && ESP.getFreeHeap() < (now >= nextUpdateCheck ? 150000 : 110000)) mqtt.disconnect();
         if (updPhase == UP_WAIT) updStatus.set("starting");
         uploading = true;
         if (xTaskCreatePinnedToCore(uploadTask, "upload", 16384, nullptr, 1, nullptr, 0) != pdPASS) { uploading = false; nextUploadTry = now + 60000; }

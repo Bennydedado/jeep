@@ -157,6 +157,8 @@ String liveJson() {
     if (car.iat > -100) m += ",\"iat\":" + String(car.iat, 0);
     if (car.volts > 0) m += ",\"v\":" + String(car.volts, 1);
     if (car.load >= 0) m += ",\"load\":" + String(car.load, 0);
+    if (car.maf >= 0) m += ",\"maf\":" + String(car.maf, 1);
+    if (car.rail >= 0) m += ",\"rail\":" + String(car.rail / 100, 0);
     m += ",\"lph\":" + String(fuelNow(), 2);
   }
   m += ",\"g\":" + String((int)gps.state);

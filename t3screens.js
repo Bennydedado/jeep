@@ -14,7 +14,7 @@ const FIELDS = [
   ['clock', 'Time', '', -1, 'Driving'], ['date', 'Date', '', -1, 'Driving'],
   ['rpm', 'RPM', '', 0, 'Engine'], ['boost', 'Boost', 'psi', 1, 'Engine'], ['bmax', 'Peak bst', 'psi', 1, 'Engine'], ['ect', 'Coolant', 'C', 0, 'Engine'],
   ['iat', 'Intake', 'C', 0, 'Engine'], ['volt', 'Battery', 'V', 1, 'Engine'], ['load', 'Load', '%', 0, 'Engine'], ['lph', 'Fuel', 'L/h', 1, 'Engine'],
-  ['econ', 'Now', 'L/100', 1, 'Engine'],
+  ['econ', 'Now', 'L/100', 1, 'Engine'], ['maf', 'Air flow', 'g/s', 1, 'Engine'], ['rail', 'Rail', 'bar', 0, 'Engine'],
   ['tstate', 'Trip', '', -1, 'Trip'], ['tkm', 'Trip', 'km', 1, 'Trip'], ['ttime', 'Time', '', -1, 'Trip'], ['tl', 'Diesel', 'L', 2, 'Trip'],
   ['tavg', 'Trip avg', 'L/100', 1, 'Trip'], ['tavgs', 'Avg spd', 'km/h', 0, 'Trip'], ['tvmax', 'Top spd', 'km/h', 0, 'Trip'], ['tidle', 'Idle', '', -1, 'Trip'],
   ['totkm', 'All km', 'km', 0, 'Trip'], ['totl', 'All L', 'L', 0, 'Trip'], ['totavg', 'All avg', 'L/100', 1, 'Trip'],
@@ -28,7 +28,7 @@ const FIELD = Object.fromEntries(FIELDS.map(f => [f.id, f]));
 
 // what the preview draws when there are no live numbers
 const SAMPLE = { kmh: 87, kmhg: 86, kmho: 87, hdg: 'NE', hdgd: '047°', otemp: -12.5, clock: '18:42', date: '2026-10-27', rpm: 1850, boost: 14.2, bmax: 21.6,
-  ect: 86, iat: 8, volt: 14.1, load: 52, lph: 7.4, econ: 8.5, tstate: 'RUNNING', tkm: 42.7, ttime: '0:38', tl: 3.94, tavg: 9.2, tavgs: 67, tvmax: 104,
+  ect: 86, iat: 8, volt: 14.1, load: 52, lph: 7.4, econ: 8.5, maf: 38.5, rail: 850, tstate: 'RUNNING', tkm: 42.7, ttime: '0:38', tl: 3.94, tavg: 9.2, tavgs: 67, tvmax: 104,
   tidle: '0:03', totkm: 15204, totl: 1421, totavg: 9.3, gfix: '3D FIX', sats: '9/14', hdop: 0.9, alt: 702, lat: 56.24650, lon: -120.84760,
   obd: 'reading', ble: 'Heep on', wifi: 'Ben iPhone', nano: 'ok', sd: 'logging', sdfree: 29811, logn: 2311, queue: 0, fw: '2.0', up: '0:41', heap: 92, btn: '3S' };
 
@@ -112,6 +112,7 @@ function fieldShown(id, live) {
   if (!f) return '?';
   let v = live && live[id] !== undefined ? live[id] : SAMPLE[id];
   if (v == null || v === '') return '--';
+  if ((id === 'ect' || id === 'iat') && typeof v === 'number' && t3EngF()) v = v * 9 / 5 + 32;   // the T3 shows engine temps in F unless set to C
   if (f.dp >= 0 && typeof v === 'number') return v.toFixed(f.dp);
   return String(v);
 }
@@ -135,7 +136,7 @@ function drawScreen(ctx, sc, scale, live, sel) {
     ctx.strokeStyle = fg; ctx.lineWidth = 1 / S2 * 1.5;
     if (w.frame) ctx.strokeRect(w.x + .5, w.y + .5, w.w - 1, w.h - 1);
     const label = w.text || (f ? f.label : '?');
-    const unit = f && w.unit ? (w.field === 'otemp' && t3TempF() ? 'F' : f.unit) : '';
+    const unit = f && w.unit ? (w.field === 'otemp' ? (t3TempF() ? 'F' : 'C') : (w.field === 'ect' || w.field === 'iat') ? (t3EngF() ? 'F' : 'C') : f.unit) : '';
     let v = f ? fieldShown(w.field, live) : '?';
     if (w.type === 'n') { ctx.fillStyle = fg; if (w.w >= w.h) ctx.fillRect(w.x, w.y, w.w, 1); else ctx.fillRect(w.x, w.y, 1, w.h); }
     else if (w.type === 'l') text(w.text, w.x, w.y, w.w, w.h, w.align, w.size, fg);
@@ -178,7 +179,7 @@ function previewLive() {
   const o = {};
   if (d.kmh != null) o.kmh = d.kmh;
   if (d.gkmh != null) o.kmhg = d.gkmh;
-  for (const k of ['rpm', 'boost', 'ect', 'iat', 'load', 'lph', 'sats', 'hdop']) if (d[k] != null) o[k] = d[k];
+  for (const k of ['rpm', 'boost', 'ect', 'iat', 'load', 'lph', 'sats', 'hdop', 'maf', 'rail']) if (d[k] != null) o[k] = d[k];
   if (d.v != null) o.volt = d.v;
   if (d.ot != null) o.otemp = t3TempF() ? d.ot * 9 / 5 + 32 : d.ot;
   if (d.hdg != null) o.hdg = (d.hdgAge > 3 ? '(' : '') + compass(d.hdg) + (d.hdgAge > 3 ? ')' : '');
