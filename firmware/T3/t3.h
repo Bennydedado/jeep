@@ -69,7 +69,8 @@ struct Settings {
   int spdSrc = 0;                           // 0 auto (iCar, else GPS) 1 iCar only 2 GPS only
   int hdgMin = 5;                           // km/h: slower than this the GPS course isn't trusted
   bool hdg16 = false, hdgHold = true;       // 16 points instead of 8; show the last heading (in brackets) when stopped
-  bool tempF = false;
+  bool tempF = false;                       // outside temperature in F
+  bool engF = true;                         // coolant and intake temperatures in F
   float tempOff = 0;                        // added to the probe reading
   long gpsBaud = 0;                         // 0 = find it by itself
   int logSec = 1, logIdleSec = 10, flushSec = 5, sdMaxPct = 90;
@@ -90,6 +91,7 @@ int64_t nowMs();
 // ---------------------------------------------------------------- what the engine says (iCar)
 struct Live {
   float kmh = -1, rpm = -1, load = -1, ect = -999, iat = -999, mapKpa = -1, baro = -1, volts = -1, lph = -1;
+  float maf = -1, rail = -1;                // air flow g/s, fuel rail pressure kPa (PIDs 10, 23)
   uint32_t at = 0;
 };
 extern Live car;

@@ -4,6 +4,8 @@
 // Message list: T3.md.
 
 const t3TempF = () => !!Number(store.get('t3', {}).tf);
+// coolant and intake temperatures: F unless set to C (the T3's own default too)
+const t3EngF = () => { const v = store.get('t3', {}).etf; return v == null ? true : !!Number(v); };
 
 // ---------------------------------------------------------------- one way in for every T3 message (Bluetooth or relay)
 function t3Message(m, via) {
@@ -70,14 +72,14 @@ function t3Act(a) { return t3Send({ c: 'act', a }); }
 // ---------------------------------------------------------------- settings
 // everything kept on this phone under 't3' and sent as one cfg message
 const T3_DEFAULTS = { fc: 100, dc: 100, ss: 60, pk: 90, br: 2, bn: 0, nf: -1, nt: 7, tz: -420, sp: 0, lw: 1, spd: 0, hm: 5, h16: 0, hh: 1, tf: 0, to: 0,
-  gb: 0, li: 1, lis: 10, lfl: 5, sdm: 90, rot: 0, rf: 250, bm: 'prev,home;mark,pause;next,end', io4: 0, obd: '', opr: 0 };
+  gb: 0, li: 1, lis: 10, lfl: 5, sdm: 90, rot: 0, rf: 250, bm: 'prev,home;mark,pause;next,end', io4: 0, obd: '', opr: 0, etf: 1 };
 function t3Cfg() { return Object.assign({}, T3_DEFAULTS, store.get('t3', {})); }
 async function t3SendSettings() {
   const v = t3Cfg();
   const via = t3Via();
   if (!via) { toast('Saved on this phone', 'Connect to the T3 (Bluetooth, or the T3 on your hotspot) and send again', 'info'); return false; }
   const msg = { c: 'cfg', fc: Math.max(30, Math.min(300, num(v.fc) || 100)) / 100, dc: Math.max(50, Math.min(200, num(v.dc) || 100)) / 100 };
-  for (const k of ['ss', 'pk', 'br', 'bn', 'nf', 'nt', 'tz', 'sp', 'lw', 'spd', 'hm', 'h16', 'hh', 'tf', 'to', 'gb', 'li', 'lis', 'lfl', 'sdm', 'rot', 'rf', 'io4', 'opr']) msg[k] = Number(v[k]);
+  for (const k of ['ss', 'pk', 'br', 'bn', 'nf', 'nt', 'tz', 'sp', 'lw', 'spd', 'hm', 'h16', 'hh', 'tf', 'to', 'gb', 'li', 'lis', 'lfl', 'sdm', 'rot', 'rf', 'io4', 'opr', 'etf']) msg[k] = Number(v[k]);
   msg.bm = String(v.bm); msg.obd = String(v.obd || '');
   if (via === 'bt') {
     // the secrets only ever go over Bluetooth
@@ -149,6 +151,8 @@ function t3Setup() {
         pick('h16', [[0, '8 points (NE)'], [1, '16 points (NNE)']]),
         h('div', { class: 'label', text: 'Heading when stopped' }), pick('hh', [[1, 'Keep the last one'], [0, 'Show --']]),
         h('div', { class: 'foot', text: 'The GPS gives the direction you’re moving, not a compass: stopped, it can’t tell which way the Jeep points. A kept heading shows in brackets, like (NE).' }),
+        h('div', { class: 'label', text: 'Engine temperatures (coolant, intake)' }),
+        pick('etf', [[1, '°F'], [0, '°C']]),
         h('div', { class: 'label', text: 'Outside temperature' }),
         pick('tf', [[0, '°C'], [1, '°F']]),
         h('div', { class: 'group' }, numIn('Probe correction', 'to', '°C')),
@@ -295,7 +299,8 @@ function diagSheet() {
           d.obd ? sec('Engine (through the iCar)', [
             d.obd.data != null ? ['Engine answering', d.obd.data ? 'Yes' : 'No: is the key on?', d.obd.data ? 'ok' : 'due'] : null,
             ['Boost from', d.obd.boost === '-' ? (d.obd.known ? 'Not offered by this engine (standard OBD)' : 'Not known yet') : (OBD_PIDS[d.obd.boost] || 'PID ' + d.obd.boost) + ' · PID ' + d.obd.boost, d.obd.boost === '-' ? 'due' : 'ok'],
-            ['Intake / air pressure', (d.obd.map == null ? '-' : d.obd.map + ' kPa') + ' / ' + (d.obd.baro == null ? '-' : d.obd.baro + ' kPa')],
+            ['Intake / air pressure', (d.obd.map == null ? '-' : d.obd.map + ' kPa') + ' / ' + (d.obd.baro == null ? '-' : d.obd.baro + ' kPa') +
+              ({ learned: ' (air: learned at idle)', assumed: ' (air: sea level, until it idles)', ecu: '' })[d.obd.baroSrc || 'ecu']],
             ['Protocol', d.obd.proto ? obdProtoName(d.obd.proto) : '-'],
             ['Offers', d.obd.known ? obdNames(d.obd.sup) : 'Not asked yet (key on, iCar connected?)'],
             d.obd.miss ? ['No answer for', obdNames(d.obd.miss)] : null,

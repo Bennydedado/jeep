@@ -12,7 +12,7 @@ const hasBT = () => !!(navigator.bluetooth && navigator.bluetooth.requestDevice)
 const GAUGES = [
   ['rpm', 'RPM', 'engine', '', 0, 4500],
   ['boost', 'Boost', 'turbo', 'psi', 1, 25],
-  ['ect', 'Coolant', 'temp', '°C', 0, 120],
+  ['ect', 'Coolant', 'temp', '°C', 0, 120],   // shown in °F unless T3 settings say °C (t3EngF)
   ['iat', 'Intake', 'temp', '°C', 0, 60],
   ['v', 'Battery', 'battery', 'V', 1, 15],
   ['load', 'Load', 'gauge', '%', 0, 100],
@@ -64,7 +64,8 @@ function renderLive(v) {
     v.append(h('div', { class: 'live-grid' }, GAUGES.map(([k, label, ic, unit]) => {
       e[k] = h('span', null, '\u2014');
       e[k + 'b'] = h('i', { style: 'width:0%' });
-      return h('div', { class: 'tile card' }, h('div', { class: 'k' }, icon(ic), label), h('div', { class: 'v num' }, e[k], unit ? h('small', { text: unit }) : null), h('div', { class: 'bar' }, e[k + 'b']));
+      const u = (k === 'ect' || k === 'iat') && t3EngF() ? '°F' : unit;
+      return h('div', { class: 'tile card' }, h('div', { class: 'k' }, icon(ic), label), h('div', { class: 'v num' }, e[k], u ? h('small', { text: u }) : null), h('div', { class: 'bar' }, e[k + 'b']));
     })));
     const tripCell = (k, label) => { e['t' + k] = h('b', { text: '\u2014', class: 'num', style: 'font-size:20px' }); return h('div', null, h('div', { class: 'small muted', text: label }), e['t' + k]); };
     const demo = LIVE.mode === 'demo';
@@ -140,9 +141,10 @@ function updateLive() {
   const ot = num(d.ot);
   setText(e.ot, ot == null ? '\u2014' : fmt1(t3TempF() ? ot * 9 / 5 + 32 : ot));
   for (const [k, , , , dp, max] of GAUGES) {
-    const x = num(d[k]);
+    const f = (k === 'ect' || k === 'iat') && t3EngF();   // the T3 sends °C
+    const x0 = num(d[k]), x = x0 == null ? null : f ? x0 * 9 / 5 + 32 : x0, mx = f ? max * 9 / 5 + 32 : max;
     setText(e[k], x == null ? '\u2014' : (dp ? x.toFixed(dp) : String(Math.round(x))));
-    e[k + 'b'].style.width = x == null ? '0%' : Math.max(0, Math.min(100, x / max * 100)) + '%';
+    e[k + 'b'].style.width = x == null ? '0%' : Math.max(0, Math.min(100, x / mx * 100)) + '%';
   }
   const t = d.trip || {};
   setText(e.tkm, t.km != null ? fmt1(t.km) : '\u2014');

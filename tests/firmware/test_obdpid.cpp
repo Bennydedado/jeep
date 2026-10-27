@@ -41,5 +41,17 @@ int main() {
   { uint8_t x[] = { 0x03, 0x10, 0x00, 0x12, 0xC0, 0, 0, 0, 0 }; NEAR(obdMapKpa(0x70, x, 9), 0x12C0 * 0.03125f, 0.01); }  // 150 kPa
   { uint8_t x[] = { 0x01, 0x10, 0x00, 0x12, 0xC0 }; CHECK(obdMapKpa(0x70, x, 5) < 0); }             // only commanded boost
   CHECK(obdMapKpa(0x0C, b, 2) < 0);
+
+  // outside air pressure from intake pressure
+  CHECK(learnBaro(-1, 93, 0, 0, -1) == 93);                     // key on, engine off: taken as is
+  CHECK(learnBaro(93, 150, 2500, 60, 80) == 93);                // driving with boost: ignored
+  CHECK(learnBaro(93, 40, 750, 0, 10) == 93);                   // nonsense: ignored
+  float bp = learnBaro(-1, 92, 750, 0, 15);                      // idle, nothing learned yet
+  CHECK(bp == 92);
+  for (int i = 0; i < 20; i++) bp = learnBaro(bp, 94, 750, 0, 15);
+  NEAR(bp, 94, 0.1);                                             // rises quickly
+  for (int i = 0; i < 20; i++) bp = learnBaro(bp, 90, 750, 0, 15);
+  CHECK(bp > 92.5);                                              // a dip at idle (intake restriction) barely moves it
+  CHECK(learnBaro(93, 95, 1800, 0, 15) == 93);                  // revving while parked: not idle
   DONE();
 }

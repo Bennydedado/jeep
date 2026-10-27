@@ -27,12 +27,14 @@ static const FieldDef FIELDS[] = {
   { "rpm", "RPM", "", 0 },
   { "boost", "Boost", "psi", 1 },
   { "bmax", "Peak bst", "psi", 1 },     // highest boost this trip
-  { "ect", "Coolant", "C", 0 },
+  { "ect", "Coolant", "C", 0 },          // unit follows the engine-temperature C/F setting
   { "iat", "Intake", "C", 0 },
   { "volt", "Battery", "V", 1 },
   { "load", "Load", "%", 0 },
   { "lph", "Fuel", "L/h", 1 },
   { "econ", "Now", "L/100", 1 },
+  { "maf", "Air flow", "g/s", 1 },      // mass air flow (PID 10)
+  { "rail", "Rail", "bar", 0 },         // diesel fuel rail pressure (PID 23)
   // trip
   { "tstate", "Trip", "", -1 },         // RUNNING / PAUSED
   { "tkm", "Trip", "km", 1 },

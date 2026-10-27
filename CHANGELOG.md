@@ -1,5 +1,19 @@
 # Changes
 
+## 27 Oct 2026 — T3 2.6, Heep 1.1.6: polish after the first drive
+
+- **Boost at altitude:** the CRD doesn't report outside air pressure, so boost assumed sea level (~1 psi low at Fort St. John).
+  The T3 now learns it from intake pressure with the key on / engine stopped and at idle (`learnBaro`, tested). Diagnostics says
+  where it came from.
+- **Engine temps in °F** (coolant, intake) on the T3's screens, Live and the screen editor; own setting (T3 settings > Engine
+  temperatures), default °F. Outside temperature keeps its own °C/°F setting.
+- **Air flow (MAF) and fuel rail pressure** as screen fields and live values (the CRD offers both on the K-line). Slow values
+  are only asked for when the engine offers them.
+- **Update over Bluetooth "not enough memory"** (2.4/2.5 keep Wi-Fi and the relay up): the T3 switches Wi-Fi off first and
+  falls back to a smaller buffer; Heep, for T3s that still refuse, turns Live over Wi-Fi off for a minute and back on after.
+- **Update over Wi-Fi "couldn't reach GitHub":** 3 tries with longer timeouts, a cache-busting t3.json fetch, the relay steps
+  aside unless there's plenty of memory, and the message says why (error, signal, free memory).
+
 ## 27 Oct 2026 — T3 2.5, Heep 1.1.5: Scan the Jeep
 
 - The 2006 CRD answered on J1850 VPW (the Chrysler bus) with only check-engine status, RPM and throttle. The diesel's own

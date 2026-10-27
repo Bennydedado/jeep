@@ -34,6 +34,7 @@ void loadSettings() {
   cfg.hdg16 = p.getBool("h16", false);
   cfg.hdgHold = p.getBool("hh", true);
   cfg.tempF = p.getBool("tf", false);
+  cfg.engF = p.getBool("etf", true);
   cfg.tempOff = p.getFloat("to", 0);
   cfg.gpsBaud = p.getLong("gb", 0);
   cfg.logSec = p.getInt("li", 1);
@@ -102,6 +103,7 @@ bool applySettings(const String& j, bool fromRelay) {
   if (has(j, "h16")) p.putBool("h16", numFieldOr(j, "h16", 0) > 0);
   if (has(j, "hh")) p.putBool("hh", numFieldOr(j, "hh", 1) > 0);
   if (has(j, "tf")) p.putBool("tf", numFieldOr(j, "tf", 0) > 0);
+  if (has(j, "etf")) p.putBool("etf", numFieldOr(j, "etf", 1) > 0);
   if (has(j, "to")) p.putFloat("to", constrain(numFieldOr(j, "to", 0), -10.0f, 10.0f));
   if (has(j, "gb")) p.putLong("gb", (long)numFieldOr(j, "gb", 0));
   if (has(j, "li")) p.putInt("li", constrain((int)numFieldOr(j, "li", 1), 1, 60));
@@ -127,7 +129,7 @@ bool applySettings(const String& j, bool fromRelay) {
 void resetSettings() {
   Preferences p;
   p.begin("t3", false);
-  const char* keys[] = { "ss", "pk", "br", "bn", "nf", "nt", "tz", "sp", "spd", "hm", "h16", "hh", "tf", "to", "gb", "li", "lis", "lfl", "sdm", "rot", "rf", "bm", "io4", "opr" };
+  const char* keys[] = { "ss", "pk", "br", "bn", "nf", "nt", "tz", "sp", "spd", "hm", "h16", "hh", "tf", "to", "gb", "li", "lis", "lfl", "sdm", "rot", "rf", "bm", "io4", "opr", "etf" };
   for (auto k : keys) p.remove(k);
   p.end();
   loadSettings();
@@ -144,7 +146,7 @@ String settingsJson() {
          ",\"nf\":" + String(cfg.nightFrom) + ",\"nt\":" + String(cfg.nightTo) + ",\"tz\":" + String(cfg.tzMin) +
          ",\"sp\":" + String(cfg.startPage) + ",\"lw\":" + String(cfg.liveWifi ? 1 : 0) + ",\"spd\":" + String(cfg.spdSrc) +
          ",\"hm\":" + String(cfg.hdgMin) + ",\"h16\":" + String(cfg.hdg16 ? 1 : 0) + ",\"hh\":" + String(cfg.hdgHold ? 1 : 0) +
-         ",\"tf\":" + String(cfg.tempF ? 1 : 0) + ",\"to\":" + String(cfg.tempOff, 1) + ",\"gb\":" + String(cfg.gpsBaud) +
+         ",\"tf\":" + String(cfg.tempF ? 1 : 0) + ",\"etf\":" + String(cfg.engF ? 1 : 0) + ",\"to\":" + String(cfg.tempOff, 1) + ",\"gb\":" + String(cfg.gpsBaud) +
          ",\"li\":" + String(cfg.logSec) + ",\"lis\":" + String(cfg.logIdleSec) + ",\"lfl\":" + String(cfg.flushSec) +
          ",\"sdm\":" + String(cfg.sdMaxPct) + ",\"rot\":" + String(cfg.flip ? 1 : 0) + ",\"rf\":" + String(cfg.refreshMs) +
          ",\"bm\":\"" + jsonEsc(cfg.btnMap) + "\",\"io4\":" + String(cfg.io4) + ",\"opr\":" + String(cfg.obdProto) + ",\"obdName\":\"" + jsonEsc(cfg.obdName) +
