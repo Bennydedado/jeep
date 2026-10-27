@@ -182,6 +182,7 @@ const obdNames = list => String(list || '').split(' ').filter(Boolean).map(p => 
 function obdProtoName(p) {
   const n = { '1': 'J1850 PWM', '2': 'J1850 VPW', '3': 'ISO 9141-2', '4': 'KWP2000 (5-baud)', '5': 'KWP2000 (fast)', '6': 'CAN 11-bit 500k', '7': 'CAN 29-bit 500k', '8': 'CAN 11-bit 250k', '9': 'CAN 29-bit 250k' };
   const k = String(p).replace(/^A/, '');
+  if (k === '0') return 'Not found yet: the engine hasn\u2019t answered';
   return (n[k] || p) + (/^A/.test(p) ? ' (found by itself)' : '');
 }
 
@@ -214,11 +215,13 @@ function diagSheet() {
             ['Networks the last scan saw', w.seen || '-'], ['Relay', w.relay ? 'Connected' : 'Not connected']]),
           sec('Bluetooth', [['Heep', bl.phone ? 'Connected' : 'Not connected'], ['iCar', bl.icar ? 'Connected' + (bl.icarAge >= 0 ? ', last answer ' + bl.icarAge + ' s ago' : '') : 'Not connected', bl.icar ? 'ok' : 'soon']]),
           d.obd ? sec('Engine (through the iCar)', [
+            d.obd.data != null ? ['Engine answering', d.obd.data ? 'Yes' : 'No: is the key on?', d.obd.data ? 'ok' : 'due'] : null,
             ['Boost from', d.obd.boost === '-' ? (d.obd.known ? 'Not offered by this engine (standard OBD)' : 'Not known yet') : (OBD_PIDS[d.obd.boost] || 'PID ' + d.obd.boost) + ' · PID ' + d.obd.boost, d.obd.boost === '-' ? 'due' : 'ok'],
             ['Intake / air pressure', (d.obd.map == null ? '-' : d.obd.map + ' kPa') + ' / ' + (d.obd.baro == null ? '-' : d.obd.baro + ' kPa')],
             ['Protocol', d.obd.proto ? obdProtoName(d.obd.proto) : '-'],
             ['Offers', d.obd.known ? obdNames(d.obd.sup) : 'Not asked yet (key on, iCar connected?)'],
-            d.obd.miss ? ['No answer for', obdNames(d.obd.miss)] : null]) : null,
+            d.obd.miss ? ['No answer for', obdNames(d.obd.miss)] : null,
+            d.obd.raw ? ['Last answers', Object.entries(d.obd.raw).map(([k, v]) => k + ': ' + (v || '-')).join('\n')] : null]) : null,
           sec('SD card', [['Card', sd.ok ? 'Logging' : (sd.last || 'No card'), sd.ok ? 'ok' : 'due'], sd.ok ? ['Space', sd.usedMB + ' of ' + sd.totalMB + ' MB used'] : null,
             ['Rows written', sd.rows], ['Current file', sd.file || '-'], ['Write errors', sd.err], ['Tracks waiting to upload', sd.waiting]]),
           sec('Uploads', [['Trips to the sheet', up.sheet], ['Trips waiting', up.queued], ['Tracks', up.tracks], ['Program update', up.fw || '-']]),
