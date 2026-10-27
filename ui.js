@@ -62,6 +62,13 @@ const IC = {
   turbo: '<circle cx="12" cy="12" r="8.5"/><path d="M12 12c0-3 1.5-5 4-6M12 12c-3 0-5 1.5-6 4M12 12c0 3-1.5 5-4 6M12 12c3 0 5-1.5 6-4"/>',
   engine: '<path d="M4 10h2V8h4V6h4v2h3l2 2h1.5v6H19l-2 2H9l-2-2H4z"/>',
   battery: '<rect x="3.5" y="7.5" width="17" height="11" rx="2"/><path d="M7 5.5v2M17 5.5v2M7 13h3M15.5 11.5v3M14 13h3"/>',
+  compass: '<circle cx="12" cy="12" r="8.5"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/>',
+  map: '<path d="M9 4.5L3.5 6.5v13l5.5-2 6 2 5.5-2v-13l-5.5 2z"/><path d="M9 4.5v13M15 6.5v13"/>',
+  pin: '<path d="M12 21s-6.5-6.2-6.5-11a6.5 6.5 0 0 1 13 0c0 4.8-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/>',
+  pause: '<path d="M9 6v12M15 6v12"/>',
+  download: '<path d="M12 4v11M7.5 10.5L12 15l4.5-4.5M5 19.5h14"/>',
+  fit: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
+  back: '<path d="M15 5.5L8.5 12l6.5 6.5"/>',
   link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
 };
 function icon(name, cls) {
@@ -379,8 +386,9 @@ function lineChart(o) {
   svg.append(sv('path', { class: 'ln', d: line }));
   const last = pts[n - 1];
   svg.append(sv('circle', { class: 'dot', cx: x(last.t), cy: y(last.v), r: 4.5 }));
-  svg.append(sv('text', { class: 'axis', x: padL, y: H - 6 }, MON[new Date(t0).getMonth()] + ' ' + new Date(t0).getDate()));
-  svg.append(sv('text', { class: 'axis', x: W - padR, y: H - 6, 'text-anchor': 'end' }, MON[new Date(t1).getMonth()] + ' ' + new Date(t1).getDate()));
+  const fx = o.fmtX || (t => MON[new Date(t).getMonth()] + ' ' + new Date(t).getDate());
+  svg.append(sv('text', { class: 'axis', x: padL, y: H - 6 }, fx(t0)));
+  svg.append(sv('text', { class: 'axis', x: W - padR, y: H - 6, 'text-anchor': 'end' }, fx(t1)));
   const cross = sv('line', { class: 'hl', y1: padT - 4, y2: base, x1: -10, x2: -10 });
   const hot = sv('circle', { class: 'dot', r: 5, cx: -20, cy: -20 });
   svg.append(cross, hot);
@@ -396,6 +404,7 @@ function lineChart(o) {
     tip.append(h('b', { text: o.fmt(p.v) }), h('span', { text: p.tip || fmtDay(p.t, true) }));
     const k = svg.getBoundingClientRect().width / W;
     placeTip(root, tip, cx * k, cy * k, svg.getBoundingClientRect().width);
+    if (o.onAt) o.onAt(p);
   }, () => { tip.classList.remove('on'); cross.setAttribute('x1', -10); cross.setAttribute('x2', -10); hot.setAttribute('cx', -20); });
   return root;
 }

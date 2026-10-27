@@ -1,11 +1,13 @@
 'use strict';
 // app.js - start-up, the tab bar, theme and the scroll title.
+// Tabs: Overview, Fill-ups, Service (views.js), Live (live.js + t3.js + t3screens.js), Map (map.js + trips.js).
 
 const TAB_DEFS = [
   ['home', 'Overview', 'gauge', renderHome],
   ['fills', 'Fill-ups', 'pump', renderFills],
   ['service', 'Service', 'wrench', renderService],
   ['live', 'Live', 'live', renderLive],
+  ['map', 'Map', 'map', renderMap],
 ];
 
 let TB = null; // the tab bar
@@ -49,6 +51,7 @@ function boot() {
   const fresh = fromLink ? connect(fromLink) : false;
   if (!S.conn) { S.sample = true; S.data = sampleData(); }
   const bar = document.getElementById('tabbar');
+  bar.dataset.n = String(TAB_DEFS.length);
   TB = tabBar(bar, TAB_DEFS, go);
   const fab = document.getElementById('fab');
   fab.append(icon('plus'));

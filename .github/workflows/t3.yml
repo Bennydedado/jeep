@@ -19,8 +19,13 @@ jobs:
           arduino-cli config init
           arduino-cli config add board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
           arduino-cli core update-index
-          arduino-cli core install esp32:esp32
-          arduino-cli lib install "Adafruit SSD1306" "Adafruit GFX Library" "LoRa" "PubSubClient"
+          # pinned, so a library's new major version can't break the build by surprise (firmware/README.md)
+          arduino-cli core install esp32:esp32@3.3.12
+          arduino-cli lib install "Adafruit SSD1306@2.5.17" "Adafruit GFX Library@1.13.0" "Adafruit BusIO@1.17.4" "PubSubClient@2.8" "NimBLE-Arduino@2.5.2" "OneWire@2.3.8"
+      - name: Parser tests (run on the build machine, no hardware)
+        run: |
+          for t in nmea jlink screens; do g++ -std=c++17 -Wall -O1 -o /tmp/t_$t tests/firmware/test_$t.cpp && /tmp/t_$t; done
+          g++ -std=c++17 -Wall -O1 -I tests/firmware/mock -o /tmp/t_nano tests/firmware/test_nano_link.cpp && /tmp/t_nano
       - name: Build
         id: build
         continue-on-error: true
@@ -31,8 +36,13 @@ jobs:
         run: |
           cp build.log firmware/build.log
           ls out >> firmware/build.log 2>/dev/null || true
+          # the version lives in config.h (T3.ino before 2.0); an empty one would stop every T3 updating, so it must be there
+          V=$(cat firmware/T3/config.h firmware/T3/T3.ino 2>/dev/null | grep -o '#define FW "[^"]*"' | head -1 | cut -d'"' -f2)
+          if [ -z "$V" ]; then echo "No #define FW version found: not publishing" >> firmware/build.log; exit 1; fi
+          # safe updates need the bootloader's rollback switched on in this core: say so in the log
+          R=$(grep -rhs --include=sdkconfig --include=sdkconfig.h "APP_ROLLBACK_ENABLE" ~/.arduino15/packages/esp32 | sort -u | head -2 | tr '\n' ' ')
+          echo "rollback: ${R:-not found in this core}" >> firmware/build.log
           if [ "${{ steps.build.outcome }}" = "success" ]; then
-            V=$(grep -o '#define FW "[^"]*"' firmware/T3/T3.ino | cut -d'"' -f2)
             cp out/T3.ino.bin firmware/T3.bin
             # the USB install writes four small pieces (no 4 MB image, no erase step)
             cp out/T3.ino.bootloader.bin firmware/bootloader.bin

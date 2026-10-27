@@ -1,878 +1,139 @@
-// T3.ino - the Jeep's trip computer, for a LilyGo T3 V1.6.1 (ESP32) in the 2006 Liberty CRD.
+// T3.ino - the Jeep's trip computer, for a LilyGo T3 V1.6.1 (ESP32) in the 2006 Liberty CRD ("Heep").
 //
 // What it does:
-//  - reads the engine through a Vgate iCar Pro Bluetooth 4.0 (BLE) OBD adapter plugged into the OBD port
-//  - shows fuel economy, the trip, the engine and totals on the T3's little screen (a button flips pages)
-//  - keeps every trip in the T3's flash memory: no battery needed, nothing lost when the key goes off
-//  - sends finished trips to your Jeep log sheet by itself over home Wi-Fi or your iPhone's hotspot,
-//    and Heep can collect them over Bluetooth too (the same trip never lands twice)
-//  - talks to Heep's Live screen over Bluetooth (see T3.md)
+//  - reads the engine through a Vgate iCar Pro Bluetooth (BLE) OBD adapter
+//  - reads the HGLRC M100 GPS (position, speed, heading, satellites) and the outdoor DS18B20 probe at the grille
+//  - shows any of your own screens (built in Heep's screen editor) on the 128x64 display
+//  - takes steering wheel buttons from the Arduino Nano over a one-way wire (the Nano never depends on the T3)
+//  - logs everything to the microSD card, one CSV file per trip, and keeps working with no phone or Wi-Fi
+//  - sends finished trips to your Jeep log sheet and GPS tracks to your track store over home Wi-Fi or the
+//    iPhone hotspot; Heep can also collect trips over Bluetooth (the same trip never lands twice)
+//  - talks to Heep over Bluetooth and, on Wi-Fi, through a relay (see T3.md)
+//  - updates itself over Wi-Fi from GitHub when the Jeep is stopped (USB install stays as the fallback)
 //
-// Nothing to edit in here: the Wi-Fi names, passwords and the sheet link are sent from Heep
-// (Live > T3 setup) and kept on the T3.
+// Nothing to edit for normal use: Wi-Fi, the sheet link, screens, buttons and units are all set from Heep.
+// Pins are in config.h. How the tabs fit together is in t3.h. Build: see firmware/README.md.
 //
 // The LoRa radio is put to sleep and never transmits, so the T3 is safe to run without its antenna.
-//
-// Install once from https://bennydedado.github.io/jeep/firmware/ (Chrome, USB); after that it updates itself over Wi-Fi.
-// Building it yourself: board "ESP32 Dev Module", Partition Scheme "Minimal SPIFFS (1.9MB APP with OTA/190KB SPIFFS)",
-// libraries Adafruit SSD1306, Adafruit GFX, LoRa (Sandeep Mistry), PubSubClient. GitHub builds it on every change (.github/workflows/t3.yml).
 
-#include <Arduino.h>
-#include <Wire.h>
-#include <SPI.h>
-#include <LoRa.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
-#include <Fonts/FreeSansBold18pt7b.h>
-#include <WiFi.h>
-#include <WiFiClientSecure.h>
-#include <HTTPClient.h>
-#include <HTTPUpdate.h>
-#include <PubSubClient.h>
-#include "mbedtls/sha256.h"
-#include <Preferences.h>
-#include <LittleFS.h>
-#include <BLEDevice.h>
-#include <BLEServer.h>
-#include <BLEUtils.h>
-#include <BLE2902.h>
-#include <time.h>
+#include "t3.h"
+#include "esp_ota_ops.h"
 
-struct Trip;
-struct Live;
-
-#define FW "1.5"
-// new versions are built on GitHub and fetched from here over Wi-Fi (no more uploading by USB)
-#define UPDATE_JSON "https://bennydedado.github.io/jeep/firmware/t3.json"
-// live numbers over Wi-Fi (your hotspot): sent through this free relay to Heep in any browser
-#define RELAY_HOST "broker.emqx.io"
-#define RELAY_PORT 8883
-
-// ---------------------------------------------------------------- pins on the T3 V1.6.1
-#define OLED_SDA 21
-#define OLED_SCL 22
-// (no screen reset pin: on the T3 V1.6.1 pins 16 and 17 belong to the chip's own memory and must never be touched)
-#define LORA_SCK 5
-#define LORA_MISO 19
-#define LORA_MOSI 27
-#define LORA_CS 18
-#define LORA_RST 23
-#define LORA_DIO0 26
-#define LED_PIN 25
-#define BUTTON_PIN 4      // a push button (or a spare pedal / wheel button wire) between IO4 and GND
-
-// ---------------------------------------------------------------- Bluetooth: Heep talks to the "Jeep T3" (Nordic UART)
-#define NUS_SVC "6e400001-b5a3-f393-e0a9-e50e24dcca9e"
-#define NUS_RX  "6e400002-b5a3-f393-e0a9-e50e24dcca9e"
-#define NUS_TX  "6e400003-b5a3-f393-e0a9-e50e24dcca9e"
-
-Adafruit_SSD1306 oled(128, 64, &Wire, -1);
-Preferences prefs;
-
-// ---------------------------------------------------------------- settings (sent from Heep, kept in flash)
-struct Net { String ssid, pass; };
-Net nets[8];
-int netCount = 0;
-String sheetUrl, sheetKey, obdName;
-float fuelCal = 1.0, distCal = 1.0;
-int screenSecs = 60, parkSecs = 90, bright = 2, startPage = 0;   // all set from Heep (T3 setup)
-bool liveWifi = true;
-String liveTopic;   // a channel name made from your sheet key, so only your Heep finds it
-uint32_t bootNo = 0;
-float totalKm = 0, totalL = 0;
-
-void loadSettings() {
-  prefs.begin("t3", true);
-  netCount = prefs.getInt("n", 0);
-  if (netCount > 8) netCount = 8;
-  for (int i = 0; i < netCount; i++) { nets[i].ssid = prefs.getString(("s" + String(i)).c_str(), ""); nets[i].pass = prefs.getString(("p" + String(i)).c_str(), ""); }
-  sheetUrl = prefs.getString("u", "");
-  sheetKey = prefs.getString("k", "");
-  obdName = prefs.getString("obd", "");
-  fuelCal = prefs.getFloat("fc", 1.0);
-  distCal = prefs.getFloat("dc", 1.0);
-  totalKm = prefs.getFloat("tk", 0);
-  totalL = prefs.getFloat("tl", 0);
-  screenSecs = prefs.getInt("ss", 60);
-  parkSecs = prefs.getInt("pk", 90);
-  bright = prefs.getInt("br", 2);
-  startPage = prefs.getInt("sp", 0);
-  liveWifi = prefs.getBool("lw", true);
-  prefs.end();
-  liveTopic = "";
-  if (sheetKey.length()) {
-    String in = "heep-live:" + sheetKey;
-    unsigned char hsh[32];
-    mbedtls_sha256((const unsigned char*)in.c_str(), in.length(), hsh, 0);
-    char hex[33];
-    for (int i = 0; i < 16; i++) sprintf(hex + 2 * i, "%02x", hsh[i]);
-    liveTopic = "heep/" + String(hex) + "/live";
-  }
-  if (fuelCal < 0.3 || fuelCal > 3) fuelCal = 1.0;
-  if (distCal < 0.5 || distCal > 2) distCal = 1.0;
-}
-
-// ---------------------------------------------------------------- the clock: from Wi-Fi (internet time) or from Heep
-int64_t epochOffset = 0;  // epoch ms minus millis()
-bool timeKnown = false;
-int64_t nowMs() { return timeKnown ? epochOffset + (int64_t)millis() : 0; }
-void setTime(int64_t epochMs) { if (epochMs > 1600000000000LL) { epochOffset = epochMs - (int64_t)millis(); timeKnown = true; } }
-
-// ---------------------------------------------------------------- what the engine says right now
-struct Live {
-  float kmh = -1, rpm = -1, load = -1, ect = -999, iat = -999, mapKpa = -1, baro = -1, volts = -1, lph = -1;
-  bool fuelRatePid = true;   // PID 5E (engine fuel rate), if the ECU has it; most 2006 diesels don't
-  uint32_t at = 0;           // when the last answer came in
-} car;
-
-// ---------------------------------------------------------------- the trip
-struct Trip { String id; float km = 0, l = 0, s = 0, idle = 0, vmax = 0; int64_t t0 = 0, t1 = 0; bool running = false; };
+Settings cfg;
+Live car;
+Gps gps;
+NmeaParser nmea;
+Temp otemp;
+Wheel wheel;
+JLinkParser jlink;
 Trip trip;
-int tripNo = 0;
-uint32_t lastIntegrate = 0, lastSnapshot = 0, engineOffSince = 0;
-SemaphoreHandle_t fsLock;
-
-String ll(long long v) { char b[24]; snprintf(b, sizeof(b), "%lld", v); return String(b); }
-
-void newTrip() {
-  trip = Trip();
-  tripNo++;
-  trip.id = "t" + String(bootNo) + "-" + String(tripNo);
-  trip.t0 = nowMs();
-}
-
-String tripJson(const Trip& t) {
-  String j = "{\"t\":\"trip\",\"id\":\"" + t.id + "\",\"km\":" + String(t.km, 2) + ",\"l\":" + String(t.l, 2) +
-             ",\"s\":" + String((long)t.s) + ",\"idle\":" + String((long)t.idle) + ",\"vmax\":" + String((long)t.vmax);
-  if (t.t0) j += ",\"t0\":" + ll(t.t0);
-  if (t.t1) j += ",\"t1\":" + ll(t.t1);
-  return j + "}";
-}
-
-// trips waiting to reach the sheet live in /trips.txt, one per line; the trip in progress in /cur.txt
-int queuedCount() {
-  int n = 0;
-  xSemaphoreTake(fsLock, portMAX_DELAY);
-  File f = LittleFS.open("/trips.txt", "r");
-  if (f) { while (f.available()) { String l = f.readStringUntil('\n'); if (l.length() > 5) n++; } f.close(); }
-  xSemaphoreGive(fsLock);
-  return n;
-}
+Sd sd;
+float totalKm = 0, totalL = 0;
 int queued = 0;
-void queueTrip(const Trip& t) {
-  if (t.km < 0.2) {  // a key-on in the yard isn't a trip
-    xSemaphoreTake(fsLock, portMAX_DELAY); LittleFS.remove("/cur.txt"); xSemaphoreGive(fsLock);
-    return;
-  }
-  xSemaphoreTake(fsLock, portMAX_DELAY);
-  File f = LittleFS.open("/trips.txt", "a");
-  if (f) { f.println(tripJson(t)); f.close(); }
-  LittleFS.remove("/cur.txt");
-  xSemaphoreGive(fsLock);
-  totalKm += t.km; totalL += t.l;
-  prefs.begin("t3", false); prefs.putFloat("tk", totalKm); prefs.putFloat("tl", totalL); prefs.end();
-  queued = queuedCount();
-}
-// forget the trips the sheet now has
-void dropTrips(const String& ids) {
-  xSemaphoreTake(fsLock, portMAX_DELAY);
-  File f = LittleFS.open("/trips.txt", "r");
-  String keep;
-  if (f) {
-    while (f.available()) {
-      String l = f.readStringUntil('\n');
-      l.trim();
-      if (l.length() < 5) continue;
-      int a = l.indexOf("\"id\":\"") + 6, b = l.indexOf('"', a);
-      String id = l.substring(a, b);
-      if (ids.indexOf("|" + id + "|") < 0) keep += l + "\n";
-    }
-    f.close();
-  }
-  f = LittleFS.open("/trips.txt", "w");
-  if (f) { f.print(keep); f.close(); }
-  xSemaphoreGive(fsLock);
-  queued = queuedCount();
-}
-// the trip so far, every 30 s: if the key goes off, the next start finds it here
-void snapshot() {
-  if (trip.km < 0.05) return;
-  trip.t1 = nowMs();
-  xSemaphoreTake(fsLock, portMAX_DELAY);
-  File f = LittleFS.open("/cur.txt", "w");
-  if (f) { f.print(tripJson(trip)); f.close(); }
-  xSemaphoreGive(fsLock);
-}
-float numFieldOr(const String& j, const char* key, float d) {
-  int i = j.indexOf("\"" + String(key) + "\":");
-  if (i < 0) return d;
-  return j.substring(i + strlen(key) + 3).toFloat();
-}
-float numField(const String& j, const char* key) { return numFieldOr(j, key, 0); }
-long long llField(const String& j, const char* key) {
-  int i = j.indexOf("\"" + String(key) + "\":");
-  if (i < 0) return 0;
-  return atoll(j.substring(i + strlen(key) + 3).c_str());
-}
-// last time's trip, cut short by the key: finish it now
-void recoverTrip() {
-  xSemaphoreTake(fsLock, portMAX_DELAY);
-  File f = LittleFS.open("/cur.txt", "r");
-  String j = f ? f.readString() : "";
-  if (f) f.close();
-  xSemaphoreGive(fsLock);
-  if (j.length() < 10) return;
-  Trip t;
-  int a = j.indexOf("\"id\":\"") + 6, b = j.indexOf('"', a);
-  t.id = j.substring(a, b);
-  t.km = numField(j, "km"); t.l = numField(j, "l"); t.s = numField(j, "s"); t.idle = numField(j, "idle"); t.vmax = numField(j, "vmax");
-  t.t0 = llField(j, "t0"); t.t1 = llField(j, "t1");
-  queueTrip(t);
-}
-
-// ---------------------------------------------------------------- Heep over Bluetooth (the T3 is the server)
-BLEServer* server = nullptr;
-BLECharacteristic* txChar = nullptr;
-volatile bool phoneOn = false;
-QueueHandle_t rxQueue;   // bytes Heep wrote, read in loop()
-
-class ServerCB : public BLEServerCallbacks {
-  void onConnect(BLEServer*) override { phoneOn = true; }
-  void onDisconnect(BLEServer* s) override { phoneOn = false; delay(50); s->startAdvertising(); }
-};
-class RxCB : public BLECharacteristicCallbacks {
-  void onWrite(BLECharacteristic* c) override {
-    auto v = c->getValue();
-    String s = String(v.c_str());
-    for (size_t i = 0; i < s.length(); i++) { char ch = s[i]; xQueueSend(rxQueue, &ch, 0); }
-  }
-};
-void phoneSend(const String& line) {
-  if (!phoneOn || !txChar) return;
-  String s = line + "\n";
-  for (size_t i = 0; i < s.length(); i += 20) {
-    String part = s.substring(i, i + 20);
-    txChar->setValue((uint8_t*)part.c_str(), part.length());
-    txChar->notify();
-    delay(4);
-  }
-}
-
-// ---------------------------------------------------------------- the iCar over Bluetooth (the T3 is the client)
-BLEAdvertisedDevice* obdFound = nullptr;
-BLEClient* obdClient = nullptr;
-BLERemoteCharacteristic* obdWrite = nullptr;
-bool obdWriteResp = false;
-volatile bool obdLinked = false;
-QueueHandle_t obdQueue;   // bytes the iCar sent
-uint32_t lastScan = 0;
-
-bool looksLikeObd(BLEAdvertisedDevice& d) {
-  String n = String(d.getName().c_str());
-  n.toLowerCase();
-  if (n.length() == 0 || n.startsWith("jeep")) return false;
-  if (obdName.length()) { String want = obdName; want.toLowerCase(); return n.indexOf(want) >= 0; }
-  const char* names[] = { "vlink", "v-link", "icar", "vgate", "obd", "elm", "vlinker", "ios-vlink" };
-  for (auto k : names) if (n.indexOf(k) >= 0) return true;
-  return false;
-}
-class ScanCB : public BLEAdvertisedDeviceCallbacks {
-  void onResult(BLEAdvertisedDevice d) override {
-    if (!obdFound && looksLikeObd(d)) { obdFound = new BLEAdvertisedDevice(d); BLEDevice::getScan()->stop(); }
-  }
-};
-class ObdClientCB : public BLEClientCallbacks {
-  void onConnect(BLEClient*) override {}
-  void onDisconnect(BLEClient*) override { obdLinked = false; }
-};
-void obdNotify(BLERemoteCharacteristic*, uint8_t* data, size_t len, bool) {
-  for (size_t i = 0; i < len; i++) { char ch = (char)data[i]; xQueueSend(obdQueue, &ch, 0); }
-}
-// the service and characteristics the common BLE OBD adapters use
-bool obdAttach() {
-  struct Try { const char *svc, *rx, *tx; };
-  const Try tries[] = {
-    { "0000fff0-0000-1000-8000-00805f9b34fb", "0000fff1-0000-1000-8000-00805f9b34fb", "0000fff2-0000-1000-8000-00805f9b34fb" },  // iCar Pro / IOS-Vlink
-    { "e7810a71-73ae-499d-8c15-faa9aef0c3f2", "bef8d6c9-9c21-4c9e-b632-bd58c1009f9f", "bef8d6c9-9c21-4c9e-b632-bd58c1009f9f" },  // vLinker
-    { "0000ffe0-0000-1000-8000-00805f9b34fb", "0000ffe1-0000-1000-8000-00805f9b34fb", "0000ffe1-0000-1000-8000-00805f9b34fb" },  // clones
-    { "000018f0-0000-1000-8000-00805f9b34fb", "00002af0-0000-1000-8000-00805f9b34fb", "00002af1-0000-1000-8000-00805f9b34fb" },  // clones
-  };
-  for (auto& t : tries) {
-    BLERemoteService* svc = obdClient->getService(BLEUUID(t.svc));
-    if (!svc) continue;
-    BLERemoteCharacteristic* rx = svc->getCharacteristic(BLEUUID(t.rx));
-    BLERemoteCharacteristic* tx = svc->getCharacteristic(BLEUUID(t.tx));
-    if (!rx || !tx) continue;
-    if (rx->canNotify()) rx->registerForNotify(obdNotify);
-    else if (rx->canIndicate()) rx->registerForNotify(obdNotify, false);
-    else continue;
-    obdWrite = tx;
-    obdWriteResp = !tx->canWriteNoResponse();
-    return true;
-  }
-  return false;
-}
-void obdConnectStep() {
-  if (obdLinked) return;
-  if (!obdFound) {
-    if (millis() - lastScan < 8000) return;
-    lastScan = millis();
-    BLEScan* sc = BLEDevice::getScan();
-    sc->setActiveScan(true);
-    sc->start(2, false);   // blocks 2 s at most; stops early when the iCar shows up
-    sc->clearResults();
-    return;
-  }
-  if (!obdClient) { obdClient = BLEDevice::createClient(); obdClient->setClientCallbacks(new ObdClientCB()); }
-  if (obdClient->connect(obdFound) && obdAttach()) obdLinked = true;
-  else { if (obdClient->isConnected()) obdClient->disconnect(); }
-  delete obdFound; obdFound = nullptr;
-}
-
-// ---------------------------------------------------------------- ELM327 commands, one at a time
-String obdBuf;
-bool obdBusy = false;
-uint32_t obdSentAt = 0, obdTimeout = 1500;
-String obdCmd;
-int obdStage = 0;       // 0 = reset the adapter, then set it up, then ask for engine values
-int pollIdx = 0;
-bool pidMissing[256];
-
-void obdSendCmdT(const String& cmd, uint32_t timeout) {
-  if (!obdWrite) return;
-  String c = cmd + "\r";
-  obdWrite->writeValue((uint8_t*)c.c_str(), c.length(), obdWriteResp);
-  obdCmd = cmd; obdBusy = true; obdSentAt = millis(); obdTimeout = timeout; obdBuf = "";
-}
-void obdSendCmd(const String& cmd) { obdSendCmdT(cmd, 1500); }
-int hexByte(const String& s, int at) { return (int)strtol(s.substring(at, at + 2).c_str(), nullptr, 16); }
-void obdAnswer(String r) {
-  r.replace(" ", ""); r.replace("\r", ""); r.replace("\n", ""); r.replace(">", ""); r.toUpperCase();
-  car.at = millis();
-  if (obdCmd == "ATRV") { car.volts = r.toFloat(); return; }
-  if (!obdCmd.startsWith("01")) return;
-  int pid = (int)strtol(obdCmd.substring(2, 4).c_str(), nullptr, 16);
-  String want = "41" + obdCmd.substring(2, 4);
-  int i = r.indexOf(want);
-  if (i < 0) { if (r.indexOf("NODATA") >= 0 || r.indexOf("?") >= 0) pidMissing[pid] = true; return; }
-  i += 4;
-  int A = r.length() >= (unsigned)i + 2 ? hexByte(r, i) : 0, B = r.length() >= (unsigned)i + 4 ? hexByte(r, i + 2) : 0;
-  switch (pid) {
-    case 0x0D: car.kmh = A; break;
-    case 0x0C: car.rpm = (256 * A + B) / 4.0; break;
-    case 0x04: car.load = A * 100.0 / 255; break;
-    case 0x05: car.ect = A - 40; break;
-    case 0x0F: car.iat = A - 40; break;
-    case 0x0B: car.mapKpa = A; break;
-    case 0x33: car.baro = A; break;
-    case 0x5E: car.lph = (256 * A + B) / 20.0; break;
-  }
-}
-void obdStep() {
-  if (!obdLinked) { obdStage = 0; obdBusy = false; return; }
-  char ch;
-  while (xQueueReceive(obdQueue, &ch, 0) == pdTRUE) {
-    obdBuf += ch;
-    if (ch == '>') { String r = obdBuf; obdBusy = false; obdAnswer(r); }
-  }
-  if (obdBusy && millis() - obdSentAt > obdTimeout) obdBusy = false;
-  if (obdBusy) return;
-  const char* setup[] = { "ATZ", "ATE0", "ATL0", "ATS0", "ATH0", "ATAT1", "ATSP0", "0100" };
-  if (obdStage < 8) { obdSendCmdT(setup[obdStage], obdStage == 0 ? 2500 : obdStage == 7 ? 9000 : 1500); obdStage++; return; }
-  // speed, RPM and load all the time; the rest now and then
-  static const int fast[] = { 0x0D, 0x0C, 0x04 };
-  static const int slow[] = { 0x05, 0x0F, 0x0B, 0x33, 0x5E, -1 };
-  int k = pollIdx++ % 12;
-  int pid = k < 9 ? fast[k % 3] : slow[(pollIdx / 12) % 6];
-  if (pid == -1) { obdSendCmd("ATRV"); return; }
-  if (pidMissing[pid]) pid = fast[k % 3];
-  char c[6]; snprintf(c, sizeof(c), "01%02X", pid);
-  obdSendCmd(c);
-}
-
-// fuel right now, litres per hour: the ECU's own number if it has one, otherwise worked out from load and RPM
-// (a 2.8 CRD makes about 400 Nm; diesel burns about 240 g per kWh). Heep's fuel correction trims it.
-float fuelNow() {
-  if (car.rpm <= 0) return 0;
-  if (!pidMissing[0x5E] && car.lph >= 0) return car.lph * fuelCal;
-  float load = car.load < 0 ? 20 : car.load;
-  float lph = load / 100.0 * car.rpm * 0.0105;
-  if (lph < 0.6) lph = 0.6;
-  return lph * fuelCal;
-}
-float boostPsi() { if (car.mapKpa < 0) return -1; float b = (car.mapKpa - (car.baro > 0 ? car.baro : 101)) * 0.145038; return b < 0 ? 0 : b; }
-bool engineOn() { return obdLinked && car.rpm > 300 && millis() - car.at < 5000; }
-
-void integrate() {
-  uint32_t now = millis();
-  float dt = (now - lastIntegrate) / 1000.0;
-  lastIntegrate = now;
-  if (dt <= 0 || dt > 5) return;
-  if (!engineOn()) {
-    if (!engineOffSince) engineOffSince = now;
-    // parked with the key on for 90 s: that trip is over (it goes to the sheet while the key is still on)
-    if (trip.km >= 0.2 && now - engineOffSince > (uint32_t)parkSecs * 1000) { trip.t1 = nowMs(); queueTrip(trip); newTrip(); }
-    return;
-  }
-  engineOffSince = 0;
-  if (!trip.t0) trip.t0 = nowMs() ? nowMs() - (int64_t)((trip.s) * 1000) : 0;
-  float kmh = car.kmh < 0 ? 0 : car.kmh;
-  trip.km += kmh * dt / 3600.0 * distCal;
-  trip.l += fuelNow() * dt / 3600.0;
-  trip.s += dt;
-  if (kmh < 2) trip.idle += dt;
-  if (kmh > trip.vmax) trip.vmax = kmh;
-}
-
-// ---------------------------------------------------------------- Wi-Fi: home or the iPhone's hotspot, then the sheet
-enum WifiState { W_IDLE, W_SCAN, W_JOIN, W_ON };
 volatile WifiState wifiState = W_IDLE;
-uint32_t wifiAt = 0, nextWifiTry = 15000;
-String wifiName, lastUpload = "not yet", updStatus = "";
-uint32_t nextUpdateCheck = 20000;     // soon after key-on, then every 6 hours
-volatile bool updating = false;
-uint32_t lastUploadAt = 0;
-volatile bool uploadDone = false, uploading = false;
-uint32_t nextUploadTry = 0, wifiIdleSince = 0, mqttTry = 0, lastPub = 0;
-WiFiClientSecure mqttTls;
-PubSubClient mqtt(mqttTls);
-
-// a newer T3 program on GitHub? Fetch it and restart into it (only while the Jeep is stopped)
-void checkUpdate() {
-  WiFiClientSecure tls;
-  tls.setInsecure();
-  HTTPClient http;
-  String body;
-  if (http.begin(tls, UPDATE_JSON)) { if (http.GET() == 200) body = http.getString(); http.end(); }
-  String v = jStr(body, "v"), url = jStr(body, "url");
-  if (!v.length() || !url.length()) { updStatus = "couldn't check"; return; }
-  if (v == FW) { updStatus = "up to date"; return; }
-  updStatus = "updating to " + v;
-  updating = true;
-  snapshot();                              // the trip so far is safe in flash; it carries on after the restart
-  httpUpdate.rebootOnUpdate(true);
-  t_httpUpdate_return r = httpUpdate.update(tls, url);
-  updating = false;
-  updStatus = r == HTTP_UPDATE_NO_UPDATES ? "up to date" : "update failed";
-}
-void uploadTask(void*) {
-  // every trip waiting, in one go
-  xSemaphoreTake(fsLock, portMAX_DELAY);
-  File f = LittleFS.open("/trips.txt", "r");
-  String lines = f ? f.readString() : "";
-  if (f) f.close();
-  xSemaphoreGive(fsLock);
-  String ops, ids = "|";
-  int n = 0, from = 0;
-  int64_t now = nowMs();
-  while (from < (int)lines.length() && n < 40) {
-    int e = lines.indexOf('\n', from);
-    if (e < 0) e = lines.length();
-    String j = lines.substring(from, e);
-    from = e + 1;
-    if (j.length() < 10) continue;
-    int a = j.indexOf("\"id\":\"") + 6, b = j.indexOf('"', a);
-    String id = j.substring(a, b);
-    long long t1 = llField(j, "t1"), t0 = llField(j, "t0");
-    float s = numField(j, "s");
-    String note = "";
-    if (!t1) { t1 = now; note = "time approximate"; }
-    if (!t0) t0 = t1 - (long long)(s * 1000);
-    if (n) ops += ",";
-    ops += "{\"q\":\"" + id + "\",\"op\":\"put\",\"tab\":\"trip\",\"row\":{\"id\":\"" + id + "\",\"t0\":" + ll(t0) + ",\"t1\":" + ll(t1) +
-           ",\"km\":" + String(numField(j, "km"), 2) + ",\"lit\":" + String(numField(j, "l"), 2) + ",\"vmax\":" + String((long)numField(j, "vmax")) +
-           ",\"idle\":" + String((long)(numField(j, "idle") / 60 + 0.5)) + ",\"note\":\"" + note + "\"}}";
-    ids += id + "|";
-    n++;
-  }
-  bool ok = false;
-  if (n) {
-    WiFiClientSecure tls;
-    tls.setInsecure();
-    HTTPClient http;
-    http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);   // Google answers from a second address
-    http.setTimeout(20000);
-    if (http.begin(tls, sheetUrl)) {
-      http.addHeader("Content-Type", "text/plain");
-      int code = http.POST("{\"k\":\"" + sheetKey + "\",\"ops\":[" + ops + "]}");
-      String body = code > 0 ? http.getString() : "";
-      ok = code == 200 && body.indexOf("\"ok\":true") >= 0;
-      lastUpload = ok ? "sent " + String(n) + (n == 1 ? " trip" : " trips") : (body.indexOf("key") >= 0 ? "sheet key wrong" : "send failed (" + String(code) + ")");
-      http.end();
-    } else lastUpload = "bad sheet link";
-  }
-  if (ok) { dropTrips(ids); lastUploadAt = millis(); }
-  else if (n) nextUploadTry = millis() + 120000;
-  if (millis() >= nextUpdateCheck) {
-    if (car.kmh <= 0 || !engineOn()) { nextUpdateCheck = millis() + 6UL * 3600 * 1000; checkUpdate(); }
-    else nextUpdateCheck = millis() + 10UL * 60 * 1000;   // moving: try again in a bit
-  }
-  uploadDone = true;
-  uploading = false;
-  vTaskDelete(nullptr);
-}
-String wifiNow = "off", wifiSeen = "";
-// names match even with a curly apostrophe (iPhone hotspots have one) or different capitals
-String ssidKey(String v) { v.replace("\xE2\x80\x99", "'"); v.replace("\xE2\x80\x98", "'"); v.trim(); v.toLowerCase(); return v; }
-bool liveWanted() { return liveWifi && liveTopic.length() && engineOn(); }
-bool uploadWanted() { return queued > 0 && sheetUrl.length() && millis() >= nextUploadTry; }
-void wifiOff(uint32_t retryIn) {
-  if (mqtt.connected()) mqtt.disconnect();
-  WiFi.disconnect(true); WiFi.mode(WIFI_OFF);
-  wifiState = W_IDLE; nextWifiTry = millis() + retryIn;
-}
-void wifiStep() {
-  uint32_t now = millis();
-  bool want = uploadWanted() || now >= nextUpdateCheck || liveWanted();
-  switch (wifiState) {
-    case W_IDLE:
-      if (!want || netCount == 0 || now < nextWifiTry) return;
-      WiFi.mode(WIFI_STA);
-      WiFi.scanNetworks(true);
-      wifiState = W_SCAN; wifiAt = now; wifiNow = "looking";
-      return;
-    case W_SCAN: {
-      int found = WiFi.scanComplete();
-      if (found == WIFI_SCAN_RUNNING && now - wifiAt < 10000) return;
-      int pick = -1;
-      for (int i = 0; i < netCount && pick < 0; i++)                 // in the order you listed them in Heep
-        for (int k = 0; k < found; k++) if (ssidKey(WiFi.SSID(k)) == ssidKey(nets[i].ssid)) { pick = i; break; }
-      wifiSeen = "";
-      for (int k = 0, n = 0; k < found && n < 8; k++) { String nm = WiFi.SSID(k); if (nm.length() && wifiSeen.indexOf(nm) < 0) { wifiSeen += (n++ ? ", " : "") + nm; } }
-      if (found <= 0) wifiSeen = "no Wi-Fi at all";
-      WiFi.scanDelete();
-      if (pick < 0) { wifiNow = "none of yours in range"; wifiOff(liveWanted() ? 20000 : 60000); return; }
-      wifiName = nets[pick].ssid;
-      WiFi.begin(nets[pick].ssid.c_str(), nets[pick].pass.c_str());
-      wifiState = W_JOIN; wifiAt = now; wifiNow = "joining " + wifiName;
-      return;
-    }
-    case W_JOIN:
-      if (WiFi.status() == WL_CONNECTED) {
-        if (!timeKnown) {
-          configTime(0, 0, "pool.ntp.org", "time.google.com");
-          struct tm tmv;
-          if (getLocalTime(&tmv, 3000)) { time_t t; time(&t); setTime((int64_t)t * 1000); }
-        }
-        wifiState = W_ON; wifiIdleSince = 0; wifiNow = "on " + wifiName;
-      } else if (now - wifiAt > 15000) { lastUpload = "couldn't join " + wifiName; wifiNow = "couldn't join " + wifiName + " (password?)"; wifiOff(liveWanted() ? 20000 : 60000); }
-      return;
-    case W_ON:
-      if (WiFi.status() != WL_CONNECTED) { wifiOff(5000); return; }
-      if (uploading) return;                                          // the upload has the connection to itself
-      if (uploadWanted() || now >= nextUpdateCheck) {
-        if (mqtt.connected()) mqtt.disconnect();
-        uploading = true; uploadDone = false;
-        xTaskCreatePinnedToCore(uploadTask, "upload", 16384, nullptr, 1, nullptr, 0);
-        return;
-      }
-      if (liveWanted()) {
-        // the live numbers, once a second, for Heep in any browser
-        wifiIdleSince = 0;
-        if (!mqtt.connected()) {
-          if (now - mqttTry < 10000) return;
-          mqttTry = now;
-          mqttTls.setInsecure();
-          mqtt.setServer(RELAY_HOST, RELAY_PORT);
-          mqtt.setBufferSize(600);
-          String id = "jeep-t3-" + String((uint32_t)ESP.getEfuseMac(), HEX);
-          mqtt.connect(id.c_str());
-          return;
-        }
-        mqtt.loop();
-        if (now - lastPub >= 1000) { lastPub = now; String m = liveJson(); mqtt.publish(liveTopic.c_str(), m.c_str()); }
-        return;
-      }
-      if (mqtt.connected()) mqtt.disconnect();
-      if (!wifiIdleSince) wifiIdleSince = now;
-      if (now - wifiIdleSince > 60000) { wifiNow = "off (nothing to send)"; wifiOff(30000); }                // nothing to do for a minute: Wi-Fi off
-      return;
-  }
-}
-
-// ---------------------------------------------------------------- messages from Heep
-String rxLine;
-String jStr(const String& j, const char* key) {
-  int i = j.indexOf("\"" + String(key) + "\":\"");
-  if (i < 0) return "";
-  i += strlen(key) + 4;
-  String out;
-  while (i < (int)j.length() && j[i] != '"') {
-    if (j[i] == '\\' && i + 1 < (int)j.length()) { i++; char e = j[i]; out += e == 'n' ? '\n' : e == 't' ? '\t' : e; }
-    else out += j[i];
-    i++;
-  }
-  return out;
-}
-// "wifi":["home name","home password","hotspot name","hotspot password"]
-int jStrings(const String& j, const char* key, String* out, int max) {
-  int i = j.indexOf("\"" + String(key) + "\":[");
-  if (i < 0) return -1;
-  i += strlen(key) + 4;
-  int n = 0;
-  while (i < (int)j.length() && j[i] != ']' && n < max) {
-    if (j[i] != '"') { i++; continue; }
-    i++;
-    String s;
-    while (i < (int)j.length() && j[i] != '"') { if (j[i] == '\\' && i + 1 < (int)j.length()) i++; s += j[i]; i++; }
-    i++;
-    out[n++] = s;
-  }
-  return n;
-}
-String jsonEsc(const String& v) { String o; for (size_t i = 0; i < v.length(); i++) { char c = v[i]; if (c == '"' || c == '\\') o += '\\'; if ((uint8_t)c >= 32) o += c; } return o; }
-void sendHi() {
-  String ss = "[";
-  for (int i = 0; i < netCount; i++) ss += String(i ? "," : "") + "\"" + jsonEsc(nets[i].ssid) + "\"";
-  ss += "]";
-  phoneSend("{\"t\":\"hi\",\"fw\":\"" FW "\",\"obd\":" + String(obdLinked ? "true" : "false") + ",\"nets\":" + String(netCount) +
-            ",\"sheet\":" + String(sheetUrl.length() ? "true" : "false") + ",\"queued\":" + String(queued) +
-            ",\"up\":\"" + lastUpload + "\",\"upAgo\":" + String(lastUploadAt ? (long)((millis() - lastUploadAt) / 1000) : -1) +
-            ",\"fc\":" + String(fuelCal, 3) + ",\"dc\":" + String(distCal, 3) + ",\"totKm\":" + String(totalKm, 1) +
-            ",\"ss\":" + String(screenSecs) + ",\"pk\":" + String(parkSecs) + ",\"br\":" + String(bright) + ",\"sp\":" + String(startPage) +
-            ",\"obdName\":\"" + obdName + "\",\"upd\":\"" + updStatus + "\",\"ssids\":" + ss + ",\"lw\":" + String(liveWifi ? 1 : 0) +
-            ",\"wifi\":\"" + jsonEsc(wifiNow) + "\",\"seen\":\"" + jsonEsc(wifiSeen) + "\"}");
-}
-void sendTrips() {
-  xSemaphoreTake(fsLock, portMAX_DELAY);
-  File f = LittleFS.open("/trips.txt", "r");
-  String lines = f ? f.readString() : "";
-  if (f) f.close();
-  xSemaphoreGive(fsLock);
-  int from = 0;
-  while (from < (int)lines.length()) {
-    int e = lines.indexOf('\n', from);
-    if (e < 0) e = lines.length();
-    String j = lines.substring(from, e);
-    j.trim();
-    from = e + 1;
-    if (j.length() > 10) phoneSend(j);
-  }
-}
-void onPhoneLine(const String& j) {
-  String c = jStr(j, "c");
-  if (c == "hello") { setTime(llField(j, "now")); sendHi(); }
-  else if (c == "trips") sendTrips();
-  else if (c == "ack") dropTrips("|" + jStr(j, "id") + "|");
-  else if (c == "reset") { trip.t1 = nowMs(); queueTrip(trip); newTrip(); }
-  else if (c == "status") sendHi();
-  else if (c == "update") { nextUpdateCheck = 0; nextWifiTry = 0; }
-  else if (c == "cfg") {
-    String w[16];
-    int n = jStrings(j, "wifi", w, 16);
-    prefs.begin("t3", false);
-    if (n >= 0) {
-      int k = 0;
-      for (int i = 0; i + 1 < n && k < 8; i += 2) if (w[i].length()) { prefs.putString(("s" + String(k)).c_str(), w[i]); prefs.putString(("p" + String(k)).c_str(), w[i + 1]); k++; }
-      prefs.putInt("n", k);
-    }
-    if (j.indexOf("\"u\":") >= 0) prefs.putString("u", jStr(j, "u"));
-    if (j.indexOf("\"k\":") >= 0) prefs.putString("k", jStr(j, "k"));
-    if (j.indexOf("\"obd\":") >= 0) prefs.putString("obd", jStr(j, "obd"));
-    if (j.indexOf("\"fc\":") >= 0) prefs.putFloat("fc", numFieldOr(j, "fc", 1));
-    if (j.indexOf("\"dc\":") >= 0) prefs.putFloat("dc", numFieldOr(j, "dc", 1));
-    if (j.indexOf("\"ss\":") >= 0) prefs.putInt("ss", (int)numFieldOr(j, "ss", 60));
-    if (j.indexOf("\"pk\":") >= 0) prefs.putInt("pk", constrain((int)numFieldOr(j, "pk", 90), 30, 1800));
-    if (j.indexOf("\"br\":") >= 0) prefs.putInt("br", constrain((int)numFieldOr(j, "br", 2), 0, 2));
-    if (j.indexOf("\"lw\":") >= 0) prefs.putBool("lw", numFieldOr(j, "lw", 1) > 0);
-    if (j.indexOf("\"sp\":") >= 0) prefs.putInt("sp", constrain((int)numFieldOr(j, "sp", 0), 0, 5));
-    prefs.end();
-    loadSettings();
-    applyBright();
-    screenWake();
-    nextWifiTry = millis() + 2000;
-    phoneSend("{\"t\":\"cfg\",\"ok\":true}");
-    sendHi();
-  }
-}
-void phoneStep() {
-  char ch;
-  while (xQueueReceive(rxQueue, &ch, 0) == pdTRUE) {
-    if (ch == '\n') { rxLine.trim(); if (rxLine.length()) onPhoneLine(rxLine); rxLine = ""; }
-    else if (rxLine.length() < 1200) rxLine += ch;
-  }
-  static uint32_t lastLive = 0;
-  if (phoneOn && millis() - lastLive > 500) {
-    lastLive = millis();
-    phoneSend(liveJson());
-  }
-}
-String liveJson() {
-  {
-    String m = "{\"t\":\"live\"";
-    if (engineOn() || obdLinked) {
-      if (car.kmh >= 0) m += ",\"kmh\":" + String(car.kmh, 0);
-      if (car.rpm >= 0) m += ",\"rpm\":" + String(car.rpm, 0);
-      if (boostPsi() >= 0) m += ",\"boost\":" + String(boostPsi(), 1);
-      if (car.ect > -100) m += ",\"ect\":" + String(car.ect, 0);
-      if (car.iat > -100) m += ",\"iat\":" + String(car.iat, 0);
-      if (car.volts > 0) m += ",\"v\":" + String(car.volts, 1);
-      if (car.load >= 0) m += ",\"load\":" + String(car.load, 0);
-      m += ",\"lph\":" + String(fuelNow(), 2);
-    }
-    m += ",\"trip\":{\"km\":" + String(trip.km, 2) + ",\"l\":" + String(trip.l, 2) + ",\"s\":" + String((long)trip.s) + ",\"idle\":" + String((long)trip.idle) + "}}";
-    return m;
-  }
-}
-
-// ---------------------------------------------------------------- the screen and the button
+String wifiName, wifiNow = "off", wifiSeen;
+Txt lastUpload, updStatus, trkStatus;
+volatile bool phoneOn = false, obdLinked = false, updating = false;
+uint32_t bootNo = 0;
+String resetWhy;
+Adafruit_SSD1306 oled(SCREEN_W, SCREEN_H, &Wire, -1);
 int page = 0;
-const int PAGES = 6;
-uint32_t pressAt = 0, msgUntil = 0;
-bool pressed = false, longDone = false;
-String msg;
-// the screen sleeps after a minute without a press; the next press only wakes it
-bool screenOn = true, wakePress = false;
-uint32_t lastTouch = 0;
-void applyBright() { const uint8_t lv[] = { 1, 70, 255 }; oled.ssd1306_command(SSD1306_SETCONTRAST); oled.ssd1306_command(lv[constrain(bright, 0, 2)]); }
-void screenWake() { if (!screenOn) { screenOn = true; oled.ssd1306_command(SSD1306_DISPLAYON); } lastTouch = millis(); }
-void screenSleepStep() {
-  if (screenSecs > 0 && screenOn && millis() - lastTouch > (uint32_t)screenSecs * 1000UL) { screenOn = false; oled.clearDisplay(); oled.display(); oled.ssd1306_command(SSD1306_DISPLAYOFF); }
+Screen screens[MAX_SCREENS];
+int screenCount = 0;
+uint32_t screensHash = 0;
+SemaphoreHandle_t fsLock, cfgLock;
+char timeSrc = 0;
+int64_t epochOffset = 0;   // epoch ms minus millis()
+
+int64_t nowMs() { return timeSrc ? epochOffset + (int64_t)millis() : 0; }
+// a better (or equal) clock source replaces the old one; a worse one only fills in when there's none
+void setClock(int64_t epochMs, char src) {
+  if (epochMs < 1600000000000LL) return;
+  const char rank[] = "ang";   // phone < internet < GPS
+  if (timeSrc && strchr(rank, src) < strchr(rank, timeSrc)) return;
+  epochOffset = epochMs - (int64_t)millis();
+  timeSrc = src;
 }
 
-void flash(const String& m) { msg = m; msgUntil = millis() + 1500; screenWake(); }
-void buttonStep() {
-  bool down = digitalRead(BUTTON_PIN) == LOW;
-  uint32_t now = millis();
-  if (down && !pressed) { pressed = true; pressAt = now; longDone = false; wakePress = !screenOn; screenWake(); }
-  if (down && pressed) lastTouch = now;
-  if (down && pressed && !longDone && !wakePress && now - pressAt > 1500) {
-    longDone = true;
-    // hold: a new trip on the trip pages, send now on the status page
-    if (page <= 1) { trip.t1 = nowMs(); queueTrip(trip); newTrip(); flash("New trip"); }
-    else if (page == 5) { nextWifiTry = 0; flash("Sending..."); }
+const char* resetReason() {
+  switch (esp_reset_reason()) {
+    case ESP_RST_POWERON: return "power on";
+    case ESP_RST_SW: return "restart";
+    case ESP_RST_PANIC: return "crash";
+    case ESP_RST_INT_WDT: case ESP_RST_TASK_WDT: case ESP_RST_WDT: return "watchdog";
+    case ESP_RST_BROWNOUT: return "low voltage";
+    case ESP_RST_DEEPSLEEP: return "sleep";
+    default: return "other";
   }
-  if (!down && pressed) { pressed = false; if (!longDone && !wakePress && now - pressAt > 40) page = (page + 1) % PAGES; }
-}
-String hm(float s) { long m = (long)(s / 60); char b[12]; snprintf(b, sizeof(b), "%ld:%02ld", m / 60, m % 60); return b; }
-String avgText(float l, float km) { return km >= 0.5 ? String(l / km * 100, 1) : "--"; }
-void title(const char* t) {
-  oled.setFont(); oled.setTextSize(1); oled.setCursor(0, 0); oled.print(t);
-  String s = String(obdLinked ? "OBD" : "---") + (phoneOn ? " PH" : "") + (wifiState != W_IDLE ? " WF" : "");
-  oled.setCursor(128 - s.length() * 6, 0); oled.print(s);
-  oled.drawFastHLine(0, 10, 128, SSD1306_WHITE);
-}
-void bigValue(const String& v, int y) {
-  oled.setFont(&FreeSansBold18pt7b);
-  int16_t x1, y1; uint16_t w, h;
-  oled.getTextBounds(v, 0, y, &x1, &y1, &w, &h);
-  oled.setCursor((128 - w) / 2, y); oled.print(v);
-  oled.setFont();
-}
-void row(int y, const String& a, const String& b) { oled.setCursor(0, y); oled.print(a); oled.setCursor(128 - b.length() * 6, y); oled.print(b); }
-void draw() {
-  oled.clearDisplay();
-  oled.setTextColor(SSD1306_WHITE);
-  float lph = fuelNow(), kmh = car.kmh < 0 ? 0 : car.kmh;
-  String now = !engineOn() ? "--" : kmh > 3 ? String(lph / kmh * 100, 1) : String(lph, 1) + " L/h";
-  switch (page) {
-    case 0:  // fuel economy, the headline
-      title("ECONOMY  L/100km");
-      bigValue(avgText(trip.l, trip.km), 42);
-      oled.setCursor(0, 47); oled.print("trip avg   now " + now);
-      oled.setCursor(0, 56); oled.print(String(trip.km, 1) + " km  " + String(trip.l, 2) + " L");
-      break;
-    case 1:  // the trip
-      title("TRIP");
-      oled.setTextSize(1);
-      row(14, "Distance", String(trip.km, 1) + " km");
-      row(24, "Time", hm(trip.s) + "  idle " + hm(trip.idle));
-      row(34, "Diesel", String(trip.l, 2) + " L");
-      row(44, "Average", avgText(trip.l, trip.km) + " L/100");
-      row(54, "Top speed", String((int)trip.vmax) + " km/h");
-      break;
-    case 2:  // the engine
-      title("ENGINE");
-      row(14, "RPM", car.rpm >= 0 ? String((int)car.rpm) : "--");
-      row(24, "Boost", boostPsi() >= 0 ? String(boostPsi(), 1) + " psi" : "--");
-      row(34, "Coolant", car.ect > -100 ? String((int)car.ect) + " C" : "--");
-      row(44, "Intake", car.iat > -100 ? String((int)car.iat) + " C" : "--");
-      row(54, "Battery", car.volts > 0 ? String(car.volts, 1) + " V" : "--");
-      break;
-    case 3:  // speed, big
-      title("SPEED  km/h");
-      bigValue(engineOn() ? String((int)kmh) : "--", 42);
-      oled.setCursor(0, 50); oled.print("RPM " + String(car.rpm >= 0 ? (int)car.rpm : 0) + "   " + String(lph, 1) + " L/h");
-      break;
-    case 4:  // all trips
-      title("ALL TRIPS");
-      row(14, "Distance", String(totalKm + trip.km, 0) + " km");
-      row(24, "Diesel", String(totalL + trip.l, 0) + " L");
-      row(34, "Average", avgText(totalL + trip.l, totalKm + trip.km) + " L/100");
-      row(44, "This start", String(trip.km, 1) + " km");
-      row(54, "Load", car.load >= 0 ? String((int)car.load) + " %" : "--");
-      break;
-    case 5:  // how it's connected
-      title("STATUS  T3 " FW);
-      row(14, "iCar", obdLinked ? (car.at && millis() - car.at < 5000 ? "reading" : "connected") : "looking...");
-      row(24, "Phone", phoneOn ? "Heep connected" : "-");
-      row(34, "Wi-Fi", netCount == 0 ? "set up in Heep" : wifiState == W_IDLE ? String(netCount) + " saved" : wifiName.substring(0, 12));
-      row(44, "Waiting", String(queued) + (queued == 1 ? " trip" : " trips"));
-      row(54, "Sheet", lastUpload.substring(0, 14));
-      break;
-  }
-  if (updating) { msg = "Updating T3..."; msgUntil = millis() + 500; }
-  if (millis() < msgUntil) { oled.fillRect(14, 22, 100, 20, SSD1306_BLACK); oled.drawRect(14, 22, 100, 20, SSD1306_WHITE); oled.setCursor(64 - msg.length() * 3, 28); oled.print(msg); }
-  oled.display();
 }
 
-// ---------------------------------------------------------------- start
+// the SX1276 straight to sleep with two register writes (no LoRa library needed, it never transmits)
+void loraSleep() {
+  pinMode(LORA_RST, OUTPUT); digitalWrite(LORA_RST, LOW); delay(2); digitalWrite(LORA_RST, HIGH); delay(10);
+  SPI.begin(LORA_SCK, LORA_MISO, LORA_MOSI, LORA_CS);
+  pinMode(LORA_CS, OUTPUT);
+  auto wr = [](uint8_t reg, uint8_t v) {
+    SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE0));
+    digitalWrite(LORA_CS, LOW); SPI.transfer(reg | 0x80); SPI.transfer(v); digitalWrite(LORA_CS, HIGH);
+    SPI.endTransaction();
+  };
+  wr(0x01, 0x00);   // RegOpMode: FSK sleep (the only mode where the LoRa bit can change)
+  wr(0x01, 0x80);   // LoRa + sleep
+}
+
+// Safe updates: a new program fetched over Wi-Fi has to prove itself. It is only marked good after running
+// 20 s; if it crashes or restarts before that, the ESP32 goes back to the previous program by itself.
+extern "C" bool verifyRollbackLater() { return true; }
+static void confirmUpdateStep() {
+  static bool done = false;
+  if (done || millis() < 20000) return;
+  done = true;
+  esp_ota_mark_app_valid_cancel_rollback();
+  updateConfirmed();
+}
+
 void setup() {
   Serial.begin(115200);
   Serial.println("Jeep T3 " FW " starting");
-  pinMode(BUTTON_PIN, INPUT_PULLUP);
+  resetWhy = resetReason();
   pinMode(LED_PIN, OUTPUT); digitalWrite(LED_PIN, LOW);
-  // LoRa off for good: asleep, never transmitting, fine with no antenna on
-  SPI.begin(LORA_SCK, LORA_MISO, LORA_MOSI, LORA_CS);
-  LoRa.setPins(LORA_CS, LORA_RST, LORA_DIO0);
-  if (LoRa.begin(915E6)) LoRa.sleep();
-  // the screen
+  loraSleep();
+  // the screen first, so there's something to look at
   Wire.begin(OLED_SDA, OLED_SCL);
   oled.begin(SSD1306_SWITCHCAPVCC, 0x3C);
   oled.clearDisplay(); oled.setTextColor(SSD1306_WHITE); oled.setCursor(0, 0); oled.print("Jeep T3 " FW "\nstarting..."); oled.display();
-  // flash and settings
+  // flash, settings, screens
   fsLock = xSemaphoreCreateMutex();
+  cfgLock = xSemaphoreCreateMutex();
   LittleFS.begin(true);
-  prefs.begin("t3", false); bootNo = prefs.getUInt("boot", 0) + 1; prefs.putUInt("boot", bootNo); prefs.end();
+  Preferences p; p.begin("t3", false); bootNo = p.getUInt("boot", 0) + 1; p.putUInt("boot", bootNo); p.end();
+  lastUpload.set("not yet"); trkStatus.set("not set up");
   loadSettings();
-  recoverTrip();
-  queued = queuedCount();
-  newTrip();
-  // Bluetooth: Heep connects to us, we connect to the iCar
-  rxQueue = xQueueCreate(1400, 1);
-  obdQueue = xQueueCreate(512, 1);
-  WiFi.mode(WIFI_OFF);
-  BLEDevice::init("Jeep T3");
-  server = BLEDevice::createServer();
-  server->setCallbacks(new ServerCB());
-  BLEService* svc = server->createService(NUS_SVC);
-  txChar = svc->createCharacteristic(NUS_TX, BLECharacteristic::PROPERTY_NOTIFY);
-  txChar->addDescriptor(new BLE2902());
-  BLECharacteristic* rx = svc->createCharacteristic(NUS_RX, BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_WRITE_NR);
-  rx->setCallbacks(new RxCB());
-  svc->start();
-  BLEAdvertising* adv = BLEDevice::getAdvertising();
-  adv->addServiceUUID(NUS_SVC);
-  adv->setScanResponse(true);
-  BLEDevice::startAdvertising();
-  BLEDevice::getScan()->setAdvertisedDeviceCallbacks(new ScanCB());
-  lastIntegrate = millis();
-  lastTouch = millis();   // on for a while after the key goes on
-  page = startPage;
-  applyBright();
+  netBegin();
+  loadScreens();
+  displayBegin();
+  // the parts
+  sdBegin();
+  gpsBegin();
+  tempBegin();
+  wheelBegin();
+  tripBegin();
+  phoneBegin();
+  obdBegin();
+  sdEvent("boot " FW " (" + resetWhy + ")");
 }
 
 void loop() {
-  obdConnectStep();
   obdStep();
-  integrate();
+  gpsStep();
+  tempStep();
+  wheelStep();
+  tripStep();
   phoneStep();
   wifiStep();
-  buttonStep();
-  if (millis() - lastSnapshot > 30000) { lastSnapshot = millis(); snapshot(); }
-  static uint32_t lastDraw = 0;
-  screenSleepStep();
-  if (screenOn && millis() - lastDraw > 250) { lastDraw = millis(); draw(); }
+  sdStep();
+  displayStep();
+  confirmUpdateStep();
   digitalWrite(LED_PIN, obdLinked && (millis() / 500) % 2);
-  delay(5);
+  delay(2);
 }

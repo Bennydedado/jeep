@@ -22,8 +22,10 @@ function renderLive(v) {
   const on = !!LIVE.mode;
   v.append(titleRow('Live', on ? (LIVE.mode === 'demo' ? 'Demo, made-up numbers' : LIVE.status + (LIVE.fw ? ' · T3 ' + LIVE.fw : '')) : 'Straight from the T3 in the Jeep'));
   topBanners(v);
-  v.append(h('div', { class: 'btn-row' },
-    h('button', { class: 'btn btn-primary', onclick: t3Setup }, icon('sliders'), 'Wi-Fi & setup'),
+  v.append(h('div', { class: 'btn-grid' },
+    h('button', { class: 'btn btn-primary', onclick: t3Setup }, icon('sliders'), 'T3 settings'),
+    h('button', { class: 'btn btn-glass glass', onclick: screensSheet }, icon('odo'), 'Screens'),
+    h('button', { class: 'btn btn-glass glass', onclick: diagSheet }, icon('warn'), 'Diagnostics'),
     h('button', { class: 'btn btn-glass glass', onclick: t3Guide }, icon('info'), 'Guide')));
   if (!on) {
     if (hasBT()) {
@@ -47,24 +49,39 @@ function renderLive(v) {
     }
   } else {
     const e = LIVE.els = {};
+    // what's connected, and how fresh the numbers are
+    e.chips = h('div', { class: 'chips live-chips' });
+    e.age = h('div', { class: 'foot live-age' });
+    v.append(e.chips, e.age);
     const big = (k, ic, label, unit) => {
-      e[k] = h('div', { class: 'v' }, '—');
+      e[k] = h('div', { class: 'v' }, '\u2014');
       e[k + 'u'] = h('div', { class: 'u', text: unit });
       return h('div', { class: 'live-big card' }, h('div', { class: 'k' }, icon(ic), label), e[k], e[k + 'u']);
     };
-    v.append(h('div', { class: 'live-hero' }, big('econ', 'drop', 'Fuel now', 'L/100 km'), big('kmh', 'speed', 'Speed', 'km/h')));
+    v.append(h('div', { class: 'live-hero' }, big('hdg', 'compass', 'Heading', 'GPS'), big('ot', 'temp', 'Outside', t3TempF() ? '\u00b0F' : '\u00b0C')));
+    v.append(h('div', { class: 'live-hero' }, big('kmh', 'speed', 'Speed', 'km/h'), big('econ', 'drop', 'Fuel now', 'L/100 km')));
     v.append(h('div', { class: 'live-grid' }, GAUGES.map(([k, label, ic, unit]) => {
-      e[k] = h('span', null, '—');
+      e[k] = h('span', null, '\u2014');
       e[k + 'b'] = h('i', { style: 'width:0%' });
       return h('div', { class: 'tile card' }, h('div', { class: 'k' }, icon(ic), label), h('div', { class: 'v num' }, e[k], unit ? h('small', { text: unit }) : null), h('div', { class: 'bar' }, e[k + 'b']));
     })));
-    const tripCell = (k, label) => { e['t' + k] = h('b', { text: '—', class: 'num', style: 'font-size:20px' }); return h('div', null, h('div', { class: 'small muted', text: label }), e['t' + k]); };
-    v.append(card(cardHead('This trip', null),
+    const tripCell = (k, label) => { e['t' + k] = h('b', { text: '\u2014', class: 'num', style: 'font-size:20px' }); return h('div', null, h('div', { class: 'small muted', text: label }), e['t' + k]); };
+    const demo = LIVE.mode === 'demo';
+    e.tstate = h('span', { class: 'muted' });
+    e.pauseBtn = h('button', { class: 'btn btn-small btn-glass glass', onclick: () => { if (demo) { LIVE.sim.paused = !LIVE.sim.paused; updateLive(); } else t3Trip(LIVE.v.tp ? 'resume' : 'pause'); } }, icon('stop'), 'Pause');
+    v.append(card(h('div', { class: 'card-head' }, h('h2', { text: 'This trip' }), e.tstate),
       h('div', { style: 'display:grid;grid-template-columns:repeat(4,1fr);gap:8px' }, tripCell('km', 'Distance'), tripCell('s', 'Time'), tripCell('l', 'Diesel'), tripCell('avg', 'L/100 km')),
-      h('div', { class: 'btn-row', style: 'margin-top:14px' },
-        LIVE.mode === 'net' ? null : h('button', { class: 'btn btn-small btn-glass glass', onclick: () => { if (LIVE.mode === 'demo') LIVE.sim.trip = { km: 0, l: 0, s: 0, idle: 0 }; else send({ c: 'reset' }); } }, 'Reset trip'),
-        h('button', { class: 'btn btn-small btn-glass glass btn-danger', onclick: liveStop }, icon('stop'), LIVE.mode === 'demo' ? 'Stop demo' : LIVE.mode === 'net' ? 'Stop' : 'Disconnect'))));
+      h('div', { class: 'btn-row', style: 'margin-top:14px;flex-wrap:wrap' },
+        e.pauseBtn,
+        confirmButtonSmall('End trip', 'Tap again to end it', () => { if (demo) LIVE.sim.trip = { km: 0, l: 0, s: 0, idle: 0 }; else t3Trip('end'); }),
+        h('button', { class: 'btn btn-small btn-glass glass', onclick: () => { if (!demo) t3Act('mark'); toast('Marked', 'The spot is flagged in this trip\u2019s track'); } }, icon('plus'), 'Mark')),
+      h('div', { class: 'btn-row', style: 'margin-top:10px' },
+        h('button', { class: 'btn btn-small btn-glass glass', onclick: () => t3Act('prev') }, '\u25c0 Screen'),
+        h('button', { class: 'btn btn-small btn-glass glass', onclick: () => t3Act('next') }, 'Screen \u25b6'),
+        h('button', { class: 'btn btn-small btn-glass glass btn-danger', onclick: liveStop }, icon('stop'), demo ? 'Stop' : LIVE.mode === 'net' ? 'Stop' : 'Disconnect'))));
     updateLive();
+    clearInterval(LIVE.ageTimer);
+    LIVE.ageTimer = setInterval(() => { if (!LIVE.els || !document.body.contains(LIVE.els.age)) clearInterval(LIVE.ageTimer); else updateLive(); }, 1000);
   }
   // trips the T3 has logged
   const trips = S.data.trip.slice().sort((a, b) => (num(b.t1) || 0) - (num(a.t1) || 0)).slice(0, 20);
@@ -80,24 +97,60 @@ function renderLive(v) {
 }
 
 function setText(el, t) { if (el && el.textContent !== t) el.textContent = t; }
+function confirmButtonSmall(label, armed, act) {
+  let on = false, t = 0;
+  const b = h('button', { type: 'button', class: 'btn btn-small btn-glass glass btn-danger', text: label });
+  b.addEventListener('click', () => { if (!on) { on = true; b.textContent = armed; clearTimeout(t); t = setTimeout(() => { on = false; b.textContent = label; }, 4000); return; } on = false; b.textContent = label; act(); });
+  return b;
+}
+const GPS_WORDS = ['No GPS data', 'GPS: wrong speed?', 'GPS searching', 'GPS 2D', 'GPS 3D'];
+function chip(text, kind) { return h('span', { class: 'chip' }, h('i', { class: 'dot ' + (kind || '') }), text); }
 function updateLive() {
   const e = LIVE.els, d = LIVE.v;
   if (!e || !document.body.contains(e.kmh)) return;
+  const age = LIVE.at ? (Date.now() - LIVE.at) / 1000 : 999;
+  const stale = age > 3;
+  document.querySelectorAll('.live-hero, .live-grid').forEach(x => x.classList.toggle('stale', stale));
+  setText(e.age, LIVE.mode === 'demo' ? 'Demo: made-up numbers' : stale ? 'No new numbers for ' + (age < 120 ? Math.round(age) + ' s' : ago(LIVE.at)) + ': these are the last ones the T3 sent' : 'Live \u00b7 updated ' + fmtTime(LIVE.at));
+  // connection chips
+  const g = d.g;
+  const sig = [LIVE.mode === 'bt' ? 'Bluetooth' : LIVE.mode === 'net' ? 'Wi-Fi relay' : 'Demo', g == null ? null : GPS_WORDS[g] + (d.sats != null ? ' \u00b7 ' + d.sats + (d.inv != null ? '/' + d.inv : '') + ' sats' : ''),
+    d.ot != null ? 'Temp probe ok' : LIVE.mode === 'demo' ? null : 'No temp probe', d.nano ? 'Wheel ' + d.nano : null, d.sd != null ? (d.sd ? 'SD logging' : 'No SD card') : null,
+    d.rpm != null ? 'iCar reading' : LIVE.mode === 'demo' ? null : 'iCar not reading'].filter(Boolean).join('|');
+  if (e.chips.dataset.sig !== sig) {
+    e.chips.dataset.sig = sig; e.chips.textContent = '';
+    e.chips.append(chip(LIVE.mode === 'bt' ? 'Bluetooth' : LIVE.mode === 'net' ? 'Wi-Fi relay' : 'Demo', 'ok'));
+    if (g != null) e.chips.append(chip(GPS_WORDS[g] + (d.sats != null ? ' \u00b7 ' + d.sats + (d.inv != null ? '/' + d.inv : '') + ' sats' : ''), g >= 3 ? 'ok' : g === 2 ? 'soon' : 'bad'));
+    if (LIVE.mode !== 'demo') e.chips.append(chip(d.ot != null ? 'Temp probe ok' : 'No temp probe', d.ot != null ? 'ok' : 'bad'));
+    if (d.nano) e.chips.append(chip('Wheel ' + d.nano, d.nano === 'ok' ? 'ok' : 'bad'));
+    if (d.sd != null) e.chips.append(chip(d.sd ? 'SD logging' : 'No SD card', d.sd ? 'ok' : 'bad'));
+    if (LIVE.mode !== 'demo') e.chips.append(chip(d.rpm != null ? 'iCar reading' : 'iCar not reading', d.rpm != null ? 'ok' : 'soon'));
+  }
   const kmh = num(d.kmh), lph = num(d.lph);
-  setText(e.kmh, kmh == null ? '—' : String(Math.round(kmh)));
+  setText(e.kmh, kmh == null ? '\u2014' : String(Math.round(kmh)));
+  setText(e.kmhu, kmh == null ? 'km/h' : 'km/h \u00b7 ' + (d.src === 'gps' ? 'GPS' : 'iCar'));
   if (lph != null && kmh != null && kmh >= 5) { setText(e.econ, fmt1(Math.min(99.9, lph / kmh * 100))); setText(e.econu, 'L/100 km'); }
   else if (lph != null) { setText(e.econ, fmt1(lph)); setText(e.econu, 'L/h, idling'); }
-  else setText(e.econ, '—');
+  else setText(e.econ, '\u2014');
+  // heading: live only while moving; a kept heading shows in brackets
+  const live = d.hdg != null && d.hdgAge != null && d.hdgAge <= 3;
+  setText(e.hdg, d.hdg == null ? '\u2014' : live ? compass(d.hdg) : '(' + compass(d.hdg) + ')');
+  setText(e.hdgu, d.hdg == null ? (g >= 3 ? 'drive to get a heading' : 'no GPS heading') : live ? Math.round(d.hdg) + '\u00b0 \u00b7 GPS course' : 'last known \u00b7 stopped');
+  const ot = num(d.ot);
+  setText(e.ot, ot == null ? '\u2014' : fmt1(t3TempF() ? ot * 9 / 5 + 32 : ot));
   for (const [k, , , , dp, max] of GAUGES) {
     const x = num(d[k]);
-    setText(e[k], x == null ? '—' : (dp ? x.toFixed(dp) : String(Math.round(x))));
+    setText(e[k], x == null ? '\u2014' : (dp ? x.toFixed(dp) : String(Math.round(x))));
     e[k + 'b'].style.width = x == null ? '0%' : Math.max(0, Math.min(100, x / max * 100)) + '%';
   }
   const t = d.trip || {};
-  setText(e.tkm, t.km != null ? fmt1(t.km) : '—');
-  setText(e.ts, t.s != null ? (t.s < 3600 ? Math.floor(t.s / 60) + ':' + String(Math.floor(t.s % 60)).padStart(2, '0') : dur(t.s)) : '—');
-  setText(e.tl, t.l != null ? fmt1(t.l) + ' L' : '—');
-  setText(e.tavg, t.km > 0.2 && t.l != null ? fmt1(t.l / t.km * 100) : '—');
+  setText(e.tkm, t.km != null ? fmt1(t.km) : '\u2014');
+  setText(e.ts, t.s != null ? (t.s < 3600 ? Math.floor(t.s / 60) + ':' + String(Math.floor(t.s % 60)).padStart(2, '0') : dur(t.s)) : '\u2014');
+  setText(e.tl, t.l != null ? fmt1(t.l) + ' L' : '\u2014');
+  setText(e.tavg, t.km > 0.2 && t.l != null ? fmt1(t.l / t.km * 100) : '\u2014');
+  const paused = LIVE.mode === 'demo' ? !!(LIVE.sim && LIVE.sim.paused) : !!d.tp;
+  setText(e.tstate, paused ? 'Paused' : 'Running');
+  setText(e.pauseBtn.lastChild, paused ? 'Resume' : 'Pause');
 }
 
 // ---------- Bluetooth
@@ -151,10 +204,7 @@ function onLine(line) {
   let m;
   try { m = JSON.parse(line); } catch (e) { return; }
   if (!m || typeof m !== 'object') return;
-  if (m.t === 'live') { LIVE.v = m; LIVE.at = Date.now(); updateLive(); }
-  else if (m.t === 'hi') { LIVE.fw = String(m.fw || ''); LIVE.t3 = m; if (LIVE.onHi) LIVE.onHi(); else render(); }
-  else if (m.t === 'cfg') toast('Saved on the T3', 'It sends trips by itself from now on');
-  else if (m.t === 'trip') saveTrip(m);
+  t3Message(m, 'bt');
 }
 // a finished trip from the T3: into the sheet, then tell the T3 it can forget it
 function saveTrip(m) {
@@ -165,10 +215,17 @@ function saveTrip(m) {
   commit({ op: 'put', tab: 'trip', row: { id, t0, t1, km: num(m.km) || 0, lit: num(m.l) == null ? '' : num(m.l), vmax: num(m.vmax) == null ? '' : num(m.vmax), idle: num(m.idle) == null ? '' : Math.round(num(m.idle) / 60), note: '' } });
   send({ c: 'ack', id });
 }
-async function send(obj) {
-  if (!LIVE.rx) return;
+// one message at a time: two sends overlapping (a status poll during a screen upload, say) would mix their
+// bytes into one broken line on the T3, or make Bluetooth refuse a write ("operation already in progress")
+let sendChain = Promise.resolve();
+function send(obj) {
   const data = new TextEncoder().encode(JSON.stringify(obj) + '\n');
-  try { for (let i = 0; i < data.length; i += 20) await LIVE.rx.writeValue(data.slice(i, i + 20)); } catch (e) { /* the drop handler deals with it */ }
+  const run = sendChain.then(async () => {
+    if (!LIVE.rx) return;
+    try { for (let i = 0; i < data.length; i += 20) await LIVE.rx.writeValue(data.slice(i, i + 20)); } catch (e) { /* the drop handler deals with it */ }
+  });
+  sendChain = run.catch(() => {});
+  return run;
 }
 
 // ---------- demo: a drive through town and down the highway, made up
@@ -195,8 +252,13 @@ function demoTick() {
   const lph = s.v < 2 ? 0.9 : 1.1 + s.v * .072 + Math.max(0, acc) * 5.5;
   s.ect = Math.min(88, s.ect + dt * .35);
   const tr = s.trip;
-  tr.km += s.v * dt / 3600; tr.l += lph * dt / 3600; tr.s += dt; if (s.v < 2) tr.idle += dt;
-  LIVE.v = { t: 'live', kmh: s.v, rpm, boost: Math.max(0, (load - 22) * .26), ect: s.ect, iat: 11 + load * .06, v: 14.2 + Math.random() * .05, load, lph, trip: { km: tr.km, l: tr.l, s: tr.s, idle: tr.idle } };
+  if (!s.paused) { tr.km += s.v * dt / 3600; tr.l += lph * dt / 3600; tr.s += dt; if (s.v < 2) tr.idle += dt; }
+  s.crs = ((s.crs || 40) + (Math.random() - .5) * 3 + 360) % 360;
+  if (s.v > 5) s.hdgAt = s.t;
+  LIVE.v = { t: 'live', kmh: s.v, src: 'obd', rpm, boost: Math.max(0, (load - 22) * .26), ect: s.ect, iat: 11 + load * .06, v: 14.2 + Math.random() * .05, load, lph,
+    g: 4, sats: 9, inv: 14, hdop: 0.9, hdg: s.crs, hdgAge: s.hdgAt ? Math.round(s.t - s.hdgAt) : null, ot: -12.4 + Math.sin(s.t / 60) * .3, nano: 'ok', sd: 1, tp: s.paused ? 1 : 0,
+    trip: { km: tr.km, l: tr.l, s: tr.s, idle: tr.idle } };
+  LIVE.at = Date.now();
   updateLive();
 }
 function liveStop(quiet) {
@@ -237,100 +299,21 @@ async function copyText(text, btn) {
   }
 }
 
-// ---------- T3 setup: Wi-Fi, the hotspot and the sheet link go to the T3 over Bluetooth, so it sends trips by itself
-function t3Setup() {
-  const saved = store.get('t3', {});
-  openSheet({
-    title: 'T3 setup',
-    onClose: () => { LIVE.onHi = null; },
-    build(b, sheet) {
-      const status = h('div', { class: 'card list' });
-      const paint = () => {
-        status.textContent = '';
-        const m = LIVE.t3, on = LIVE.mode === 'bt' && LIVE.rx;
-        const r = (k, val) => h('div', { class: 'row' }, h('div', { class: 'main' }, h('b', { text: k })), h('div', { class: 'end' }, h('span', { text: val })));
-        if (!on || !m) { status.append(r('T3', on ? 'Connected' : 'Not connected: Live > Connect first')); return; }
-        status.append(r('T3', 'Connected · ' + (m.fw || '')), r('iCar', m.obd ? 'Reading the engine' : 'Looking for it'),
-          r('Wi-Fi saved', m.nets ? (Array.isArray(m.ssids) && m.ssids.length ? m.ssids.join(', ') : m.nets + (m.nets > 1 ? ' networks' : ' network')) : 'None yet'),
-          r('Wi-Fi now', m.wifi || '-'), m.seen ? r('T3 can see', m.seen) : null,
-          r('Trips waiting', String(m.queued || 0)), r('Last send', m.up || 'not yet'));
-      };
-      LIVE.onHi = paint;
-      const f = (label, key, ph) => textRow(label, { placeholder: ph, value: saved[key] || '', autocapitalize: 'off', autocorrect: 'off', spellcheck: 'false' });
-      // Wi-Fi networks, tried in this order (older versions saved home and hotspot separately)
-      let nets = Array.isArray(saved.nets) ? saved.nets.slice() : [[saved.hs || '', saved.hp || ''], [saved.ps || '', saved.pp || '']].filter(x => x[0]);
-      if (!nets.length) nets = [['', '']];
-      const netBox = h('div', { style: 'display:grid;gap:10px' });
-      const netRows = [];
-      const drawNets = () => {
-        netBox.textContent = ''; netRows.length = 0;
-        nets.forEach((n, i) => {
-          const name = textRow('Name', { placeholder: i === 0 ? 'Your home Wi-Fi' : 'Wi-Fi or iPhone hotspot name', value: n[0], autocapitalize: 'off', autocorrect: 'off', spellcheck: 'false' });
-          const pass = textRow('Password', { value: n[1], autocapitalize: 'off', autocorrect: 'off', spellcheck: 'false' });
-          netRows.push([name.input, pass.input]);
-          const del = h('button', { type: 'button', class: 'danger-link', style: 'padding:8px;font-size:15px', text: 'Remove', onclick: () => { readNets(); nets.splice(i, 1); if (!nets.length) nets = [['', '']]; drawNets(); } });
-          netBox.append(h('div', { class: 'group' }, name.row, pass.row, nets.length > 1 || n[0] ? del : null));
-        });
-      };
-      const readNets = () => { nets = netRows.map(([a, b2]) => [a.value.trim(), b2.value]); };
-      drawNets();
-      const fuel = textRow('Fuel', { value: String(saved.fc || 100), inputmode: 'decimal' });
-      const dist = textRow('Distance', { value: String(saved.dc || 100), inputmode: 'decimal' });
-      const obdName = textRow('iCar name', { placeholder: 'Finds it by itself', value: saved.obd || '', autocapitalize: 'off', autocorrect: 'off' });
-      const t3 = LIVE.t3 || {};
-      const pick = { ss: saved.ss != null ? saved.ss : (t3.ss != null ? t3.ss : 60), br: saved.br != null ? saved.br : (t3.br != null ? t3.br : 2),
-        sp: saved.sp != null ? saved.sp : (t3.sp || 0), pk: saved.pk != null ? saved.pk : (t3.pk || 90), lw: saved.lw != null ? saved.lw : (t3.lw != null ? t3.lw : 1) };
-      const choose = (key, opts) => seg(opts, pick[key], v2 => { pick[key] = v2; });
-      const err = h('div', { class: 'err' });
-      put(b, status,
-        h('div', { class: 'label', text: 'Wi-Fi networks (tried in this order)' }), netBox,
-        h('button', { type: 'button', class: 'btn btn-glass glass btn-wide', onclick: () => { readNets(); if (nets.length < 8) { nets.push(['', '']); drawNets(); } } }, icon('plus'), 'Add a Wi-Fi network'),
-        h('div', { class: 'foot', text: 'Add home, the shop, your iPhone hotspot: up to 8. The hotspot name is in Settings > General > About > Name; in Settings > Personal Hotspot turn on Allow Others to Join and Maximize Compatibility (the T3 only sees 2.4 GHz Wi-Fi). The iCar needs no password.' }),
-        h('div', { class: 'label', text: 'Fuel correction (%)' }), h('div', { class: 'group' }, fuel.row),
-        h('div', { class: 'foot', text: 'The CRD doesn’t report fuel used, so the T3 works it out. If after a full tank the T3 says 50 L and the pump said 55 L, put 110.' }),
-        h('div', { class: 'label', text: 'Live numbers over Wi-Fi and hotspot' }), choose('lw', [[1, 'On'], [0, 'Off']]),
-        h('div', { class: 'foot', text: 'While you drive on your hotspot, the T3 sends its live numbers through a free relay so Heep shows them in any browser. About 1 to 2 MB of cell data an hour. Bluetooth in Bluefy works either way.' }),
-        h('div', { class: 'label', text: 'Screen turns off after' }), choose('ss', [[30, '30 s'], [60, '1 min'], [120, '2 min'], [300, '5 min'], [0, 'Never']]),
-        h('div', { class: 'label', text: 'Screen brightness' }), choose('br', [[0, 'Low'], [1, 'Medium'], [2, 'High']]),
-        h('div', { class: 'label', text: 'Page at key-on' }), choose('sp', [[0, 'Economy'], [1, 'Trip'], [2, 'Engine'], [3, 'Speed'], [5, 'Status']]),
-        h('div', { class: 'label', text: 'A trip ends after parking' }), choose('pk', [[60, '1 min'], [90, '1.5 min'], [180, '3 min'], [300, '5 min']]),
-        h('div', { class: 'label', text: 'Distance correction (%) and iCar' }), h('div', { class: 'group' }, dist.row, obdName.row),
-        h('div', { class: 'foot', text: 'Distance: if the T3 says 100 km when the odometer went 103, put 103. iCar name only if it doesn\u2019t find the adapter by itself.' }),
-        h('button', { class: 'btn btn-glass glass btn-wide', onclick: () => { if (LIVE.rx) { send({ c: 'update' }); toast('Checking for a T3 update', 'It installs over Wi-Fi when the Jeep is stopped', 'info'); } else err.textContent = 'Connect to the T3 first (Live > Connect).'; } }, icon('sync'), 'Try Wi-Fi and update now'),
-        err,
-        h('button', { class: 'btn btn-primary btn-wide', onclick: sendCfg }, icon('bt'), 'Send to the T3'));
-      paint();
-      if (LIVE.rx) send({ c: 'status' });
-      async function sendCfg() {
-        readNets();
-        const v = { nets: nets.filter(x => x[0]), fc: num(fuel.input.value) || 100,
-          dc: num(dist.input.value) || 100, obd: obdName.input.value.trim(), ss: pick.ss, br: pick.br, sp: pick.sp, pk: pick.pk, lw: pick.lw };
-        store.set('t3', v);
-        if (!(LIVE.mode === 'bt' && LIVE.rx)) { err.textContent = 'Saved on this phone. Connect to the T3 (Live > Connect) and send again.'; return; }
-        if (!S.conn) { err.textContent = 'Connect Heep to your Jeep log first, so the T3 knows where to send trips.'; return; }
-        err.textContent = '';
-        const wifi = [];
-        for (const [n2, p2] of v.nets) wifi.push(n2, p2);
-        await send({ c: 'cfg', wifi, u: S.conn.u, k: S.conn.k, fc: Math.max(30, Math.min(300, v.fc)) / 100, dc: Math.max(50, Math.min(200, v.dc)) / 100,
-          obd: v.obd, ss: v.ss, br: v.br, sp: v.sp, pk: v.pk, lw: v.lw });
-      }
-    },
-  });
-}
 // ---------- how to put the T3 in the Jeep, start to finish
 function t3Guide() {
   const steps = [
-    ['What you need', 'The LilyGo T3 V1.6.1, a Vgate iCar Pro Bluetooth 4.0 (the BLE one, not Wi-Fi), the keyed 5 V buck converter, and if you like a push button. No battery, and no LoRa antenna: the T3 code keeps the radio asleep.'],
-    ['Put the code on the T3 (once, ever)', 'On the PC, plug the T3 in by USB, open bennydedado.github.io/jeep/firmware/ in Chrome or Edge, click Install and pick the T3\u2019s COM port. After that it updates itself over Wi-Fi when the Jeep is stopped: no more uploading.'],
-    ['Wire it in', 'Buck converter 5 V to the T3’s 5V pin, ground to GND, so it runs only with the key on. Optional button: one side to IO4, the other to GND. Mount it where you can see the screen.'],
-    ['Plug in the iCar', 'Into the OBD port under the dash, left of the steering column. Turn the key: the T3 finds the iCar by itself. Its Status page says iCar reading.'],
-    ['Connect Heep', 'Open Heep in Bluefy, go to Live, tap Connect and pick Jeep T3.'],
-    ['T3 setup', 'Tap Wi-Fi & setup, add your Wi-Fi networks (home, hotspot, any others) and tap Send to the T3. The link to your Jeep log goes along by itself. The iCar needs no password.'],
-    ['Hotspot', 'Settings > Personal Hotspot: Allow Others to Join on, Maximize Compatibility on.'],
-    ['Using it', 'The screen turns off after a while (set in T3 setup); a press wakes it. Then press for the next page: Economy, Trip, Engine, Speed, All trips, Status. Hold it 1.5 s on Economy or Trip to start a new trip; hold it on Status to send trips now.'],
-    ['Trips', 'Each key-on is a trip; parking 90 s with the key on ends one. Trips are saved on the T3, so nothing is lost when the key goes off. They go to your Jeep log at home, on your hotspot, or when Heep connects. Nothing to do.'],
-    ['Fuel accuracy', 'After a couple of full tanks, compare the T3’s litres with the pump and set Fuel correction in T3 setup.'],
+    ['What you need', 'The LilyGo T3 V1.6.1, the Vgate iCar Pro (Bluetooth 4.0), the keyed 5 V buck converter, the HGLRC M100 GPS, the DS18B20 probe with a 4.7 kOhm resistor, a microSD card (FAT32), and the Nano for the wheel buttons. No battery and no LoRa antenna needed.'],
+    ['Read the wiring guide first', 'docs/HARDWARE.md in the jeep repository (and the Google Doc) has every wire, which ones are checked against LilyGo\u2019s pin table and which are still to be confirmed on your board. Wrong pins or 5 V on a T3 pin can damage it.'],
+    ['Put the code on the T3 (once)', 'On the PC open bennydedado.github.io/jeep/firmware/ in Chrome or Edge, plug the T3 in, Install, pick its COM port. After that it updates itself over Wi-Fi when the Jeep is stopped, and goes back to the old program by itself if a new one fails to start.'],
+    ['Power', 'Buck converter 5 V to the T3\u2019s 5V pin, ground to GND, so it only runs with the key on.'],
+    ['GPS', 'M100: power (5V/VCC pad) to the T3\u2019s 3.3 V, GND to GND, TX to GPIO 34; RX stays unconnected. Go by the labels printed next to the M100\u2019s pads, not the wire colours. Mount it with a view of the sky (under plastic, not metal).'],
+    ['Outside temperature', 'DS18B20 (usually red = 3.3 V, black = GND, yellow = data; check the listing): data to GPIO 4, and the 4.7 kOhm resistor from GPIO 4 to 3.3 V. Probe at the grille, out of engine heat.'],
+    ['Wheel buttons', 'Nano D1 (TX) through 10 kOhm to GPIO 39, 20 kOhm from GPIO 39 to GND, Nano GND to T3 GND. Add T3Link to the Nano sketch (nano/ in the repository). The Nano keeps working with the T3 unplugged.'],
+    ['Connect Heep', 'In Bluefy: Live > Connect > Jeep T3. Then T3 settings: add your Wi-Fi networks and Send settings. Set up track storage on the Map page and send settings again.'],
+    ['Check it', 'Live > Diagnostics shows GPS, temperature, wheel link, SD card and Wi-Fi, each with what to look at if it isn\u2019t working.'],
+    ['Using it', 'Wheel buttons go through your screens (Live > Screens to change them). Trips start at key-on and end after parking (or End trip). They upload by themselves on home Wi-Fi or your hotspot.'],
   ];
+
   openSheet({
     title: 'Hook-up guide',
     build(b) {
@@ -395,14 +378,31 @@ function netBytes(chunk) {
   }
   NET.buf = new Uint8Array(0);
 }
+// T3 2.0 encrypts what it sends through the public relay (AES-GCM, key made from your sheet key): open it here
+let relayKeyP = null, relayKeyFor = '';
+function relayKey() {
+  if (relayKeyFor !== S.conn.k) {
+    relayKeyFor = S.conn.k;
+    relayKeyP = crypto.subtle.digest('SHA-256', new TextEncoder().encode('heep-enc:' + S.conn.k)).then(d => crypto.subtle.importKey('raw', d, 'AES-GCM', false, ['decrypt']));
+  }
+  return relayKeyP;
+}
+async function relayOpen(b64) {
+  const raw = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+  const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: raw.slice(0, 12) }, await relayKey(), raw.slice(12));
+  return new TextDecoder().decode(plain);
+}
 function netLine(text) {
   let m;
   try { m = JSON.parse(text); } catch (e) { return; }
-  if (!m || m.t !== 'live' || LIVE.mode === 'bt' || LIVE.mode === 'demo') return;
+  if (!m || typeof m !== 'object') return;
+  if (typeof m.e === 'string') { relayOpen(m.e).then(netLine, () => { /* not ours, or a different key */ }); return; }
   NET.at = Date.now();
+  if (m.t !== 'live') { if (LIVE.mode !== 'bt') t3Message(m, 'net'); return; }
+  if (LIVE.mode === 'bt' || LIVE.mode === 'demo') return;
   const fresh = LIVE.mode !== 'net';
-  LIVE.mode = 'net'; LIVE.status = 'Over Wi-Fi'; LIVE.v = m; LIVE.at = Date.now();
-  if (fresh) { wake(true); if (S.tab === 'live') render(); } else updateLive();
+  LIVE.mode = 'net'; LIVE.status = 'Over Wi-Fi';
+  if (fresh) { LIVE.v = m; LIVE.at = Date.now(); wake(true); t3Send({ c: 'status' }); if (S.tab === 'live') render(); } else t3Message(m, 'net');
 }
 // listen while Live is on screen, let go when it isn't (saves data), and drop the view when the T3 goes quiet
 function netCheck() {
