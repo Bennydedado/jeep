@@ -6,4 +6,4 @@ T3.ino.elf
 T3.ino.map
 T3.ino.merged.bin
 T3.ino.partitions.bin
-rollback setting not found
+rollback: not found in this core
