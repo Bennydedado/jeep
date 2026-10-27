@@ -1,5 +1,15 @@
 # Changes
 
+## 27 Oct 2026 — T3 2.4, Heep 1.1.4: live numbers in Safari any time; Update over Wi-Fi with a progress bar
+
+- **Live in Safari (no Bluefy):** the T3 stays on the relay whenever it's on Wi-Fi, and sends live numbers while you're looking:
+  Heep sends a signed "watching" note every 30 s while Live is open (before, a parked T3 went quiet 10 minutes after key-on).
+- **Update over Wi-Fi** (Live > Wi-Fi & update): the T3 reports getting on Wi-Fi, checking, the download %, installed and
+  restarting, over Bluetooth and the relay, so it works from Safari too. Allowed with the engine idling, never while moving; an
+  unknown speed (no GPS, engine silent) no longer blocks updates.
+- Connecting to the relay no longer freezes the T3's screen: it happens in its own task. The relay nonce is saved at most every 5 minutes.
+- Tests: `tests/app/relay_live.js` (Safari, pretend relay + T3: signatures, encryption, live numbers, update progress, restart).
+
 ## 27 Oct 2026 — T3 2.3, Heep 1.1.3: tell "iCar connected" from "engine answering"
 
 - The T3 treated any answer from the iCar (even "NO DATA" with the key off) as engine data, so Live said "iCar reading" with
