@@ -126,7 +126,7 @@ inline uint32_t fnv1a(const char* s, uint32_t h = 2166136261u) { while (*s) { h 
 
 // the screens a new T3 starts with (and "Restore defaults" in Heep goes back to). Keep in step with t3screens.js.
 static const char* const DEFAULT_SCREENS[] = {
-  "Temp & dir|1|l,-,0,0,60,8,1,c,,0,0,HEADING|l,-,66,0,62,8,1,c,,0,0,OUTSIDE|v,hdg,0,10,62,30,4,c,,0,0,|v,otemp,64,10,64,30,4,c,u,0,0,|n,-,63,2,1,46,1,l,,0,0,|r,hdgd,0,48,62,8,1,l,,0,0,|r,gfix,0,56,128,8,1,l,l,0,0,|r,sats,66,48,62,8,1,r,l,0,0,",
+  "Temp & dir|1|l,-,0,0,60,8,1,c,,0,0,HEADING|l,-,66,0,62,8,1,c,,0,0,OUTSIDE|v,hdg,0,10,62,30,4,c,,0,0,|v,otemp,66,10,62,30,4,c,u,0,0,|n,-,63,2,1,46,1,l,,0,0,|r,hdgd,0,48,62,8,1,l,,0,0,|r,gfix,0,56,128,8,1,l,l,0,0,|r,sats,66,48,62,8,1,r,l,0,0,",
   "Drive|1|v,kmh,0,0,80,40,4,l,lu,0,0,|v,hdg,82,0,46,20,2,r,,0,0,|v,otemp,82,22,46,18,1,r,u,0,0,|r,tavg,0,46,128,8,1,l,lu,0,0,|r,tkm,0,56,128,8,1,l,lu,0,0,",
   "Boost|1|v,boost,0,0,128,40,4,c,lu,0,0,|b,boost,0,42,128,12,1,l,,0,30,|r,bmax,0,56,64,8,1,l,l,0,0,|r,rpm,66,56,62,8,1,r,l,0,0,",
   "Economy|1|v,tavg,0,0,128,40,4,c,lu,0,0,|r,econ,0,44,128,8,1,l,lu,0,0,|r,tkm,0,54,128,8,1,l,lu,0,0,",

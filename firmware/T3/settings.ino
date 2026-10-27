@@ -188,6 +188,17 @@ long long llField(const String& j, const char* key) {
   if (i < 0) return 0;
   return atoll(j.substring(i + strlen(key) + 3).c_str());
 }
-String jsonEsc(const String& v) { String o; for (size_t i = 0; i < v.length(); i++) { char c = v[i]; if (c == '"' || c == '\\') o += '\\'; if ((uint8_t)c >= 32) o += c; } return o; }
+// a string ready to sit inside "..." in JSON: quotes and backslashes escaped, new lines as \n, other control characters dropped
+String jsonEsc(const String& v) {
+  String o;
+  o.reserve(v.length() + 8);
+  for (size_t i = 0; i < v.length(); i++) {
+    char c = v[i];
+    if (c == '"' || c == '\\') { o += '\\'; o += c; }
+    else if (c == '\n') o += "\\n";
+    else if ((uint8_t)c >= 32) o += c;
+  }
+  return o;
+}
 String ll(long long v) { char b[24]; snprintf(b, sizeof(b), "%lld", v); return String(b); }
 String num(float v, int dp) { return isnan(v) ? String("null") : String(v, dp); }
