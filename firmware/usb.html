@@ -50,7 +50,7 @@
 
   <div class="box">
     <label class="opt"><input type="radio" name="mode" value="auto" checked><div><b>The page resets the T3</b><span>Just plug it in. Try this first.</span></div></label>
-    <label class="opt"><input type="radio" name="mode" value="boot"><div><b>I'm holding BOOT</b><span>Unplug the T3, hold its BOOT button, plug it in, keep holding until it says "Connected", then let go.</span></div></label>
+    <label class="opt"><input type="radio" name="mode" value="boot"><div><b>I'm holding BOOT</b><span>Unplug the T3, hold its BOOT button, plug it in, keep holding until it says "Connected", then let go. <b>No BOOT button?</b> A jumper wire from the header pin marked <b>0</b> (IO0) to <b>GND</b> does the same: wire on, plug in, pull it off once it says "Connected".</span></div></label>
     <label class="opt"><input type="checkbox" id="nostub"><div><b>Skip the helper program</b><span>Slower (about 3 minutes) but works when the T3 connects and then freezes. Tick this if a try got stuck at "Starting the helper".</span></div></label>
     <button class="go" id="go">Connect and install</button>
     <div class="msg" id="msg"></div>
@@ -174,7 +174,7 @@ $('#go').onclick = async () => {
       dl: ['Couldn\'t download the program', 'Check the computer is online and reload this page. (' + (e && e.message) + ')'],
       conn: e && e.name === 'NotFoundError'
         ? ['No port picked', 'Click Connect and install again and pick the T3\'s port (it appears when you plug the T3 in). None there? Install the CH343SER driver.']
-        : ['Couldn\'t get the T3 into install mode', 'Unplug the T3. Choose "I\'m holding BOOT", hold BOOT, plug the T3 in, keep holding, then click Connect and install. Also try a USB port on the back of the computer.'],
+        : ['Couldn\'t get the T3 into install mode', 'Unplug the T3. Choose "I\'m holding BOOT", hold BOOT (or put a jumper wire from pin 0 to GND), plug the T3 in, then click Connect and install. Also try a USB port on the back of the computer.'],
       stub: ['The T3 connected, then the helper didn\'t start', 'This is where the other installer freezes, usually because of Windows\' built-in driver. Unplug the T3, plug it back in, tick "Skip the helper program" and try again. Installing the CH343SER driver fixes it for good.'],
       write: [stuck ? 'Writing stopped moving' : 'Writing failed', 'Unplug the T3, plug it back in and start again (tick "Skip the helper program" if it was ticked off). The T3 needs one complete install to start normally.'],
       done: ['Couldn\'t restart it', 'The program is written: unplug the T3 and plug it back in.'],
