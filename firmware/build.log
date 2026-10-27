@@ -1,35 +1,9 @@
-/home/runner/work/jeep/jeep/firmware/T3/obd.ino: In function 'void obdAnswer(String)':
-/home/runner/work/jeep/jeep/firmware/T3/obd.ino:153:7: error: 'scanOn' was not declared in this scope; did you mean 'scanf'?
-  153 |   if (scanOn) { scanAnswer(r); return; }
-      |       ^~~~~~
-      |       scanf
-/home/runner/work/jeep/jeep/firmware/T3/obd.ino: In function 'void obdStep()':
-/home/runner/work/jeep/jeep/firmware/T3/obd.ino:199:7: error: 'scanOn' was not declared in this scope; did you mean 'scanf'?
-  199 |   if (scanOn) { scanStep(); return; }
-      |       ^~~~~~
-      |       scanf
-
-[92mUsed library[0m         [92mVersion[0m [90mPath[0m
-[93mWire[0m                 3.3.12  [90m/home/runner/.arduino15/packages/esp32/hardware/esp32/3.3.12/libraries/Wire[0m
-[93mSPI[0m                  3.3.12  [90m/home/runner/.arduino15/packages/esp32/hardware/esp32/3.3.12/libraries/SPI[0m
-[93mSD[0m                   3.3.12  [90m/home/runner/.arduino15/packages/esp32/hardware/esp32/3.3.12/libraries/SD[0m
-[93mFS[0m                   3.3.12  [90m/home/runner/.arduino15/packages/esp32/hardware/esp32/3.3.12/libraries/FS[0m
-[93mAdafruit GFX Library[0m 1.13.0  [90m/home/runner/Arduino/libraries/Adafruit_GFX_Library[0m
-[93mAdafruit BusIO[0m       1.17.4  [90m/home/runner/Arduino/libraries/Adafruit_BusIO[0m
-[93mAdafruit SSD1306[0m     2.5.17  [90m/home/runner/Arduino/libraries/Adafruit_SSD1306[0m
-[93mWiFi[0m                 3.3.12  [90m/home/runner/.arduino15/packages/esp32/hardware/esp32/3.3.12/libraries/WiFi[0m
-[93mNetworking[0m           3.3.12  [90m/home/runner/.arduino15/packages/esp32/hardware/esp32/3.3.12/libraries/Network[0m
-[93mNetworkClientSecure[0m  3.3.12  [90m/home/runner/.arduino15/packages/esp32/hardware/esp32/3.3.12/libraries/NetworkClientSecure[0m
-[93mHTTPClient[0m           3.3.12  [90m/home/runner/.arduino15/packages/esp32/hardware/esp32/3.3.12/libraries/HTTPClient[0m
-[93mHTTPUpdate[0m           3.3.12  [90m/home/runner/.arduino15/packages/esp32/hardware/esp32/3.3.12/libraries/HTTPUpdate[0m
-[93mUpdate[0m               3.3.12  [90m/home/runner/.arduino15/packages/esp32/hardware/esp32/3.3.12/libraries/Update[0m
-[93mPubSubClient[0m         2.8     [90m/home/runner/Arduino/libraries/PubSubClient[0m
-[93mPreferences[0m          3.3.12  [90m/home/runner/.arduino15/packages/esp32/hardware/esp32/3.3.12/libraries/Preferences[0m
-[93mLittleFS[0m             3.3.12  [90m/home/runner/.arduino15/packages/esp32/hardware/esp32/3.3.12/libraries/LittleFS[0m
-[93mNimBLE-Arduino[0m       2.5.2   [90m/home/runner/Arduino/libraries/NimBLE-Arduino[0m
-[93mOneWire[0m              2.3.8   [90m/home/runner/Arduino/libraries/OneWire[0m
-
-[92mUsed platform[0m [92mVersion[0m [90mPath[0m
-[93mesp32:esp32[0m   3.3.12  [90m/home/runner/.arduino15/packages/esp32/hardware/esp32/3.3.12[0m
-Error during build: exit status 1
+Sketch uses 1558256 bytes (79%) of program storage space. Maximum is 1966080 bytes.
+Global variables use 70492 bytes (21%) of dynamic memory, leaving 257188 bytes for local variables. Maximum is 327680 bytes.
+T3.ino.bin
+T3.ino.bootloader.bin
+T3.ino.elf
+T3.ino.map
+T3.ino.merged.bin
+T3.ino.partitions.bin
 rollback: #define CONFIG_APP_ROLLBACK_ENABLE CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE #define CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE 1 
