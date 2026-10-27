@@ -1,5 +1,14 @@
 # Changes
 
+## 27 Oct 2026 — T3 2.2, Heep 1.1.2: which engine values the iCar offers; boost fallbacks
+
+- No boost on the Jeep: the T3 asked for intake pressure (PID 0B) and, if the engine didn't answer, never showed boost. It now
+  reads the engine's own list of offered values (0100/0120/... answers, which it used to ignore), only asks for those, and
+  takes boost from PID 0B, or PID 87 or 70 on diesels that report it there. `obdpid.h` + `test_obdpid.cpp`.
+- Heep Diagnostics: "Engine (through the iCar)": where boost comes from, intake/air pressure, protocol, every value the engine
+  offers in plain names, and which didn't answer. Status dots in Diagnostics show as dots again (were grey bars).
+- Step-by-step USB installer (`firmware/usb.html`), for when the regular one sticks on "Preparing installation".
+
 ## 27 Oct 2026 — T3 2.1, Heep 1.1.1: Wi-Fi page and update over Bluetooth
 
 - **Heep: Live > Wi-Fi & update.** What the T3 is connected to (signal, channel, address, how long), your saved networks
