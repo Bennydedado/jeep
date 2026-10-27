@@ -1,5 +1,13 @@
 # Changes
 
+## 27 Oct 2026 — T3 2.3, Heep 1.1.3: tell "iCar connected" from "engine answering"
+
+- The T3 treated any answer from the iCar (even "NO DATA" with the key off) as engine data, so Live said "iCar reading" with
+  nothing behind it. Engine values now only count when the engine itself answers; the adapter's own answers just keep the link alive.
+- If the iCar connected while the key was off, the engine's list of values was never asked for again: now 0100 is asked every
+  20 s until the engine answers, and the misses are cleared the moment it does.
+- Diagnostics: "Engine answering" yes/no, the engine's last answers word for word (0100, RPM, intake pressure), protocol "A0" explained.
+
 ## 27 Oct 2026 — T3 2.2, Heep 1.1.2: which engine values the iCar offers; boost fallbacks
 
 - No boost on the Jeep: the T3 asked for intake pressure (PID 0B) and, if the engine didn't answer, never showed boost. It now

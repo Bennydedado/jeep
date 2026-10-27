@@ -112,6 +112,9 @@ static bool pidMissing(int pid) { return pidMiss[pid & 0xFF] >= 3; }
 static ObdSupport obdSup;
 static int supNext = -1, mapPid = -1;
 static String obdProto;
+static uint32_t obdHeardAt = 0, supAskAt = 0;   // the adapter answered anything / when 0100 was last asked
+static bool askProto = false;
+static String raw0100, raw0C, raw0B;           // the engine's last answers, word for word (Diagnostics)
 static bool pidOk(int pid) { return !pidMissing(pid) && (!obdSup.known || obdSup.has(pid)); }
 // where boost comes from: intake pressure (PID 0B) on most engines; some diesels only offer PID 87 or PID 70
 static int boostPid() {
@@ -127,7 +130,9 @@ String obdDiagJson() {
   for (int p = 1; p < 0xA0; p++) if (pidMissing(p)) { char b[4]; snprintf(b, sizeof(b), "%02X", p); miss += (miss.length() ? " " : "") + String(b); }
   int bp = boostPid();
   char bps[4]; snprintf(bps, sizeof(bps), "%02X", bp < 0 ? 0 : bp);
-  return "\"obd\":{\"proto\":\"" + jsonEsc(obdProto) + "\",\"known\":" + String(obdSup.known ? 1 : 0) + ",\"sup\":\"" + String(sup) + "\",\"boost\":\"" +
+  return "\"obd\":{\"proto\":\"" + jsonEsc(obdProto) + "\",\"known\":" + String(obdSup.known ? 1 : 0) +
+         ",\"raw\":{\"0100\":\"" + jsonEsc(raw0100) + "\",\"0C\":\"" + jsonEsc(raw0C) + "\",\"0B\":\"" + jsonEsc(raw0B) + "\"}" +
+         ",\"data\":" + String(car.at && millis() - car.at < 5000 ? 1 : 0) + ",\"sup\":\"" + String(sup) + "\",\"boost\":\"" +
          (bp < 0 ? String("-") : String(bps)) + "\",\"map\":" + num(car.mapKpa >= 0 ? car.mapKpa : NAN, 1) + ",\"baro\":" + num(car.baro > 0 ? car.baro : NAN, 0) +
          ",\"miss\":\"" + miss + "\"}";
 }
@@ -142,15 +147,23 @@ void obdSendCmd(const String& cmd) { obdSendCmdT(cmd, 1500); }
 int hexByte(const String& s, int at) { return (int)strtol(s.substring(at, at + 2).c_str(), nullptr, 16); }
 void obdAnswer(String r) {
   r.replace(" ", ""); r.replace("\r", ""); r.replace("\n", ""); r.replace(">", ""); r.toUpperCase();
-  car.at = millis();
+  obdHeardAt = millis();                 // the adapter is alive (car.at only moves when the engine itself answers)
   if (obdCmd == "ATRV") { car.volts = r.toFloat(); return; }
   if (obdCmd == "ATDPN") { obdProto = r.substring(0, 6); return; }
   if (!obdCmd.startsWith("01")) return;
   int pid = (int)strtol(obdCmd.substring(2, 4).c_str(), nullptr, 16);
-  if (pid % 32 == 0) { int nx = obdSup.feed(r.c_str(), pid); if (nx > 0) supNext = nx; return; }   // which values it offers
+  if (pid == 0x00) raw0100 = r.substring(0, 40); else if (pid == 0x0C) raw0C = r.substring(0, 24); else if (pid == 0x0B) raw0B = r.substring(0, 24);
+  if (pid % 32 == 0) {                   // which values it offers
+    bool was = obdSup.known;
+    int nx = obdSup.feed(r.c_str(), pid);
+    if (nx > 0) supNext = nx;
+    if (!was && obdSup.known) { car.at = millis(); memset(pidMiss, 0, sizeof(pidMiss)); askProto = true; }   // the engine just woke up: start fresh
+    return;
+  }
   uint8_t b[9];
   int n = obdBytes(r.c_str(), pid, b, 9);
   if (!n) { if ((r.indexOf("NODATA") >= 0 || r.indexOf("?") >= 0) && pidMiss[pid] < 255) pidMiss[pid]++; return; }
+  car.at = millis();
   pidMiss[pid] = 0;
   int A = b[0], B = n > 1 ? b[1] : 0;
   switch (pid) {
@@ -167,11 +180,11 @@ void obdAnswer(String r) {
 void obdStep() {
   obdConnectStep();
   // a link that died between connecting and attaching, or an adapter that went silent: start over
-  if (obdLinked && obdClient && (!obdClient->isConnected() || (obdStage >= 9 && car.at && millis() - car.at > 20000))) {
+  if (obdLinked && obdClient && (!obdClient->isConnected() || (obdStage >= 9 && obdHeardAt && millis() - obdHeardAt > 20000))) {
     if (obdClient->isConnected()) obdClient->disconnect();
     obdLinked = false;
   }
-  if (!obdLinked) { obdStage = 0; obdBusy = false; supNext = -1; memset(pidMiss, 0, sizeof(pidMiss)); return; }
+  if (!obdLinked) { obdStage = 0; obdBusy = false; supNext = -1; obdHeardAt = 0; memset(pidMiss, 0, sizeof(pidMiss)); return; }
   if (millis() - pidMissClear > 120000) { pidMissClear = millis(); memset(pidMiss, 0, sizeof(pidMiss)); }
   char ch;
   while (xQueueReceive(obdQueue, &ch, 0) == pdTRUE) {
@@ -183,7 +196,12 @@ void obdStep() {
   // set the adapter up, ask which values the engine offers (0100), and which protocol it found (ATDPN)
   const char* setup[] = { "ATZ", "ATE0", "ATL0", "ATS0", "ATH0", "ATAT1", "ATSP0", "0100", "ATDPN" };
   if (obdStage < 9) { if (obdStage == 0) obdSup = ObdSupport(); obdSendCmdT(setup[obdStage], obdStage == 0 ? 2500 : obdStage == 7 ? 9000 : 1500); obdStage++; return; }
+  if (obdStage == 9) { obdStage++; supAskAt = millis(); }
   if (supNext > 0) { char c[6]; snprintf(c, sizeof(c), "01%02X", supNext); supNext = -1; obdSendCmd(c); return; }   // the next block of offered values
+  if (askProto) { askProto = false; obdSendCmd("ATDPN"); return; }
+  // the engine hasn't answered 0100 yet (key off when the iCar connected): ask again every 20 s, so it's found as soon as
+  // the key goes on, instead of waiting for a reconnect
+  if (!obdSup.known && millis() - supAskAt > 20000) { supAskAt = millis(); obdSendCmdT("0100", 9000); return; }
   // speed, RPM and boost all the time; the rest now and then; only what the engine offers
   const int fast[] = { 0x0D, 0x0C, boostPid(), 0x04 };
   static const int slow[] = { 0x05, 0x0F, 0x33, 0x5E, -1 };

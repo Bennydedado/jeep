@@ -281,6 +281,7 @@ svg { display: block; }
 .row .end b { display: block; font: 600 17px var(--round); font-variant-numeric: tabular-nums; }
 .row .end span { display: block; font-size: 13px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .row .end span.pill { display: inline-flex; margin-top: 4px; }
+.row .end span { white-space: pre-line; }
 .row .chev { width: 14px; height: 14px; color: var(--ink-3); flex: none; }
 button.row:active, .row.tap:active { background: var(--glass-lo); }
 .kv { display: flex; justify-content: space-between; gap: 12px; }
