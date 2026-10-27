@@ -83,5 +83,22 @@ const row = (o) => [o.ms ?? '', o.up, o.tq ?? (o.ms ? 'g' : '-'), o.lat ?? '', o
   ok(s.gaps.length === 1, 'sample has its bridge gap');
   ok(s.stops.length >= 1, 'sample has a stop');
 }
+// no GPS at all: distance from the T3's trip meter (else the engine's speed), fuel from the engine's fuel rate
+{
+  const lines = [head];
+  const r = o => [o.ms ?? '', o.up, '-', '', '', 0, 0, '', '', '', '', o.okmh, o.rpm, '', o.ect, '', '', '', o.lph, '', o.tkm ?? '', ''].join(',');
+  for (let s = 0; s <= 600; s++) lines.push(r({ up: s * 1000, okmh: 72, rpm: 2000, ect: 85, lph: 7.2, tkm: (s * 20 / 1000).toFixed(3) }));
+  const { rows } = T.parseTrack(lines.join('\n'));
+  const st = T.tripStats(rows);
+  near(st.km, 12, 0.01, 'no GPS: trip meter distance');
+  ok(st.kmFrom === 't3', 'distance says where it came from');
+  near(st.lit, 1.2, 0.01, 'no GPS: litres from the fuel rate');
+  ok(st.vmax === 72 && st.rpmMax === 2000 && st.ectMax === 85, 'engine numbers');
+  ok(rows[5].v === 72 && rows[5].rpm === 2000 && rows[5].lph === 7.2, 'speed falls back to the engine\'s; fuel rate read');
+  const noMeter = T.parseTrack(lines.map((l, i) => (i ? l.replace(/,[0-9.]*,$/, ',,') : l)).join('\n')).rows;
+  const s2 = T.tripStats(noMeter);
+  near(s2.km, 12, 0.05, 'no trip meter either: from the engine speed');
+  ok(s2.kmFrom === 'obd', 'says so');
+}
 console.log('test_trips.js: ' + n + ' checks, ' + fails + ' failed');
 process.exit(fails ? 1 : 0);

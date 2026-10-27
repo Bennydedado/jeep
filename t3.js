@@ -29,6 +29,7 @@ function t3Message(m, via) {
   else if (m.t === 'wifi') { LIVE.wifi = m; LIVE.wifiAt = Date.now(); if (LIVE.onWifi) LIVE.onWifi(); }
   else if (m.t === 'ota') { if (LIVE.onOta) LIVE.onOta(m); }
   else if (m.t === 'obdscan') { obdScanMsg(m); }
+  else if (m.t === 'codes') { codesMsg(m); }
   else if (m.t === 'upd') { LIVE.upd = m; LIVE.updAt = Date.now(); if (m.fw) LIVE.fw = String(m.fw); if (LIVE.onUpd) LIVE.onUpd(m); }
 }
 

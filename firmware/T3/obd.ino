@@ -119,6 +119,9 @@ static String raw0100, raw0C, raw0B;           // the engine's last answers, wor
 static bool scanOn = false;                     // "Scan the Jeep" is running (further down)
 static void scanAnswer(const String& r);
 static void scanStep();
+static bool codesBusy();                        // reading trouble codes (further down)
+static void codesAnswer(const String& r);
+static void codesStep();
 static bool pidOk(int pid) { return !pidMissing(pid) && (!obdSup.known || obdSup.has(pid)); }
 // where boost comes from: intake pressure (PID 0B) on most engines; some diesels only offer PID 87 or PID 70
 static int boostPid() {
@@ -151,6 +154,7 @@ void obdSendCmdT(const String& cmd, uint32_t timeout) {
 void obdSendCmd(const String& cmd) { obdSendCmdT(cmd, 1500); }
 int hexByte(const String& s, int at) { return (int)strtol(s.substring(at, at + 2).c_str(), nullptr, 16); }
 void obdAnswer(String r) {
+  if (codesBusy()) { obdHeardAt = millis(); codesAnswer(r); return; }   // keeps its line breaks (one line per computer's answer)
   r.replace(" ", ""); r.replace("\r", ""); r.replace("\n", ""); r.replace(">", ""); r.toUpperCase();
   obdHeardAt = millis();                 // the adapter is alive (car.at only moves when the engine itself answers)
   if (scanOn) { scanAnswer(r); return; }
@@ -206,6 +210,7 @@ void obdStep() {
   if (obdBusy && millis() - obdSentAt > obdTimeout) obdBusy = false;
   if (obdBusy) return;
   if (scanOn) { scanStep(); return; }
+  if (codesBusy()) { codesStep(); return; }
   // set the adapter up (protocol: setting "opr", 0 = auto), ask which values the engine offers (0100), and which protocol it found
   const char* setup[] = { "ATZ", "ATE0", "ATL0", "ATS0", "ATH0", "ATAT1", "ATSP0", "0100", "ATDPN" };
   if (obdStage < 9) {
@@ -282,6 +287,55 @@ static void scanStep() {
     }
   }
 }
+// ---------------------------------------------------------------- trouble codes (Heep: Diagnostics > Trouble codes)
+// For each protocol Heep names (the ones where its scan found a computer; "0" = auto): headers on, then
+// 0101 (check-engine light + how many codes), 03 (stored codes), 07 (pending codes), and 04 (clear) only when asked.
+// Each protocol's raw answers go to Heep, which decodes them (codes.js): {"t":"codes","p":"3","a":"<0101>","b":"<03>","c":"<07>","x":"<04>"},
+// one line of the adapter's answer per '/', headers on, so Heep can tell which computer said what.
+static String codesList, codesA, codesB, codesC, codesX;
+static bool codesOn = false, codesClear = false;
+static int codesI = 0, codesS = 0, codesSrc = 0;
+void obdCodesStart(const String& protos, bool clear, int src) {
+  if (!obdLinked) { reply("{\"t\":\"codes\",\"error\":\"the iCar isn't connected\"}", src); return; }
+  if (scanOn || codesOn) { reply("{\"t\":\"codes\",\"error\":\"busy: try again in a minute\"}", src); return; }
+  if (clear && car.kmh > 2) { reply("{\"t\":\"codes\",\"error\":\"stop the Jeep first: codes are only cleared when parked\"}", src); return; }
+  codesList = "";
+  for (size_t i = 0; i < protos.length() && codesList.length() < 6; i++) { char c = protos[i]; if (c >= '0' && c <= '9' && codesList.indexOf(c) < 0) codesList += c; }
+  if (!codesList.length()) codesList = String(constrain(cfg.obdProto, 0, 9));
+  codesOn = true; codesClear = clear; codesI = 0; codesS = 0; codesSrc = src; obdBusy = false;
+  sdEvent(String(clear ? "clearing" : "reading") + " trouble codes on " + codesList);
+  reply("{\"t\":\"codes\",\"start\":true,\"n\":" + String(codesList.length()) + ",\"clear\":" + String(clear ? 1 : 0) + "}", src);
+}
+static void codesAnswer(const String& r) {
+  String x = r;
+  x.replace(" ", ""); x.replace("\n", ""); x.replace(">", ""); x.replace("\r", "/"); x.toUpperCase();
+  while (x.startsWith("/")) x.remove(0, 1);
+  while (x.endsWith("/")) x.remove(x.length() - 1);
+  x = x.substring(0, 240);
+  if (obdCmd == "0101") codesA = x; else if (obdCmd == "03") codesB = x; else if (obdCmd == "07") codesC = x; else if (obdCmd == "04") codesX = x;
+}
+static void codesStep() {
+  char p = codesList[codesI];
+  switch (codesS++) {
+    case 0: codesA = codesB = codesC = codesX = ""; obdSendCmdT(String("ATSP") + p, 2000); return;
+    case 1: obdSendCmdT("ATH1", 1000); return;
+    case 2: obdSendCmdT("0101", 10000); return;
+    case 3:   // nothing on this bus at all (no answer, UNABLE TO CONNECT, BUS INIT ERROR): skip it
+      if (!codesA.length() || codesA.indexOf("UNABLE") >= 0 || codesA.indexOf("ERROR") >= 0) { codesS = 6; codesStep(); return; }
+      obdSendCmdT("03", 6000); return;
+    case 4: obdSendCmdT("07", 6000); return;
+    case 5: if (codesClear) { obdSendCmdT("04", 6000); return; } codesStep(); return;
+    default: {
+      reply("{\"t\":\"codes\",\"i\":" + String(codesI) + ",\"n\":" + String(codesList.length()) + ",\"p\":\"" + String(p) + "\",\"a\":\"" + jsonEsc(codesA) +
+            "\",\"b\":\"" + jsonEsc(codesB) + "\",\"c\":\"" + jsonEsc(codesC) + "\",\"x\":\"" + jsonEsc(codesX) + "\"}", codesSrc);
+      sdEvent("codes " + String(p) + ": 03 " + codesB.substring(0, 60) + " 07 " + codesC.substring(0, 40) + (codesClear ? " 04 " + codesX.substring(0, 20) : ""));
+      codesI++; codesS = 0;
+      if (codesI >= (int)codesList.length()) { codesOn = false; reply("{\"t\":\"codes\",\"done\":true}", codesSrc); obdRestart(); }
+    }
+  }
+}
+
+static bool codesBusy() { return codesOn; }
 void obdRestart() { obdStage = 0; obdBusy = false; supNext = -1; obdSup = ObdSupport(); memset(pidMiss, 0, sizeof(pidMiss)); }
 
 // fuel right now, litres per hour: the ECU's own number if it has one, otherwise worked out from load and RPM

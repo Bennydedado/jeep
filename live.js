@@ -27,7 +27,8 @@ function renderLive(v) {
     h('button', { class: 'btn btn-glass glass', onclick: screensSheet }, icon('odo'), 'Screens'),
     h('button', { class: 'btn btn-glass glass', onclick: diagSheet }, icon('warn'), 'Diagnostics'),
     h('button', { class: 'btn btn-glass glass', onclick: t3Guide }, icon('info'), 'Guide'),
-    h('button', { class: 'btn btn-glass glass', style: 'grid-column:1 / -1', onclick: wifiSheet }, icon('wifi'), 'Wi-Fi & update')));
+    h('button', { class: 'btn btn-glass glass', onclick: codesSheet }, icon('engine'), 'Trouble codes'),
+    h('button', { class: 'btn btn-glass glass', onclick: wifiSheet }, icon('wifi'), 'Wi-Fi & update')));
   if (!on) {
     if (hasBT()) {
       v.append(card(h('div', { class: 'empty', style: 'padding:16px 6px' },
@@ -36,18 +37,8 @@ function renderLive(v) {
         h('div', { class: 'btn-row', style: 'width:100%' },
           h('button', { class: 'btn btn-primary', onclick: btConnect }, icon('bt'), 'Connect'),
           h('button', { class: 'btn btn-glass glass', onclick: demoStart }, icon('play'), 'Demo')))));
-    } else {
-      const link = setupLink();
-      v.append(card(cardHead('Bluetooth needs Bluefy', null),
-        h('p', { class: 'foot', style: 'margin:0 0 14px', text: 'With the T3 on your iPhone hotspot, its live numbers show up here by themselves (it uses a little cell data). For Bluetooth instead, use Bluefy: Apple doesn\'t let Safari talk to Bluetooth devices.' }),
-        h('ol', { class: 'steps' },
-          h('li', null, h('div', null, 'Install ', h('a', { class: 'link', href: 'https://apps.apple.com/app/id1492822055', target: '_blank', rel: 'noopener', text: 'Bluefy' }), ' from the App Store.')),
-          h('li', null, h('div', null, 'Copy this link and open it in Bluefy. It brings your Jeep log along.',
-            h('div', { class: 'copy-line', style: 'margin-top:8px' }, h('code', { text: link.replace(/#.*/, '#setup=…') }),
-              h('button', { class: 'btn btn-small btn-glass glass', onclick: e => copyText(link, e.currentTarget) }, icon('copy'), 'Copy')))),
-          h('li', null, h('div', { text: 'With the key on, tap Connect and pick Jeep T3.' }))),
-        h('button', { class: 'btn btn-glass glass btn-wide', style: 'margin-top:16px', onclick: demoStart }, icon('play'), 'Try the demo')));
-    }
+      v.append(wifiWaitCard(false));
+    } else v.append(wifiWaitCard(true));
   } else {
     const e = LIVE.els = {};
     // what's connected, and how fresh the numbers are
@@ -85,19 +76,115 @@ function renderLive(v) {
     clearInterval(LIVE.ageTimer);
     LIVE.ageTimer = setInterval(() => { if (!LIVE.els || !document.body.contains(LIVE.els.age)) clearInterval(LIVE.ageTimer); else updateLive(); }, 1000);
   }
-  // trips the T3 has logged
+  // trips the T3 has logged: totals by week, month or year, then the trips themselves
+  if (S.data.trip.length) tripTotalsCard(v);
   const trips = S.data.trip.slice().sort((a, b) => (num(b.t1) || 0) - (num(a.t1) || 0)).slice(0, 20);
   if (trips.length) {
-    v.append(h('div', { class: 'month' }, h('b', { text: 'Trips' }), h('span', { text: fmt0(trips.reduce((s, t) => s + (num(t.km) || 0), 0)) + ' km' })));
+    v.append(h('div', { class: 'month' }, h('b', { text: 'Recent trips' }), h('span', { text: 'tap one for its breakdown' })));
     v.append(h('div', { class: 'card list' }, trips.map(t => {
       const km = num(t.km) || 0, l = num(t.lit) || 0, s = ((num(t.t1) || 0) - (num(t.t0) || 0)) / 1000;
-      return h('div', { class: 'row' },
+      return h('button', { class: 'row', onclick: () => tripSheet(t) },
         h('div', { class: 'main' }, h('b', { text: fmtDay(num(t.t1)) + ', ' + fmtTime(num(t.t1)) }), h('span', { text: (s > 0 ? dur(s) : '') + (num(t.vmax) ? ' · top ' + num(t.vmax) + ' km/h' : '') + (num(t.idle) ? ' · idle ' + num(t.idle) + ' min' : '') })),
-        h('div', { class: 'end' }, h('b', { text: fmt1(km) + ' km' }), h('span', { text: km > 0 && l > 0 ? fmt1(l / km * 100) + ' L/100 km' : '' })));
+        h('div', { class: 'end' }, h('b', { text: fmt1(km) + ' km' }), h('span', { text: km > 0 && l > 0 ? fmt1(l / km * 100) + ' L/100 km' : '' })), icon('chev', 'chev'));
     })));
   }
 }
 
+// totals of the T3's trips: this week / month / year, and a bar for each of the ones before
+const TRIP_UNITS = { w: ['Week', 8, 'this week', 'Distance per week'], m: ['Month', 12, 'this month', 'Distance per month'], y: ['Year', 5, 'this year', 'Distance per year'] };
+function tripPeriodName(p, unit) {
+  const d = new Date(p.start);
+  if (unit === 'y') return String(d.getFullYear());
+  if (unit === 'm') return MONTHS[d.getMonth()] + ' ' + d.getFullYear();
+  return 'Week of ' + MON[d.getMonth()] + ' ' + d.getDate();
+}
+function tripTotalsCard(v) {
+  const unit = TRIP_UNITS[store.get('tripUnit', 'm')] ? store.get('tripUnit', 'm') : 'm';
+  const [, count, nowWord, chartLabel] = TRIP_UNITS[unit];
+  const per = tripTotals(S.data.trip, unit, count);
+  const cur = per[per.length - 1], all = per.reduce((a, p) => a + p.km, 0);
+  v.append(h('div', { class: 'month' }, h('b', { text: 'Driving' }), h('span', { text: fmt0(all) + ' km in the last ' + count + ' ' + TRIP_UNITS[unit][0].toLowerCase() + 's' })));
+  v.append(seg(Object.entries(TRIP_UNITS).map(([k, x]) => [k, x[0]]), unit, k => { store.set('tripUnit', k); render(); }));
+  const econ = cur.litKm > 1 ? fmt1(cur.lit / cur.litKm * 100) + ' L/100 km' : 'no fuel numbers yet';
+  v.append(h('div', { class: 'tiles', style: 'margin-top:12px' },
+    tile('Distance', 'road', fmt0(cur.km), 'km', nowWord + (cur.n ? ' · ' + cur.n + (cur.n > 1 ? ' trips' : ' trip') : ': no trips yet')),
+    tile('Driving', 'clock', cur.secs ? dur(cur.secs) : '\u2014', null, cur.idle ? cur.idle + ' min idling' : nowWord),
+    tile('Diesel', 'pump', cur.lit ? fmt1(cur.lit) : '\u2014', cur.lit ? 'L' : null, econ),
+    tile('Top speed', 'speed', cur.vmax ? fmt0(cur.vmax) : '\u2014', cur.vmax ? 'km/h' : null, cur.n ? 'average ' + fmt0(cur.km / cur.n) + ' km a trip' : nowWord)));
+  if (per.some(p => p.km > 0)) {
+    v.append(card(cardHead(chartLabel, 'tap a bar'), barChart({
+      items: per.map(p => ({ v: p.km, x: unit === 'y' ? String(new Date(p.start).getFullYear()).slice(2) : unit === 'm' ? MON[new Date(p.start).getMonth()].slice(0, 1) : MON[new Date(p.start).getMonth()].slice(0, 1) + new Date(p.start).getDate(),
+        tip: tripPeriodName(p, unit) + ' · ' + p.n + (p.n === 1 ? ' trip' : ' trips') + (p.secs ? ' · ' + dur(p.secs) : '') + (p.lit ? ' · ' + fmt1(p.lit) + ' L' : '') + (p.litKm > 1 ? ' · ' + fmt1(p.lit / p.litKm * 100) + ' L/100' : '') })),
+      hl: per.length - 1, fmt: n => fmt0(n) + ' km', fmtAxis: g => fmt0(g), height: 150, label: chartLabel,
+    })));
+  }
+}
+
+// one trip: the T3's totals right away, and the full breakdown (charts, map) from the track store when it has it
+function tripSheet(t) {
+  const km = num(t.km) || 0, l = num(t.lit) || 0, s = ((num(t.t1) || 0) - (num(t.t0) || 0)) / 1000, idle = num(t.idle) || 0;
+  const conf = typeof trkConf === 'function' && trkConf(), idx = store.get('trkIndex', null);
+  const have = conf && idx && (idx.trips || []).some(x => x.id === t.id);
+  openSheet({
+    title: 'Trip',
+    build(b, sheet) {
+      const cell = (k, val, sub) => h('div', { class: 'tile card' }, h('div', { class: 'k', text: k }), h('div', { class: 'v num', text: val }), sub ? h('div', { class: 's', text: sub }) : null);
+      const moving = s - idle * 60;
+      put(b, h('div', { class: 'foot', style: 'margin:0 0 10px', text: fmtDay(num(t.t0) || num(t.t1), true) + ', ' + fmtTime(num(t.t0) || num(t.t1)) + (num(t.t1) && num(t.t0) ? ' to ' + fmtTime(num(t.t1)) : '') }),
+        h('div', { class: 'tiles' },
+          cell('Distance', fmt1(km) + ' km', 'from the T3\u2019s trip meter'),
+          cell('Time', s > 0 ? dur(s) : '\u2014', idle ? 'idling ' + idle + ' min' : null),
+          cell('Average speed', moving > 60 && km > 0 ? fmt0(km / (moving / 3600)) + ' km/h' : '\u2014', s > 60 && km > 0 ? fmt0(km / (s / 3600)) + ' km/h with stops' : null),
+          cell('Top speed', num(t.vmax) ? fmt0(num(t.vmax)) + ' km/h' : '\u2014', null),
+          cell('Diesel', l ? fmt1(l) + ' L' : '\u2014', l && km > 1 ? fmt1(l / km * 100) + ' L/100 km' : 'needs the engine\u2019s fuel rate'),
+          cell('Cost', l && STATS && STATS.ppl ? money(l * STATS.ppl, 2) : '\u2014', l && STATS && STATS.ppl ? 'at $' + STATS.ppl.toFixed(3) + '/L' : null)));
+      if (have) put(b, h('button', { class: 'btn btn-primary btn-wide', style: 'margin-top:14px', onclick: () => { sheet.close(); go('map'); openTrip(t.id); } }, icon('map'), 'Full breakdown: speed, RPM, boost, coolant\u2026'));
+      else if (conf) put(b, card(h('p', { class: 'foot', style: 'margin:0 0 10px', text: 'The full breakdown (speed, RPM, boost, coolant and fuel over the trip, and the route once there\u2019s a GPS) shows up once the T3 uploads this trip\u2019s track. It does that on Wi-Fi with the Jeep parked.' }),
+        h('button', { class: 'btn btn-glass glass btn-wide', onclick: () => { sheet.close(); go('map'); openTrip(t.id); } }, icon('sync'), 'Look for it now')));
+      else put(b, card(h('p', { class: 'foot', style: 'margin:0 0 10px', text: 'For the full breakdown of every trip (speed, RPM, boost, coolant and fuel over the trip, and the route once there\u2019s a GPS), set up track storage once. It\u2019s free, in your own Google Drive, about 5 minutes.' }),
+        h('button', { class: 'btn btn-primary btn-wide', onclick: () => { sheet.close(); trackStoreSheet(); } }, icon('map'), 'Set up track storage')));
+    },
+  });
+}
+
+// Live with nothing connected: listening for the T3 over Wi-Fi (the relay), and what to check if it doesn't show up.
+// In Safari this is the main way in (Safari can't do Bluetooth); in Bluefy it's the other way in.
+function wifiWaitCard(main) {
+  const W = LIVE.wait = { relay: h('span'), asked: h('span'), heard: h('span'), tips: h('div') };
+  const row = (k, el) => h('div', { class: 'row' }, h('div', { class: 'main' }, h('b', { text: k })), h('div', { class: 'end' }, el));
+  const c = card(cardHead(main ? 'Live over Wi-Fi' : 'Or over Wi-Fi', null),
+    h('p', { class: 'foot', style: 'margin:0 0 10px', text: main
+      ? 'When the T3 is powered (key on) and on a Wi-Fi it knows (home Wi-Fi or your iPhone hotspot), its live numbers show up here by themselves, a second or two behind. Leave this page open.'
+      : 'With the T3 on Wi-Fi, its numbers also show up here (and in Safari) without Bluetooth.' }),
+    h('div', { class: 'card list', style: 'margin:0' }, row('Relay', W.relay), row('Asked the T3 to send', W.asked), row('Heard the T3', W.heard)),
+    W.tips);
+  if (main) {
+    const link = setupLink();
+    c.append(h('details', { style: 'margin-top:12px' }, h('summary', { class: 'small', text: 'Bluetooth instead (needs the Bluefy app)' }),
+      h('ol', { class: 'steps', style: 'margin-top:8px' },
+        h('li', null, h('div', null, 'Install ', h('a', { class: 'link', href: 'https://apps.apple.com/app/id1492822055', target: '_blank', rel: 'noopener', text: 'Bluefy' }), ' from the App Store (Apple doesn\u2019t let Safari use Bluetooth).')),
+        h('li', null, h('div', null, 'Copy this link and open it in Bluefy. It brings your Jeep log along.',
+          h('div', { class: 'copy-line', style: 'margin-top:8px' }, h('code', { text: link.replace(/#.*/, '#setup=\u2026') }),
+            h('button', { class: 'btn btn-small btn-glass glass', onclick: e => copyText(link, e.currentTarget) }, icon('copy'), 'Copy')))),
+        h('li', null, h('div', { text: 'With the key on, tap Connect and pick Jeep T3.' })))),
+      h('button', { class: 'btn btn-glass glass btn-wide', style: 'margin-top:12px', onclick: demoStart }, icon('play'), 'Try the demo'));
+  }
+  paintWait(true);
+  return c;
+}
+function paintWait(fresh) {
+  const W = LIVE.wait;
+  if (!W || (!fresh && !document.body.contains(W.relay))) return;
+  const ws = NET.ws, open = ws && ws.readyState === 1;
+  setText(W.relay, !S.conn || S.sample ? 'Set up your Jeep log first' : open ? 'Connected' : NET.fails > 2 ? 'Can\u2019t reach it (no internet?)' : 'Connecting\u2026');
+  setText(W.asked, NET.watchAt ? ago(NET.watchAt) : open ? 'asking\u2026' : '-');
+  const last = store.get('lastHeard', 0);
+  setText(W.heard, last ? ago(last) : 'not yet');
+  const waiting = open && NET.openAt && Date.now() - NET.openAt > 40000;
+  W.tips.textContent = '';
+  if (!S.conn || S.sample) W.tips.append(h('p', { class: 'foot', style: 'margin:10px 0 0', text: 'The T3\u2019s private channel comes from your sheet key: open your setup link in this browser first.' }));
+  else if (waiting) W.tips.append(h('p', { class: 'foot', style: 'margin:10px 0 0;white-space:pre-line', text: 'Nothing from the T3 yet. Check:\n\u2022 the key is on (the T3 only runs then)\n\u2022 the T3 is on Wi-Fi: within reach of home Wi-Fi, or your hotspot is on\n\u2022 Live over Wi-Fi is On in T3 settings, and the T3 is 2.4 or newer (both set over Bluetooth in Bluefy)' }));
+}
 function setText(el, t) { if (el && el.textContent !== t) el.textContent = t; }
 function confirmButtonSmall(label, armed, act) {
   let on = false, t = 0;
@@ -351,13 +438,13 @@ async function netStart() {
   ws.onopen = () => {
     ws.send(mqPacket(0x10, [...mqStr('MQTT'), 4, 0x02, 0, 60, ...mqStr('heep-' + Math.random().toString(36).slice(2, 12))]));
     ws.send(mqPacket(0x82, [0, 1, ...mqStr(NET.topic), 0]));
-    NET.watchAt = 0; netWatch();   // tell a parked T3 someone's looking, so it starts sending
+    NET.watchAt = 0; NET.openAt = Date.now(); NET.fails = 0; netWatch();   // tell a parked T3 someone's looking, so it starts sending
     clearInterval(NET.ping);
     NET.ping = setInterval(() => { try { ws.send(new Uint8Array([0xC0, 0])); } catch (e) { /* closing */ } }, 30000);
     if (S.tab === 'live' && !LIVE.mode) render();
   };
   ws.onmessage = e => netBytes(new Uint8Array(e.data));
-  ws.onclose = () => { clearInterval(NET.ping); if (NET.ws === ws) NET.ws = null; clearTimeout(NET.retry); NET.retry = setTimeout(netCheck, 5000); };
+  ws.onclose = () => { clearInterval(NET.ping); if (NET.ws === ws) NET.ws = null; NET.fails = (NET.fails || 0) + 1; NET.openAt = 0; paintWait(); clearTimeout(NET.retry); NET.retry = setTimeout(netCheck, 5000); };
   ws.onerror = () => { try { ws.close(); } catch (e) { /* gone */ } };
 }
 function netStop() {
@@ -404,6 +491,7 @@ function netLine(text) {
   if (!m || typeof m !== 'object') return;
   if (typeof m.e === 'string') { relayOpen(m.e).then(netLine, () => { /* not ours, or a different key */ }); return; }
   NET.at = Date.now();
+  if (Date.now() - store.get('lastHeard', 0) > 10000) store.set('lastHeard', NET.at);
   if (m.t !== 'live') { if (LIVE.mode !== 'bt') t3Message(m, 'net'); return; }
   if (LIVE.mode === 'bt' || LIVE.mode === 'demo') return;
   const fresh = LIVE.mode !== 'net';
@@ -417,6 +505,7 @@ function netCheck() {
   if (!want) { if (NET.ws || LIVE.mode === 'net') netStop(); return; }
   if (!NET.ws) netStart();
   netWatch();
+  paintWait();
   if (LIVE.mode === 'net' && Date.now() - NET.at > 15000) { LIVE.mode = null; LIVE.v = {}; LIVE.els = null; wake(false); render(); }
 }
 // every 30 s while Live is open: "I'm watching" (signed). A T3 2.4+ on Wi-Fi sends its live numbers for 90 s after each one,

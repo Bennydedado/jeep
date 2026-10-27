@@ -47,6 +47,11 @@ void loadSettings() {
   cfg.io4 = p.getInt("io4", 0);
   cfg.obdProto = constrain(p.getInt("opr", 0), 0, 9);
   p.end();
+  // the first start of a new version: "Live over Wi-Fi" goes back on. Heep switches it off while it sends an update
+  // over Bluetooth (to free memory), and before 2.7 that stuck if Heep wasn't there to switch it back on afterwards.
+  { Preferences q; q.begin("t3", false);
+    if (q.getString("fwb", "") != FW) { if (!cfg.liveWifi) { cfg.liveWifi = true; q.putBool("lw", true); } q.putString("fwb", FW); }
+    q.end(); }
   // anything out of range goes back to a safe value
   if (cfg.fuelCal < 0.3 || cfg.fuelCal > 3) cfg.fuelCal = 1.0;
   if (cfg.distCal < 0.5 || cfg.distCal > 2) cfg.distCal = 1.0;
@@ -96,7 +101,10 @@ bool applySettings(const String& j, bool fromRelay) {
   if (has(j, "nf")) p.putInt("nf", constrain((int)numFieldOr(j, "nf", -1), -1, 23));
   if (has(j, "nt")) p.putInt("nt", constrain((int)numFieldOr(j, "nt", 7), 0, 23));
   if (has(j, "tz")) p.putInt("tz", constrain((int)numFieldOr(j, "tz", -420), -720, 840));
-  if (has(j, "lw")) p.putBool("lw", numFieldOr(j, "lw", 1) > 0);
+  if (has(j, "lw")) {   // "lwu":1 = only until the next restart (Heep making room for an update)
+    if (numFieldOr(j, "lwu", 0) > 0) lwPause = numFieldOr(j, "lw", 1) <= 0;
+    else { p.putBool("lw", numFieldOr(j, "lw", 1) > 0); lwPause = false; }
+  }
   if (has(j, "sp")) p.putInt("sp", constrain((int)numFieldOr(j, "sp", 0), 0, MAX_SCREENS - 1));
   if (has(j, "spd")) p.putInt("spd", constrain((int)numFieldOr(j, "spd", 0), 0, 2));
   if (has(j, "hm")) p.putInt("hm", constrain((int)numFieldOr(j, "hm", 5), 1, 30));

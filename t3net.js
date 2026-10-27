@@ -252,7 +252,7 @@ async function makeRoom(ui, begin) {
   store.set('restoreLw', lw);
   LIVE.makingRoom = true;   // until the update is over: the T3's "hi" mustn't switch it straight back on
   const quiet = LIVE.onCfg; LIVE.onCfg = () => {};
-  await send({ c: 'cfg', lw: 0 });
+  await send({ c: 'cfg', lw: 0, lwu: 1 });   // 2.7+: only until it restarts
   LIVE.onCfg = quiet;
   const step = LIVE.otaRetryMs || 15000;
   let ready = { ok: false };

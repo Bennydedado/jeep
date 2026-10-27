@@ -87,6 +87,7 @@ void onCommand(const String& j, int src) {
   else if (c == "update") { updateNow(); reply(updJson(), src); }   // Heep's "Update over Wi-Fi": progress follows as {"t":"upd"}
   else if (c == "watch") relayWatched();                              // Heep in Safari is showing Live: keep the numbers coming
   else if (c == "obdscan") obdScanStart(src);                         // Heep: Diagnostics > Scan the Jeep
+  else if (c == "codes") obdCodesStart(jStr(j, "p"), numField(j, "clear") > 0, src);   // Heep: Diagnostics > Trouble codes
   else if (c == "wifi") { if (numField(j, "scan") > 0) wifiScanNow(); reply(wifiJson(), src); }   // the Wi-Fi page
   else if (c == "ota") { if (src == 0 && jStr(j, "do") == "begin") otaBegin(j); }                  // update over Bluetooth only
   else if (c == "cfg") { applySettings(j, src == 1); screenWake(); wifiNudge(false); reply("{\"t\":\"cfg\",\"ok\":true}", src); reply(hiJson(), src); }

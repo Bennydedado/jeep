@@ -44,6 +44,14 @@ int main() {
   CHECK(!parseScreen("|1|", sc));
   // bar min/max the wrong way round becomes a sane range
   CHECK(parseScreen("B|1|b,boost,0,0,128,10,1,l,,30,0,", sc) && sc.w[0].mx > sc.w[0].mn);
+  // labels never run into the number (the Boost screen's "Peak boost" beside "12.3" in a half-width row)
+  char lb[24];
+  fitLabel("Peak boost", 64 - 24, lb, sizeof(lb)); CHECK(!strcmp(lb, "Peak"));
+  fitLabel("Peak boost", 64 - 12, lb, sizeof(lb)); CHECK(!strcmp(lb, "Peak"));            // "--"
+  fitLabel("Peak boost", 128 - 48, lb, sizeof(lb)); CHECK(!strcmp(lb, "Peak boost"));     // full width: all of it
+  fitLabel("Satellites", 30, lb, sizeof(lb)); CHECK(!strcmp(lb, "Sate"));                 // one word: cut
+  fitLabel("RPM", 62 - 24, lb, sizeof(lb)); CHECK(!strcmp(lb, "RPM"));
+  fitLabel("Coolant", 10, lb, sizeof(lb)); CHECK(!strcmp(lb, ""));                        // no room: left out
   // fingerprint is stable
   CHECK(fnv1a("abc") == 0x1A47E90Bu);
   DONE();

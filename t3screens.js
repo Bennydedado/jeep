@@ -12,7 +12,7 @@ const FIELDS = [
   ['kmh', 'Speed', 'km/h', 0, 'Driving'], ['kmhg', 'GPS spd', 'km/h', 0, 'Driving'], ['kmho', 'OBD spd', 'km/h', 0, 'Driving'],
   ['hdg', 'Heading', '', -1, 'Driving'], ['hdgd', 'Course', 'deg', -1, 'Driving'], ['otemp', 'Outside', 'C', 1, 'Driving'],
   ['clock', 'Time', '', -1, 'Driving'], ['date', 'Date', '', -1, 'Driving'],
-  ['rpm', 'RPM', '', 0, 'Engine'], ['boost', 'Boost', 'psi', 1, 'Engine'], ['bmax', 'Peak bst', 'psi', 1, 'Engine'], ['ect', 'Coolant', 'C', 0, 'Engine'],
+  ['rpm', 'RPM', '', 0, 'Engine'], ['boost', 'Boost', 'psi', 1, 'Engine'], ['bmax', 'Peak boost', 'psi', 1, 'Engine'], ['ect', 'Coolant', 'C', 0, 'Engine'],
   ['iat', 'Intake', 'C', 0, 'Engine'], ['volt', 'Battery', 'V', 1, 'Engine'], ['load', 'Load', '%', 0, 'Engine'], ['lph', 'Fuel', 'L/h', 1, 'Engine'],
   ['econ', 'Now', 'L/100', 1, 'Engine'], ['maf', 'Air flow', 'g/s', 1, 'Engine'], ['rail', 'Rail', 'bar', 0, 'Engine'],
   ['tstate', 'Trip', '', -1, 'Trip'], ['tkm', 'Trip', 'km', 1, 'Trip'], ['ttime', 'Time', '', -1, 'Trip'], ['tl', 'Diesel', 'L', 2, 'Trip'],
@@ -116,6 +116,16 @@ function fieldShown(id, live) {
   if (f.dp >= 0 && typeof v === 'number') return v.toFixed(f.dp);
   return String(v);
 }
+// a row's label cut to leave a blank before its value (same rule as fitLabel in firmware/T3/screens.h)
+function fitLabel(label, room) {
+  const n = Math.floor(room / 6) - 1;
+  let cut;
+  if (n >= label.length) cut = label.length;
+  else if (n < 2) cut = 0;
+  else { cut = n; while (cut > 0 && label[cut] !== ' ') cut--; if (cut < 2) cut = n; }
+  while (cut > 0 && label[cut - 1] === ' ') cut--;
+  return label.slice(0, cut);
+}
 function drawScreen(ctx, sc, scale, live, sel) {
   const S2 = scale;
   ctx.save();
@@ -144,12 +154,12 @@ function drawScreen(ctx, sc, scale, live, sel) {
       if (unit && v !== '--') v += ' ' + unit;
       ctx.font = PREVIEW_FONT[1][0]; ctx.fillStyle = fg;
       const ty = w.y + (w.h - 8) / 2;
-      if (w.label) { ctx.fillText(label, w.x, ty); ctx.fillText(v, w.x + w.w - ctx.measureText(v).width, ty); }
+      if (w.label) { const fx = w.frame ? 2 : 0; ctx.fillText(fitLabel(label, w.w - v.length * 6 - 2 * fx), w.x + fx, ty); ctx.fillText(v, w.x + w.w - fx - ctx.measureText(v).width, ty); }
       else text(v, w.x, w.y, w.w, w.h, w.align, 1, fg);
     } else if (w.type === 'b') {
       let top = w.y;
       if (unit && v !== '--') v += ' ' + unit;
-      if (w.label && w.h >= 14) { ctx.font = PREVIEW_FONT[1][0]; ctx.fillStyle = fg; ctx.fillText(label, w.x, w.y); ctx.fillText(v, w.x + w.w - ctx.measureText(v).width, w.y); top += 9; }
+      if (w.label && w.h >= 14) { ctx.font = PREVIEW_FONT[1][0]; ctx.fillStyle = fg; ctx.fillText(fitLabel(label, w.w - v.length * 6), w.x, w.y); ctx.fillText(v, w.x + w.w - ctx.measureText(v).width, w.y); top += 9; }
       const bh = Math.max(3, w.y + w.h - top);
       ctx.strokeRect(w.x + .5, top + .5, w.w - 1, bh - 1);
       const x = Number(live && live[w.field] != null ? live[w.field] : SAMPLE[w.field]);
@@ -441,4 +451,4 @@ function displayCard() {
     h('button', { class: 'btn btn-glass glass btn-wide', onclick: () => t3SendSettings() }, icon('bt'), 'Send settings to the T3'));
 }
 
-if (typeof module !== 'undefined') module.exports = { FIELDS, DEFAULT_SCREENS, SCREEN_TEMPLATES, parseScreen, writeScreen, fnv1a, screensHash, parseBtnMap };
+if (typeof module !== 'undefined') module.exports = { FIELDS, DEFAULT_SCREENS, SCREEN_TEMPLATES, parseScreen, writeScreen, fnv1a, screensHash, parseBtnMap, fitLabel };

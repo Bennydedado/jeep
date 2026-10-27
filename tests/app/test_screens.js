@@ -22,5 +22,8 @@ sc.w[0].text = 'a|b,c\nd'; sc.name = 'N|a,me';
 const out = A.writeScreen(sc);
 ok(out.split('|').length === 3 && A.parseScreen(out).w[0].text === 'a b c d', 'separators stripped from text');
 ok(JSON.stringify(A.parseBtnMap('next,end;;prev')) === JSON.stringify([['next', 'end'], ['mark', 'pause'], ['prev', 'end']]), 'button map with blanks keeps defaults');
+// the preview cuts labels exactly like the T3 (see test_screens.cpp)
+ok(A.fitLabel('Peak boost', 40) === 'Peak' && A.fitLabel('Peak boost', 52) === 'Peak' && A.fitLabel('Peak boost', 80) === 'Peak boost', 'peak boost label fits');
+ok(A.fitLabel('Satellites', 30) === 'Sate' && A.fitLabel('RPM', 38) === 'RPM' && A.fitLabel('Coolant', 10) === '', 'labels cut like the T3');
 console.log('test_screens.js: ' + n + ' checks, ' + fails + ' failed');
 process.exit(fails ? 1 : 0);

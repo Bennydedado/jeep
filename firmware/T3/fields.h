@@ -26,7 +26,7 @@ static const FieldDef FIELDS[] = {
   // engine (iCar)
   { "rpm", "RPM", "", 0 },
   { "boost", "Boost", "psi", 1 },
-  { "bmax", "Peak bst", "psi", 1 },     // highest boost this trip
+  { "bmax", "Peak boost", "psi", 1 },     // highest boost this trip
   { "ect", "Coolant", "C", 0 },          // unit follows the engine-temperature C/F setting
   { "iat", "Intake", "C", 0 },
   { "volt", "Battery", "V", 1 },

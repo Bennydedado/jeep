@@ -122,6 +122,24 @@ inline int writeScreen(const Screen& sc, char* out, int cap) {
 }
 
 // a short fingerprint of the screen set, so Heep can tell the T3 has exactly what it sent (FNV-1a, 32 bit)
+// A row's (or bar's) label next to its value in the small font (6 px a character): cut so a blank character is left
+// before the value, at a space when there is one, and left out if fewer than 2 characters fit. `room` = pixels from
+// where the label starts to where the value starts. "Peak boost" beside "12.3" in a half-width row -> "Peak".
+// Heep's preview does the same (fitLabel in t3screens.js).
+inline void fitLabel(const char* label, int room, char* out, int cap) {
+  int len = (int)strlen(label), n = room / 6 - 1, cut;
+  if (n >= len) cut = len;
+  else if (n < 2) cut = 0;
+  else {
+    cut = n;
+    while (cut > 0 && label[cut] != ' ') cut--;   // back to a space (label[n] is the first character that won't fit)
+    if (cut < 2) cut = n;                          // one long word: cut it
+  }
+  while (cut > 0 && label[cut - 1] == ' ') cut--;
+  if (cut > cap - 1) cut = cap - 1;
+  memcpy(out, label, cut); out[cut] = 0;
+}
+
 inline uint32_t fnv1a(const char* s, uint32_t h = 2166136261u) { while (*s) { h ^= (uint8_t)*s++; h *= 16777619u; } return h; }
 
 // the screens a new T3 starts with (and "Restore defaults" in Heep goes back to). Keep in step with t3screens.js.

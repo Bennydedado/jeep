@@ -31,7 +31,8 @@ function parseTrack(text) {
   const cols = lines[0].split(',');
   const at = name => cols.indexOf(name);
   const C = { ms: at('ms'), up: at('up'), tq: at('tq'), lat: at('lat'), lon: at('lon'), fix: at('fix'), sats: at('sats'), hdop: at('hdop'), alt: at('alt'),
-    kmh: at('kmh'), crs: at('crs'), okmh: at('obd_kmh'), rpm: at('rpm'), boost: at('boost'), ect: at('ect'), ot: at('otemp'), tkm: at('trip_km'), ev: at('ev') };
+    kmh: at('kmh'), crs: at('crs'), okmh: at('obd_kmh'), rpm: at('rpm'), boost: at('boost'), ect: at('ect'), ot: at('otemp'), tkm: at('trip_km'), ev: at('ev'),
+    iat: at('iat'), volt: at('volt'), load: at('load'), lph: at('lph') };
   const g = (r, i) => (i < 0 ? null : trkNum(r[i]));
   const rows = [];
   for (let i = 1; i < lines.length; i++) {
@@ -41,7 +42,10 @@ function parseTrack(text) {
     const ok = lat != null && lon != null && Math.abs(lat) <= 90 && Math.abs(lon) <= 180 && !(lat === 0 && lon === 0);
     rows.push({ ms: g(r, C.ms), up: g(r, C.up), tq: C.tq >= 0 ? r[C.tq] : '', lat: ok ? lat : null, lon: ok ? lon : null,
       sats: g(r, C.sats), hdop: g(r, C.hdop), alt: g(r, C.alt), kmh: g(r, C.kmh), crs: g(r, C.crs), okmh: g(r, C.okmh),
-      rpm: g(r, C.rpm), boost: g(r, C.boost), ect: g(r, C.ect), ot: g(r, C.ot), tkm: g(r, C.tkm), ev: C.ev >= 0 ? (r.slice(C.ev).join(',') || '') : '' });
+      rpm: g(r, C.rpm), boost: g(r, C.boost), ect: g(r, C.ect), ot: g(r, C.ot), tkm: g(r, C.tkm), ev: C.ev >= 0 ? (r.slice(C.ev).join(',') || '') : '',
+      iat: g(r, C.iat), volt: g(r, C.volt), load: g(r, C.load), lph: g(r, C.lph) });
+    const last = rows[rows.length - 1];
+    last.v = last.kmh != null ? last.kmh : last.okmh;   // speed: GPS, else the engine's
   }
   fillTimes(rows);
   return { rows, cols };
@@ -85,7 +89,8 @@ function segments(rows, o = TRK) {
 function tripStats(rows, o = TRK) {
   const { segs, gaps } = segments(rows, o);
   const s = { m: 0, movingS: 0, vmax: null, vmaxAt: null, t0: null, t1: null, est: false, durS: null, fixes: 0, rows: rows.length,
-    tmin: null, tmax: null, tavg: null, stops: [], gaps, segs, marks: [], a0: null, a1: null, timeKnown: false, bmax: null };
+    tmin: null, tmax: null, tavg: null, stops: [], gaps, segs, marks: [], a0: null, a1: null, timeKnown: false, bmax: null,
+    rpmMax: null, ectMax: null, lit: null, mObd: 0, kmFrom: 'gps' };
   // time: first and last row; "estimated" if any row's time was worked out rather than read
   const timed = rows.filter(r => r.t != null);
   if (timed.length) { s.t0 = timed[0].t; s.t1 = timed[timed.length - 1].t; s.timeKnown = true; s.est = timed[0].est || timed[timed.length - 1].est; }
@@ -109,11 +114,25 @@ function tripStats(rows, o = TRK) {
     if (v != null && (s.vmax == null || v > s.vmax)) { s.vmax = v; s.vmaxAt = i; }
     if (r.boost != null && (s.bmax == null || r.boost > s.bmax)) s.bmax = r.boost;
     if (r.ot != null) { tSum += r.ot; tN++; s.tmin = s.tmin == null ? r.ot : Math.min(s.tmin, r.ot); s.tmax = s.tmax == null ? r.ot : Math.max(s.tmax, r.ot); }
-    if (i && r.up != null && rows[i - 1].up != null && v != null && v >= o.moveKmh) { const dt = (r.up - rows[i - 1].up) / 1000; if (dt > 0 && dt < o.gapSec) s.movingS += dt; }
+    if (r.rpm != null && (s.rpmMax == null || r.rpm > s.rpmMax)) s.rpmMax = r.rpm;
+    if (r.ect != null && (s.ectMax == null || r.ect > s.ectMax)) s.ectMax = r.ect;
+    const dt = i && r.up != null && rows[i - 1].up != null ? (r.up - rows[i - 1].up) / 1000 : 0;
+    if (dt > 0 && dt < o.gapSec) {
+      if (v != null && v >= o.moveKmh) s.movingS += dt;
+      if (r.okmh != null) s.mObd += r.okmh / 3.6 * dt;                                  // distance from the engine's speed
+      if (r.lph != null && r.lph >= 0) s.lit = (s.lit || 0) + r.lph * dt / 3600;          // fuel from the engine's fuel rate
+    }
     if (r.ev) s.marks.push(i);
   }
   if (tN) s.tavg = tSum / tN;
   s.km = s.m / 1000;
+  // no GPS (or hardly any): the distance comes from the T3's trip meter, else the engine's speed
+  if (s.m < 50 && s.fixes < 10) {
+    const tk = rows.filter(r => r.tkm != null);
+    const meter = tk.length > 1 ? tk[tk.length - 1].tkm - tk[0].tkm : 0;
+    if (meter > 0.05) { s.km = meter; s.kmFrom = 't3'; }
+    else if (s.mObd > 50) { s.km = s.mObd / 1000; s.kmFrom = 'obd'; }
+  }
   s.avgMoving = s.movingS > 60 ? s.km / (s.movingS / 3600) : null;
   s.avgAll = s.durS > 60 ? s.km / (s.durS / 3600) : null;
   s.stops = findStops(rows, o);
@@ -212,4 +231,33 @@ function sampleTrack(seed = 1, startMs = Date.now() - 864e5) {
   return head.concat(rows).join('\n');
 }
 
-if (typeof module !== 'undefined') module.exports = { TRK, distM, parseTrack, fillTimes, segments, tripStats, findStops, simplify, nearestRow, sampleTrack };
+// ---------------------------------------------------------------- totals of the T3's trips by week, month or year
+// The start of the week (Monday), month or year that time t falls in, on this phone's clock.
+function periodStart(t, unit) {
+  const d = new Date(t);
+  if (unit === 'y') return new Date(d.getFullYear(), 0, 1).getTime();
+  if (unit === 'm') return new Date(d.getFullYear(), d.getMonth(), 1).getTime();
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() - (d.getDay() + 6) % 7).getTime();
+}
+// trip summaries (the sheet's Trips rows: t0, t1, km, lit, vmax, idle in minutes) -> the last `count` periods, oldest
+// first, each { start, end, n, km, secs, lit, litKm (distance of the trips that know their diesel), idle, vmax }.
+function tripTotals(trips, unit, count, now = Date.now()) {
+  const n = x => (x === '' || x == null || isNaN(+x) ? null : +x);
+  const out = [];
+  let st = periodStart(now, unit), end = unit === 'y' ? new Date(new Date(st).getFullYear() + 1, 0, 1).getTime() : unit === 'm' ? new Date(new Date(st).getFullYear(), new Date(st).getMonth() + 1, 1).getTime() : st + 7 * 864e5 + 3600e3;
+  end = periodStart(end, unit);   // (a week can be 23 or 25 hours short or long at the clock changes)
+  for (let i = 0; i < count; i++) { out.unshift({ start: st, end, n: 0, km: 0, secs: 0, lit: 0, litKm: 0, idle: 0, vmax: 0 }); end = st; st = periodStart(st - 1, unit); }
+  for (const t of trips || []) {
+    const at = n(t.t0) || n(t.t1);
+    if (!at) continue;
+    const p = out.find(x => at >= x.start && at < x.end);
+    if (!p) continue;
+    const km = n(t.km) || 0, lit = n(t.lit), s = (n(t.t1) || 0) - (n(t.t0) || 0);
+    p.n++; p.km += km; if (s > 0) p.secs += s / 1000;
+    if (lit != null && lit > 0) { p.lit += lit; p.litKm += km; }
+    p.idle += n(t.idle) || 0; p.vmax = Math.max(p.vmax, n(t.vmax) || 0);
+  }
+  return out;
+}
+
+if (typeof module !== 'undefined') module.exports = { TRK, distM, parseTrack, fillTimes, segments, tripStats, findStops, simplify, nearestRow, sampleTrack, periodStart, tripTotals };

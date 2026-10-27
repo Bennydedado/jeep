@@ -1,5 +1,22 @@
 # Changes
 
+## 27 Oct 2026 — T3 2.7, Heep 1.1.7: trouble codes, trip breakdowns, Live in Safari
+
+- **Trouble codes** (Live > Trouble codes): the T3 asks each bus "Scan the Jeep" found a computer on (the diesel's on the
+  K-line, the transmission on the Chrysler bus) for the check-engine light, stored codes and pending codes; Heep decodes them,
+  says what the common ones mean and links each to a search. Clear codes takes two taps and is refused while moving.
+  Decoding in `codes.js`, tested in `tests/app/test_codes.js` and `tests/app/codes_trips.js`.
+- **Trip breakdowns without a GPS:** a trip's distance comes from the T3's trip meter (else the engine's speed) instead of 0;
+  fuel from the engine's fuel rate; charts for speed, RPM, boost, coolant, load, fuel rate, intake and battery. Live's trips
+  open a breakdown (and point to track storage for the charts).
+- **Driving totals** by week, month and year on Live (distance, time, diesel, L/100 km, top speed, a bar per period).
+- **Live in Safari:** a "Live over Wi-Fi" card (relay connected, asked the T3, last heard, what to check) instead of a
+  "needs Bluefy" dead end. Bluefy steps are tucked underneath.
+- **Peak boost label** on the T3's Boost screen no longer runs into the number: row labels are cut to fit (`fitLabel`, the
+  same in the screen editor's preview). The field is now called "Peak boost".
+- **Live over Wi-Fi after a Bluetooth update:** the switch-off to free memory only lasts until the restart (`lwu`), and the
+  first start of a new version turns it back on if an older Heep left it off.
+
 ## 27 Oct 2026 — T3 2.6, Heep 1.1.6: polish after the first drive
 
 - **Boost at altitude:** the CRD doesn't report outside air pressure, so boost assumed sea level (~1 psi low at Fort St. John).

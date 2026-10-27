@@ -165,6 +165,8 @@ function showLive(pan) {
 setInterval(() => { if (S.tab === 'map' && !document.hidden) drawLive(); }, 2000);
 
 // ---------------------------------------------------------------- trip list
+// a trip's distance: the GPS track's, or the T3's trip meter when there was no GPS
+const tripKm = t => (t.km > 0.05 ? t.km : t.t3km || t.km || 0);
 function renderTripList(v, list) {
   const f = store.get('mapFilter', { month: 'all', sort: 'new' });
   const months = [...new Set(list.filter(t => t.t0).map(t => { const d = new Date(t.t0); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); }))].sort().reverse();
@@ -175,9 +177,9 @@ function renderTripList(v, list) {
   const save = () => { store.set('mapFilter', { month: mSel.value, sort: sSel.value }); render(); };
   mSel.addEventListener('change', save); sSel.addEventListener('change', save);
   let shown = list.filter(t => mSel.value === 'all' ? true : mSel.value === 'none' ? !t.t0 : t.t0 && (new Date(t.t0).getFullYear() + '-' + String(new Date(t.t0).getMonth() + 1).padStart(2, '0')) === mSel.value);
-  const by = { new: (a, b) => (b.t0 || 0) - (a.t0 || 0), old: (a, b) => (a.t0 || 0) - (b.t0 || 0), far: (a, b) => (b.km || 0) - (a.km || 0), long: (a, b) => (b.secs || 0) - (a.secs || 0), cold: (a, b) => (a.tmin == null ? 99 : a.tmin) - (b.tmin == null ? 99 : b.tmin) };
+  const by = { new: (a, b) => (b.t0 || 0) - (a.t0 || 0), old: (a, b) => (a.t0 || 0) - (b.t0 || 0), far: (a, b) => tripKm(b) - tripKm(a), long: (a, b) => (b.secs || 0) - (a.secs || 0), cold: (a, b) => (a.tmin == null ? 99 : a.tmin) - (b.tmin == null ? 99 : b.tmin) };
   shown.sort(by[sSel.value] || by.new);
-  v.append(h('div', { class: 'month' }, h('b', { text: 'Trips' }), h('span', { text: fmt1(shown.reduce((s, t) => s + (t.km || 0), 0)) + ' km' })));
+  v.append(h('div', { class: 'month' }, h('b', { text: 'Trips' }), h('span', { text: fmt1(shown.reduce((s, t) => s + tripKm(t), 0)) + ' km' })));
   v.append(h('div', { class: 'map-filters' }, mSel, sSel, trkConf() ? h('button', { class: 'circle glass', 'aria-label': 'Refresh', onclick: () => trkRefresh(true) }, icon('sync', trkBusy ? 'spin' : null)) : null));
   if (!shown.length) {
     v.append(card(h('div', { class: 'empty', style: 'padding:14px 6px' }, h('div', { class: 'ico' }, icon('map')), h('h3', { text: list.length ? 'No trips here' : 'No trips yet' }),
@@ -189,9 +191,9 @@ function renderTripList(v, list) {
     const tr = t.tmin != null ? ' · ' + fmt1(t.tmin) + (t.tmax !== t.tmin ? ' to ' + fmt1(t.tmax) : '') + ' °C' : '';
     return h('button', { class: 'row', onclick: () => openTrip(t.id) },
       h('div', { class: 'main' }, h('b', { text: title + (t.sample ? ' · Sample' : '') }),
-        h('span', { text: where(t.a0) + ' → ' + where(t.a1) }),
+        h('span', { text: t.a0 || t.a1 ? where(t.a0) + ' → ' + where(t.a1) : 'No GPS on this trip: tap for the engine’s numbers' }),
         h('span', { text: (t.secs ? dur(t.secs) : '') + (t.vmax ? ' · top ' + Math.round(t.vmax) + ' km/h' : '') + tr })),
-      h('div', { class: 'end' }, h('b', { text: fmt1(t.km || 0) + ' km' })), icon('chev', 'chev'));
+      h('div', { class: 'end' }, h('b', { text: fmt1(tripKm(t)) + ' km' })), icon('chev', 'chev'));
   })));
   if (shown.length > 300) v.append(h('div', { class: 'foot', text: 'Showing 300 of ' + shown.length + '. Pick a month to see the rest.' }));
 }
@@ -278,7 +280,8 @@ function pickPoint(i, fromMap) {
       kv('Time', t), kv('Speed', r.kmh != null ? Math.round(r.kmh) + ' km/h' : r.okmh != null ? Math.round(r.okmh) + ' km/h (iCar)' : '—'),
       kv('Outside', r.ot != null ? fmt1(r.ot) + ' °C' : '—'), kv('Heading', r.crs != null && r.kmh >= 5 ? compass(r.crs) + ' ' + Math.round(r.crs) + '°' : '—'),
       kv('GPS', r.lat != null ? (r.sats != null ? r.sats + ' sats' : 'fix') + (r.hdop != null ? ' · HDOP ' + r.hdop : '') : 'no fix'),
-      kv('Boost', r.boost != null ? fmt1(r.boost) + ' psi' : '—'), r.ev ? kv('Note', r.ev) : null);
+      kv('Boost', r.boost != null ? fmt1(r.boost) + ' psi' : '—'), kv('RPM', r.rpm != null ? fmt0(r.rpm) : '—'),
+      kv('Coolant', r.ect != null ? (t3EngF() ? Math.round(r.ect * 9 / 5 + 32) + ' °F' : Math.round(r.ect) + ' °C') : '—'), r.ev ? kv('Note', r.ev) : null);
   }
 }
 
@@ -293,7 +296,7 @@ function togglePlay() {
     // move on by `speed` seconds of T3 time per tick (10 ticks a second)
     const target = rows[i].up + speed * 100;
     while (i < rows.length - 1 && rows[i].up < target) i++;
-    while (i < rows.length - 1 && rows[i].lat == null) i++;
+    if (MAP.stats && MAP.stats.fixes) while (i < rows.length - 1 && rows[i].lat == null) i++;
     pickPoint(i, true);
     if (rows[i].lat != null && MAP.map && !MAP.map.getBounds().contains([rows[i].lat, rows[i].lon])) MAP.map.panTo([rows[i].lat, rows[i].lon]);
     if (i >= rows.length - 1) stopPlay();
@@ -312,17 +315,24 @@ function renderTrip(v) {
   const title = s.t0 ? fmtDay(s.t0, true) + ', ' + fmtTime(s.t0) + (s.t1 ? ' to ' + fmtTime(s.t1) : '') : 'Date and time unknown (no clock on this trip)';
   const cell = (k, val, sub) => h('div', { class: 'tile card' }, h('div', { class: 'k', text: k }), h('div', { class: 'v num', text: val }), sub ? h('div', { class: 's', text: sub }) : null);
   put(v, card(h('div', { class: 'card-head' }, h('h2', { text: title + (meta.sample ? ' · Sample' : '') })),
-    h('div', { class: 'small muted', text: (s.est ? 'Times marked approx. were worked out from the T3’s own clock before the GPS had the time. ' : '') + where(s.a0) + ' → ' + where(s.a1) })));
+    h('div', { class: 'small muted', text: (s.est ? 'Times marked approx. were worked out from the T3’s own clock before the GPS had the time. ' : '') + (s.fixes ? where(s.a0) + ' → ' + where(s.a1) : 'No GPS on this trip, so no map line: the numbers below come from the engine (through the iCar) and the T3.') })));
+  const km = s.kmFrom === 'gps' && s.km < 0.05 && meta.t3km ? meta.t3km : s.km;
+  const kmFrom = s.kmFrom === 'gps' && s.km < 0.05 && meta.t3km ? 't3' : s.kmFrom;
+  const lit = s.lit != null && s.lit > 0.05 ? s.lit : meta.litres || null;
+  const engF = typeof t3EngF === 'function' ? t3EngF() : true;
+  const eT = c => (engF ? c * 9 / 5 + 32 : c), eU = engF ? '°F' : '°C';
   put(v, h('div', { class: 'tiles' },
-    cell('Distance (GPS track)', fmt1(s.km) + ' km', meta.t3km ? 'T3 trip meter ' + fmt1(meta.t3km) + ' km' : null),
+    cell(({ gps: 'Distance (GPS track)', t3: 'Distance (T3 trip meter)', obd: 'Distance (engine speed)' })[kmFrom], fmt1(km) + ' km', kmFrom === 'gps' && meta.t3km ? 'T3 trip meter ' + fmt1(meta.t3km) + ' km' : null),
     cell('Time', s.durS ? dur(s.durS) : '—', s.movingS ? 'moving ' + dur(s.movingS) : null),
-    cell('Average speed', s.avgMoving ? Math.round(s.avgMoving) + ' km/h' : '—', s.avgAll ? Math.round(s.avgAll) + ' km/h including stops' : null),
+    cell('Average speed', s.movingS > 60 ? Math.round(km / (s.movingS / 3600)) + ' km/h' : '—', s.durS > 60 ? Math.round(km / (s.durS / 3600)) + ' km/h including stops' : null),
     cell('Top speed', s.vmax != null ? Math.round(s.vmax) + ' km/h' : '—', null),
     cell('Outside', s.tavg != null ? fmt1(s.tavg) + ' °C' : '—', s.tmin != null ? fmt1(s.tmin) + ' to ' + fmt1(s.tmax) + ' °C' : 'no probe readings'),
-    cell('GPS', s.gaps.length ? s.gaps.length + (s.gaps.length > 1 ? ' gaps' : ' gap') : 'No gaps', s.fixes + ' of ' + s.rows + ' points with a fix')));
+    lit ? cell('Fuel', fmt1(lit) + ' L', km > 1 ? fmt1(lit / km * 100) + ' L/100 km' : null) : null,
+    s.rpmMax != null ? cell('Top RPM', fmt0(s.rpmMax), s.ectMax != null ? 'coolant up to ' + Math.round(eT(s.ectMax)) + ' ' + eU : null) : null,
+    cell('GPS', !s.fixes ? 'No GPS' : s.gaps.length ? s.gaps.length + (s.gaps.length > 1 ? ' gaps' : ' gap') : 'No gaps', !s.fixes ? 'the map needs the GPS; the rest works' : s.fixes + ' of ' + s.rows + ' points with a fix')));
   // playback
   MAP.slider = h('input', { type: 'range', min: 0, max: Math.max(0, rows.length - 1), value: MAP.pick >= 0 ? MAP.pick : 0, class: 'scrub' });
-  MAP.slider.addEventListener('input', () => { stopPlay(); let i = Number(MAP.slider.value); while (i < rows.length - 1 && rows[i].lat == null) i++; pickPoint(i, true); if (rows[i].lat != null && MAP.map) MAP.map.panTo([rows[i].lat, rows[i].lon]); });
+  MAP.slider.addEventListener('input', () => { stopPlay(); let i = Number(MAP.slider.value); if (s.fixes) while (i < rows.length - 1 && rows[i].lat == null) i++; pickPoint(i, true); if (rows[i].lat != null && MAP.map) MAP.map.panTo([rows[i].lat, rows[i].lon]); });
   MAP.playBtn = h('button', { class: 'btn btn-small btn-primary', onclick: togglePlay }, icon('play'), 'Play');
   MAP.infoEl = h('div', { class: 'pt-info' });
   const sp = h('select', { class: 'pick' }, [[10, '10×'], [30, '30×'], [60, '60×'], [180, '180×']].map(([a, b]) => h('option', { value: String(a), text: b })));
@@ -330,17 +340,19 @@ function renderTrip(v) {
   sp.addEventListener('change', () => store.set('playSpeed', Number(sp.value)));
   put(v, card(cardHead('Replay', null), h('div', { class: 'play-row' }, MAP.playBtn, sp), MAP.slider, MAP.infoEl,
     h('div', { class: 'foot', text: 'Tap the map to see the nearest recorded point.' })));
-  if (MAP.pick >= 0) pickPoint(MAP.pick, false); else { const first = rows.findIndex(r => r.lat != null); if (first >= 0) pickPoint(first, false); }
+  if (MAP.pick >= 0) pickPoint(MAP.pick, false); else { const first = rows.findIndex(r => r.lat != null); pickPoint(first >= 0 ? first : 0, false); }
   // charts: speed and temperature over the trip (scrubbing moves the marker)
-  const chart = (label, key, unit, dp) => {
+  const chart = (label, key, unit, dp, conv) => {
     const pts = [];
     const step = Math.max(1, Math.floor(rows.length / 300));
-    for (let i = 0; i < rows.length; i += step) { const r = rows[i]; if (r[key] != null && r.up != null) pts.push({ t: r.t || r.up, v: r[key], i, tip: (r.t ? fmtTime(r.t) : '+' + Math.round((r.up - rows[0].up) / 60000) + ' min') }); }
+    for (let i = 0; i < rows.length; i += step) { const r = rows[i]; if (r[key] != null && r.up != null) pts.push({ t: r.t || r.up, v: conv ? conv(r[key]) : r[key], i, tip: (r.t ? fmtTime(r.t) : '+' + Math.round((r.up - rows[0].up) / 60000) + ' min') }); }
     if (pts.length < 3) return null;
     return card(cardHead(label, null), lineChart({ pts, label, fmt: x => x.toFixed(dp) + ' ' + unit, fmtAxis: x => String(+x.toFixed(1)), fmtX: t => (rows[0].t ? fmtTime(t) : ''), onAt: p => pickPoint(p.i, true) }));
   };
-  put(v, chart('Speed', 'kmh', 'km/h', 0), chart('Outside temperature', 'ot', '°C', 1));
+  put(v, chart('Speed', 'v', 'km/h', 0), chart('RPM', 'rpm', 'rpm', 0));
   if (s.bmax != null && s.bmax > 0) put(v, chart('Boost', 'boost', 'psi', 1));
+  put(v, chart('Coolant', 'ect', eU, 0, eT), chart('Engine load', 'load', '%', 0), chart('Fuel rate', 'lph', 'L/h', 1),
+    chart('Intake air', 'iat', eU, 0, eT), chart('Battery', 'volt', 'V', 1), chart('Outside temperature', 'ot', '°C', 1));
   // stops and gaps
   if (s.stops.length) put(v, h('div', { class: 'label', text: 'Likely stops (stopped ' + Math.round(TRK.stopSec / 60) + '+ min, from GPS speed)' }),
     h('div', { class: 'card list' }, s.stops.map(st => h('button', { class: 'row', onclick: () => { pickPoint(st.i, true); if (MAP.map) MAP.map.setView([st.lat, st.lon], 16); window.scrollTo({ top: 0, behavior: 'smooth' }); } },

@@ -356,7 +356,8 @@ void uploadTask(void*) {
 String ssidKey(String v) { v.replace("\xE2\x80\x99", "'"); v.replace("\xE2\x80\x98", "'"); v.trim(); v.toLowerCase(); return v; }
 // the relay: connected whenever the T3 is on Wi-Fi ("Live over Wi-Fi" on), so Heep in Safari can always reach it.
 // Live numbers go out while driving, for the first 10 minutes after key-on, and whenever Heep says it's watching.
-bool liveWanted() { return cfg.liveWifi && liveTopic.length(); }
+bool lwPause = false;   // "Live over Wi-Fi" paused until the next restart (set by Heep during an update over Bluetooth)
+bool liveWanted() { return cfg.liveWifi && !lwPause && liveTopic.length(); }
 bool livePublish() {
   static uint32_t activeAt = 0;
   if (tripActive()) activeAt = millis();

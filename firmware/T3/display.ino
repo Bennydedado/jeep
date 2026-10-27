@@ -182,8 +182,8 @@ void drawWidget(const Widget& w) {
       if (unit.length() && v != "--") v += " " + unit;
       oled.setFont(); oled.setTextSize(1);
       int ty = w.y + (w.h - 8) / 2;
-      if (w.label) { oled.setCursor(w.x + (w.frame ? 2 : 0), ty); oled.print(label); }
       int vx = w.x + w.w - (int)v.length() * 6 - (w.frame ? 2 : 0);
+      if (w.label) { char lb[24]; fitLabel(label.c_str(), vx - w.x - (w.frame ? 2 : 0), lb, sizeof(lb)); oled.setCursor(w.x + (w.frame ? 2 : 0), ty); oled.print(lb); }
       oled.setCursor(w.label ? vx : (w.align == 'c' ? w.x + (w.w - (int)v.length() * 6) / 2 : w.align == 'r' ? vx : w.x), ty);
       oled.print(v);
       break;
@@ -195,7 +195,8 @@ void drawWidget(const Widget& w) {
       int top = w.y;
       if (w.label && w.h >= 14) {
         oled.setFont(); oled.setTextSize(1);
-        oled.setCursor(w.x, w.y); oled.print(label);
+        char lb[24]; fitLabel(label.c_str(), w.w - (int)v.length() * 6, lb, sizeof(lb));
+        oled.setCursor(w.x, w.y); oled.print(lb);
         oled.setCursor(w.x + w.w - (int)v.length() * 6, w.y); oled.print(v);
         top += 9;
       }
