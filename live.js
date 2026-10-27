@@ -276,9 +276,10 @@ async function btAttach() {
 function onDrop() {
   if (LIVE.mode !== 'bt') return;
   LIVE.rx = null;
-  if (LIVE.tries++ > 6) { LIVE.status = 'Lost the T3'; liveStop(); toast('Lost the T3', 'Tap Connect when it\'s back on', 'bad'); return; }
-  LIVE.status = 'Reconnecting…'; render();
-  setTimeout(() => { if (LIVE.mode === 'bt') btAttach().catch(onDrop); }, 1500 + LIVE.tries * 1000);
+  const updating = LIVE.updWaitUntil > Date.now();   // the T3 restarted to update over Wi-Fi: keep trying until it's back
+  if (LIVE.tries++ > 6 && !updating) { LIVE.status = 'Lost the T3'; liveStop(); toast('Lost the T3', 'Tap Connect when it\'s back on', 'bad'); return; }
+  LIVE.status = updating ? 'The T3 is updating, reconnecting…' : 'Reconnecting…'; render();
+  setTimeout(() => { if (LIVE.mode === 'bt') btAttach().catch(onDrop); }, Math.min(5000, 1500 + LIVE.tries * 1000));
 }
 function onBytes(dv) {
   LIVE.buf += LIVE.dec.decode(dv, { stream: true });

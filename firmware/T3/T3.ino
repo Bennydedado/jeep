@@ -110,6 +110,7 @@ void setup() {
   lastUpload.set("not yet"); trkStatus.set("not set up");
   loadSettings();
   netBegin();
+  bootUpdate();   // "Update over Wi-Fi" asked for before the restart: done now, with all the memory free (update.ino)
   loadScreens();
   displayBegin();
   // the parts
@@ -121,6 +122,7 @@ void setup() {
   phoneBegin();
   obdBegin();
   sdEvent("boot " FW " (" + resetWhy + ")");
+  if (bootUpdNote.length()) sdEvent(bootUpdNote);
 }
 
 void loop() {
@@ -135,6 +137,7 @@ void loop() {
   displayStep();
   otaStep();
   confirmUpdateStep();
+  bootUpdateStep();
   digitalWrite(LED_PIN, obdLinked && (millis() / 500) % 2);
   delay(2);
 }

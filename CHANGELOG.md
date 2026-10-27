@@ -1,5 +1,16 @@
 # Changes
 
+## 27 Oct 2026 — T3 2.8, Heep 1.1.8: Update over Wi-Fi from a fresh start
+
+- **"couldn't reach GitHub: connection refused"** with a strong signal: the secure download needs about 50 KB of memory in
+  one piece, and with Bluetooth (iCar and Heep), Wi-Fi and the relay running there wasn't enough. Now Update over Wi-Fi
+  restarts the T3 first and does it all before Bluetooth starts: join your Wi-Fi, check GitHub, download, restart into the
+  new version. The T3's screen shows progress; Heep keeps reconnecting for up to 5 minutes and shows the result. The regular
+  automatic check also downloads this way (and tries a fresh start, at most twice in a row, when it can't get through).
+- The reason when it can't was cut to 48 letters ("(sign"): status texts now hold 112, and say signal and free memory.
+- The relay never connects alongside an update check, and a check waits for a relay connection being set up.
+- Test: `tests/app/wifi_update.js`.
+
 ## 27 Oct 2026 — T3 2.7, Heep 1.1.7: trouble codes, trip breakdowns, Live in Safari
 
 - **Trouble codes** (Live > Trouble codes): the T3 asks each bus "Scan the Jeep" found a computer on (the diesel's on the

@@ -12,14 +12,14 @@
 
 uint32_t lastUploadAt = 0;
 static uint32_t wifiAt = 0, nextWifiTry = 15000, nextUpdateCheck = 20000, nextUploadTry = 0, wifiIdleSince = 0, mqttTry = 0, lastPub = 0, nextNtpAt = 0;
-static volatile bool uploading = false, flushReq = false;
+static volatile bool uploading = false, flushReq = false, updChecking = false;
 static WiFiClientSecure mqttTls;
 static PubSubClient mqtt(mqttTls);
 static int64_t lastNonce = 0;
 static volatile bool relayBusy = false;       // a relay connection attempt is running in its own task (loop() keeps its hands off mqtt)
 static uint32_t watchedAt = 0, nonceSavedAt = 0;
 // "Update over Wi-Fi" progress for Heep: written by the upload task, reported by loop() over Bluetooth and the relay
-enum UpdPhase { UP_NONE, UP_WAIT, UP_CHECK, UP_DOWNLOAD, UP_DONE, UP_FAIL, UP_CURRENT };
+enum UpdPhase { UP_NONE, UP_WAIT, UP_CHECK, UP_DOWNLOAD, UP_DONE, UP_FAIL, UP_CURRENT, UP_RESTART };
 static volatile int updPhase = UP_NONE, updPct = -1;
 static volatile bool manualUpd = false;
 static Txt updVer;
@@ -117,16 +117,10 @@ void markUpdateTry(const String& v) { Preferences p; p.begin("t3", false); p.put
 void updateConfirmed() { Preferences p; p.begin("t3", false); if (p.getString("try", "") == FW) { p.remove("try"); p.remove("tryv"); p.remove("tryn"); } p.end(); }
 
 void wifiNudge(bool update) { nextWifiTry = 0; nextUploadTry = 0; if (update) nextUpdateCheck = 0; }
-// Heep's "Update over Wi-Fi": like the regular check, but now, and allowed with the engine idling (not while moving)
-void updateNow() {
-  manualUpd = true; updPhase = UP_WAIT; updPct = -1; updPhaseAt = millis();
-  updStatus.set(wifiState == W_ON ? "starting" : "getting on Wi-Fi");
-  wifiNudge(true);
-}
 // Heep (in Safari, through the relay) says it's watching: send live numbers for the next 90 s even when parked
 void relayWatched() { if (!watchedAt || millis() - watchedAt > 90000) lastPub = 0; watchedAt = millis(); }
 String updJson() {
-  const char* ph[] = { "none", "wait", "check", "download", "done", "fail", "current" };
+  const char* ph[] = { "none", "wait", "check", "download", "done", "fail", "current", "restart" };
   return "{\"t\":\"upd\",\"phase\":\"" + String(ph[updPhase]) + "\",\"pct\":" + String((int)updPct) + ",\"v\":\"" + jsonEsc(updVer) +
          "\",\"text\":\"" + jsonEsc(updStatus) + "\",\"fw\":\"" FW "\"}";
 }
@@ -218,37 +212,19 @@ void checkUpdate() {
   }
   String v = jStr(body, "v"), url = jStr(body, "url");
   if (!v.length() || !url.length()) {
-    updStatus.set("couldn't reach GitHub: " + (why.length() ? why : String("no answer")) + " (signal " + String(WiFi.RSSI()) + " dBm, " + String(ESP.getFreeHeap() / 1024) + " KB free)");
+    updStatus.set("couldn't reach GitHub: " + (why.length() ? why : String("no answer")) + " (" + String(WiFi.RSSI()) + " dBm, " + String(ESP.getFreeHeap() / 1024) + " KB free)");
     updPhase = UP_FAIL;
+    // on Wi-Fi but no way through (short of memory, most likely): try from a fresh start, at most twice in a row
+    Preferences p; p.begin("t3", false); int tries = p.getUChar("ubf", 0); if (tries < 2) p.putUChar("ubf", tries + 1); p.end();
+    if (why.length() && WiFi.status() == WL_CONNECTED && tries < 2) bootUpdateSoon(false);
     return;
   }
+  { Preferences p; p.begin("t3", false); p.putUChar("ubf", 0); p.end(); }
   updVer.set(v);
   if (!verNewer(v, FW)) { updStatus.set("up to date (" FW ")"); updPhase = UP_CURRENT; return; }   // never goes backwards
   if (v == badVersion) { updStatus.set(v + " failed before; waiting for a newer one"); updPhase = UP_FAIL; return; }
-  updStatus.set("downloading " + v); updPct = 0; updPhase = UP_DOWNLOAD;
-  // loop() saves the trip so far and writes the card, then the download starts
-  flushReq = true;
-  for (int i = 0; i < 40 && flushReq; i++) vTaskDelay(pdMS_TO_TICKS(50));
-  updating = true;
-  // restart ourselves (not inside httpUpdate) so "try" is only written once the whole program is in flash:
-  // a download cut short by the key never counts against that version
-  HTTPUpdate up(30000);   // a slow hotspot can pause for a while mid-download
-  up.rebootOnUpdate(false);
-  up.onProgress([](int cur, int total) { if (total > 0) updPct = (int)((int64_t)cur * 100 / total); });
-  WiFiClientSecure tls;
-  tls.setInsecure();
-  tls.setHandshakeTimeout(20);
-  t_httpUpdate_return r = up.update(tls, url);
-  if (r == HTTP_UPDATE_OK) {
-    markUpdateTry(v);
-    updStatus.set("installed " + v + ", restarting"); updPct = 100; updPhase = UP_DONE;
-    vTaskDelay(pdMS_TO_TICKS(2500));   // time for loop() to tell Heep
-    ESP.restart();
-  }
-  updating = false;
-  updStatus.set(r == HTTP_UPDATE_NO_UPDATES ? String("up to date") : "download failed: " + up.getLastErrorString());
-  updPhase = r == HTTP_UPDATE_NO_UPDATES ? UP_CURRENT : UP_FAIL;
-  taskEvent("update: " + String(updStatus));
+  // the download needs a lot of memory in one piece: done from a fresh start, before Bluetooth (update.ino)
+  bootUpdateSoon(false);
 }
 
 // finished trips -> the Jeep log sheet, as "put" operations with the same ids Heep uses (never twice)
@@ -349,6 +325,7 @@ void uploadTask(void*) {
     manualUpd = false;
   }
   if (nextUploadTry < millis() + 1000) nextUploadTry = millis() + 60000;   // done for now; look again in a minute
+  updChecking = false;
   uploading = false;
   vTaskDelete(nullptr);
 }
@@ -432,7 +409,7 @@ static void relayKeep(uint32_t now) {
   if (relayBusy) return;
   if (mqtt.connected() && subscribed != cmdTopic) mqtt.disconnect();   // the sheet key changed: listen on the new channel
   if (!mqtt.connected()) {
-    if (now - mqttTry < 10000 || (uploading && ESP.getFreeHeap() < 150000)) return;
+    if (now - mqttTry < 10000 || (uploading && (updChecking || ESP.getFreeHeap() < 150000))) return;
     mqttTry = now;
     relayBusy = true;
     if (xTaskCreatePinnedToCore(relayConnectTask, "relay", 12288, nullptr, 1, nullptr, 0) != pdPASS) relayBusy = false;
@@ -518,8 +495,10 @@ void wifiStep() {
       }
       if (uploading) { if (liveWanted()) relayKeep(now); return; }   // the upload has its own connection; the relay can carry its progress
       if (!scanOnly && (uploadWanted() || now >= nextUpdateCheck)) {
-        // two secure connections at once need a lot of memory: unless there's plenty, the relay waits (an update most of all)
-        if (mqtt.connected() && ESP.getFreeHeap() < (now >= nextUpdateCheck ? 150000 : 110000)) mqtt.disconnect();
+        if (relayBusy) return;   // the relay is connecting: let it finish first
+        // two secure connections at once need a lot of memory: unless there's plenty, the relay waits (an update always)
+        if (mqtt.connected() && (now >= nextUpdateCheck || ESP.getFreeHeap() < 110000)) mqtt.disconnect();
+        updChecking = now >= nextUpdateCheck;
         if (updPhase == UP_WAIT) updStatus.set("starting");
         uploading = true;
         if (xTaskCreatePinnedToCore(uploadTask, "upload", 16384, nullptr, 1, nullptr, 0) != pdPASS) { uploading = false; nextUploadTry = now + 60000; }

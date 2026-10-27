@@ -76,7 +76,7 @@ function wifiSheet() {
         const via = t3Via(), m = wifiModel();
         head.textContent = ''; nets.textContent = ''; near.textContent = ''; tips.textContent = '';
         if (!via) {
-          head.append(h('div', { class: 'card' }, h('p', { class: 'foot', style: 'margin:0', text: 'Connect to the T3 first: Live > Connect over Bluetooth (in Bluefy), or have the T3 on your hotspot.' })));
+          head.append(h('div', { class: 'card' }, h('p', { class: 'foot', style: 'margin:0', text: LIVE.updWaitUntil > Date.now() ? 'The T3 is busy updating over Wi-Fi. Heep reconnects as soon as it’s back.' : 'Connect to the T3 first: Live > Connect over Bluetooth (in Bluefy), or have the T3 on your hotspot.' })));
         } else {
           const [kind, title, sub] = wifiHeadline(m);
           head.append(h('div', { class: 'card list' }, h('div', { class: 'row' },
@@ -137,28 +137,32 @@ function wifiSheet() {
           else if (via === 'net') prog.append(h('p', { class: 'foot', text: 'Updating over Bluetooth needs Heep connected to the T3 by Bluetooth (Bluefy).' }));
         }
         // ---- update over Wi-Fi: the T3 downloads it itself and reports how far it got (T3 2.4+)
-        const wuBusy = ['asked', 'wait', 'check', 'download', 'done'].includes(wu.phase) && !(wu.phase === 'done' && wu.confirmed);
+        const wuBusy = ['asked', 'wait', 'check', 'download', 'done', 'restart'].includes(wu.phase) && !(wu.phase === 'done' && wu.confirmed);
         if (wu.phase !== 'idle') {
           const title = {
             asked: 'Asking the T3…', wait: 'The T3 is getting on Wi-Fi…', check: 'The T3 is checking GitHub…',
             download: 'Downloading ' + (wu.v || 'the update') + ' on the T3: ' + Math.max(0, wu.pct) + ' %',
             done: wu.confirmed ? 'The T3 is running ' + wu.v + ' ✓' : 'Installed ' + (wu.v || '') + ' ✓ restarting…', current: 'Already up to date' + (wu.v ? ' (' + wu.v + ')' : ''),
             fail: 'Didn’t update', old: 'Asked the T3 to update', quiet: 'Lost touch with the T3',
+            restart: 'The T3 is updating itself over Wi-Fi…',
           }[wu.phase] || wu.phase;
-          const pct = wu.phase === 'download' ? Math.max(0, wu.pct) / 100 : wu.phase === 'done' || wu.phase === 'current' ? 1 : wu.phase === 'check' ? .04 : wu.phase === 'wait' ? .02 : 0;
+          const pct = wu.phase === 'download' ? Math.max(0, wu.pct) / 100 : wu.phase === 'done' || wu.phase === 'current' ? 1 : wu.phase === 'check' ? .04 : wu.phase === 'wait' ? .02 :
+            wu.phase === 'restart' ? Math.min(.9, .03 + (Date.now() - (wu.restartAt || Date.now())) / 120000) : 0;
           const text = {
             asked: 'Sent. Waiting for the T3 to answer.', wait: (wu.text || 'Getting on Wi-Fi') + '. It uses your networks above.', check: 'Looking for a newer program.',
             download: 'Keep the T3 powered. It installs and restarts by itself; Heep can close.', done: wu.confirmed ? 'Updated over Wi-Fi.' : 'Back in a few seconds' + (via === 'net' ? ' (the relay reconnects by itself)' : '') + '.',
             current: 'Nothing new on GitHub.', fail: (wu.text || 'It stopped') + '. The T3 keeps the program it has.',
             old: 'This T3 (' + (wu.from || '?') + ') doesn’t report progress: it downloads the update when it’s on Wi-Fi and restarts by itself. Watch “On the T3” above change.',
             quiet: 'No word from the T3 for a minute. If it was downloading it carries on and restarts by itself.',
+            restart: 'It restarted to do it before anything else starts (so there’s memory to spare): it joins your Wi-Fi, downloads, and restarts into the new program. Its screen shows how far it is, about 1-2 minutes. Bluetooth drops meanwhile; Heep reconnects by itself.',
           }[wu.phase] || '';
           prog.append(h('div', { class: 'card ota' }, h('b', { text: title }),
             h('div', { class: 'bar' + (wu.phase === 'fail' || wu.phase === 'quiet' ? ' due' : '') }, h('i', { style: 'width:' + Math.round(pct * 100) + '%' })),
             h('p', { class: 'foot', style: 'margin:0', text })));
         }
         if (via && !wuBusy && ui.phase !== 'send' && ui.phase !== 'download') prog.append(h('button', { class: 'btn ' + (canBt ? 'btn-glass glass' : 'btn-primary') + ' btn-wide', onclick: () => {
-          Object.assign(wu, { phase: 'asked', pct: 0, text: '', v: latest && latest.v, from: fw, askedAt: Date.now(), lastAt: Date.now(), confirmed: false });
+          Object.assign(wu, { phase: 'asked', pct: 0, text: '', v: latest && latest.v, from: fw, askedAt: Date.now(), lastAt: Date.now(), confirmed: false, restartAt: 0 });
+          if (verAtLeast(fw, '2.8')) LIVE.updWaitUntil = Date.now() + 300000;   // it restarts to update: keep reconnecting meanwhile
           t3Send({ c: 'update' });
           paintProg();
         } }, icon('download'), 'Update over Wi-Fi' + (newer ? ' to ' + latest.v : '')),
@@ -167,13 +171,25 @@ function wifiSheet() {
       const wu = { phase: 'idle', pct: 0 };
       LIVE.onUpd = m => {
         Object.assign(wu, { phase: m.phase === 'none' ? wu.phase : m.phase, pct: m.pct, text: m.text, v: m.v || wu.v, lastAt: Date.now() });
+        if (m.phase === 'restart' && !wu.restartAt) wu.restartAt = Date.now();
+        if (m.phase === 'fail' || m.phase === 'current') LIVE.updWaitUntil = 0;
         paintProg();
       };
       // older T3s never answer with progress; and a T3 that goes quiet mid-way is said so
       const wuWatch = () => {
         if (wu.phase === 'asked' && Date.now() - wu.askedAt > 20000) { wu.phase = 'old'; paintProg(); }
         else if (['wait', 'check', 'download'].includes(wu.phase) && Date.now() - wu.lastAt > 60000) { wu.phase = 'quiet'; paintProg(); }
-        if ((wu.phase === 'done' || wu.phase === 'quiet' || wu.phase === 'old') && wu.v && LIVE.fw === wu.v && !wu.confirmed) { wu.phase = 'done'; wu.confirmed = true; paintProg(); }
+        if ((wu.phase === 'done' || wu.phase === 'quiet' || wu.phase === 'old' || wu.phase === 'restart') && wu.v && LIVE.fw === wu.v && !wu.confirmed) { wu.phase = 'done'; wu.confirmed = true; LIVE.updWaitUntil = 0; paintProg(); }
+        // 2.8+: after its fresh start the T3 says how it went in "hi" (upd)
+        else if (wu.phase === 'restart' && wu.restartAt && LIVE.t3 && LIVE.t3At > wu.restartAt + 5000) {
+          const said = String(LIVE.t3.upd || '');
+          if (LIVE.fw && wu.from && LIVE.fw !== wu.from) { wu.phase = 'done'; wu.v = LIVE.fw; wu.confirmed = true; LIVE.updWaitUntil = 0; }
+          else if (/^up to date/.test(said)) { wu.phase = 'current'; wu.v = LIVE.fw; LIVE.updWaitUntil = 0; }
+          else if (said && !/restarting/.test(said)) { wu.phase = 'fail'; wu.text = said; LIVE.updWaitUntil = 0; }
+          paintProg();
+        }
+        else if (wu.phase === 'restart' && wu.restartAt && Date.now() - wu.restartAt > 300000) { wu.phase = 'quiet'; LIVE.updWaitUntil = 0; paintProg(); }
+        else if (wu.phase === 'restart') paintProg();
       };
       const setUi = (phase, pct, title, text) => { Object.assign(ui, { phase, pct, title, text }); paintProg(); };
       const runBtUpdate = async () => {

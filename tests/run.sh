@@ -12,6 +12,7 @@ if node -e "require('playwright')" 2>/dev/null; then
   SHOTS=$T/shots node tests/app/smoke.js
   SHOTS=$T/shots node tests/app/editor.js $T/scrtool   # the screen editor against a pretend T3 using the firmware's own parser
   SHOTS=$T/shots node tests/app/wifi_ota.js            # Wi-Fi page and update over Bluetooth against a pretend T3
+  SHOTS=$T/shots node tests/app/wifi_update.js         # Update over Wi-Fi from a fresh start (T3 2.8+): reconnects, or shows why not
   node tests/app/usb_install.js                         # the step-by-step USB installer page (firmware/usb.html)
   SHOTS=$T/shots node tests/app/relay_live.js          # Safari: live numbers and Update over Wi-Fi through the relay
   SHOTS=$T/shots node tests/app/obd_scan.js            # Diagnostics > Scan the Jeep: protocols, computers, values, Use this one

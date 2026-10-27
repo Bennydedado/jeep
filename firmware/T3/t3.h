@@ -82,6 +82,7 @@ struct Settings {
 };
 extern Settings cfg;
 extern String liveTopic, cmdTopic;   // relay channels (settings.ino)
+extern String bootUpdNote;           // how an update at start-up went (update.ino)
 
 // ---------------------------------------------------------------- the clock
 // Best source wins: GPS ('g') over internet time ('n') over the phone ('a'). 0 = unknown.
@@ -149,7 +150,7 @@ extern int queued;
 // short status texts written by the upload task (core 0) and read by loop() (core 1): fixed buffers, never Strings,
 // so the two can't corrupt each other's memory (at worst a text reads half-updated for a moment)
 struct Txt {
-  char s[48] = "";
+  char s[112] = "";   // long enough for "couldn't reach GitHub: ... (-60 dBm, 80 KB free)"
   void set(const String& v) { strlcpy(s, v.c_str(), sizeof(s)); }
   operator String() const { return String(s); }
   bool empty() const { return !s[0]; }
