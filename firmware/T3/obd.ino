@@ -115,6 +115,9 @@ static String obdProto;
 static uint32_t obdHeardAt = 0, supAskAt = 0;   // the adapter answered anything / when 0100 was last asked
 static bool askProto = false;
 static String raw0100, raw0C, raw0B;           // the engine's last answers, word for word (Diagnostics)
+static bool scanOn = false;                     // "Scan the Jeep" is running (further down)
+static void scanAnswer(const String& r);
+static void scanStep();
 static bool pidOk(int pid) { return !pidMissing(pid) && (!obdSup.known || obdSup.has(pid)); }
 // where boost comes from: intake pressure (PID 0B) on most engines; some diesels only offer PID 87 or PID 70
 static int boostPid() {
@@ -148,6 +151,7 @@ int hexByte(const String& s, int at) { return (int)strtol(s.substring(at, at + 2
 void obdAnswer(String r) {
   r.replace(" ", ""); r.replace("\r", ""); r.replace("\n", ""); r.replace(">", ""); r.toUpperCase();
   obdHeardAt = millis();                 // the adapter is alive (car.at only moves when the engine itself answers)
+  if (scanOn) { scanAnswer(r); return; }
   if (obdCmd == "ATRV") { car.volts = r.toFloat(); return; }
   if (obdCmd == "ATDPN") { obdProto = r.substring(0, 6); return; }
   if (!obdCmd.startsWith("01")) return;
@@ -193,9 +197,17 @@ void obdStep() {
   }
   if (obdBusy && millis() - obdSentAt > obdTimeout) obdBusy = false;
   if (obdBusy) return;
-  // set the adapter up, ask which values the engine offers (0100), and which protocol it found (ATDPN)
+  if (scanOn) { scanStep(); return; }
+  // set the adapter up (protocol: setting "opr", 0 = auto), ask which values the engine offers (0100), and which protocol it found
   const char* setup[] = { "ATZ", "ATE0", "ATL0", "ATS0", "ATH0", "ATAT1", "ATSP0", "0100", "ATDPN" };
-  if (obdStage < 9) { if (obdStage == 0) obdSup = ObdSupport(); obdSendCmdT(setup[obdStage], obdStage == 0 ? 2500 : obdStage == 7 ? 9000 : 1500); obdStage++; return; }
+  if (obdStage < 9) {
+    if (obdStage == 0) obdSup = ObdSupport();
+    String c = setup[obdStage];
+    if (obdStage == 6) c = "ATSP" + String(constrain(cfg.obdProto, 0, 9));
+    obdSendCmdT(c, obdStage == 0 ? 2500 : obdStage == 7 ? 9000 : 1500);
+    obdStage++;
+    return;
+  }
   if (obdStage == 9) { obdStage++; supAskAt = millis(); }
   if (supNext > 0) { char c[6]; snprintf(c, sizeof(c), "01%02X", supNext); supNext = -1; obdSendCmd(c); return; }   // the next block of offered values
   if (askProto) { askProto = false; obdSendCmd("ATDPN"); return; }
@@ -212,6 +224,53 @@ void obdStep() {
   char c[6]; snprintf(c, sizeof(c), "01%02X", pid);
   obdSendCmd(c);
 }
+
+// ---------------------------------------------------------------- "Scan the Jeep" (Heep: Diagnostics)
+// A Jeep can have more than one computer on the diagnostic port, on different wires: the 2006 CRD's diesel computer
+// (Bosch) and the Chrysler side can answer on different protocols, and "auto" stops at the first that answers.
+// The scan tries each protocol in turn with headers on (so the answer shows WHICH computer replied), asks what it
+// offers (0100/0120/0140), and sends each result to Heep: {"t":"obdscan","p":"5","a":"<0100>","b":"<0120>","c":"<0140>","d":"<ATDPN>"}.
+// Afterwards the adapter is set up again from scratch with the chosen protocol (setting "opr", 0 = auto).
+static const char SCAN_PROTOS[] = "254316";   // J1850 VPW, KWP2000 fast, KWP2000 5-baud, ISO 9141-2, J1850 PWM, CAN 11-bit 500k
+static int scanI = 0, scanS = 0;
+static String scanA, scanB, scanC, scanD;
+static int scanSrc = 0;
+void obdScanStart(int src) {
+  if (!obdLinked) { reply("{\"t\":\"obdscan\",\"error\":\"the iCar isn't connected\"}", src); return; }
+  scanOn = true; scanI = 0; scanS = 0; scanSrc = src; obdBusy = false;
+  scanA = scanB = scanC = scanD = "";
+  sdEvent("obd scan started");
+  reply("{\"t\":\"obdscan\",\"start\":true,\"n\":" + String(strlen(SCAN_PROTOS)) + "}", src);
+}
+static void scanAnswer(const String& r) {
+  String x = r.substring(0, 160);
+  if (obdCmd == "0100") scanA = x; else if (obdCmd == "0120") scanB = x; else if (obdCmd == "0140") scanC = x; else if (obdCmd == "ATDPN") scanD = x.substring(0, 6);
+}
+static void scanStep() {
+  char p = SCAN_PROTOS[scanI];
+  bool answered = scanA.indexOf("4100") >= 0;
+  switch (scanS++) {
+    case 0: scanA = scanB = scanC = scanD = ""; obdSendCmdT(String("ATSP") + p, 2000); return;
+    case 1: obdSendCmdT("ATH1", 1000); return;
+    case 2: obdSendCmdT("0100", 10000); return;
+    case 3: if (answered) { obdSendCmdT("0120", 5000); return; } scanS = 5; scanStep(); return;
+    case 4: obdSendCmdT("0140", 5000); return;
+    case 5: obdSendCmdT("ATDPN", 1000); return;
+    default: {
+      String m = "{\"t\":\"obdscan\",\"i\":" + String(scanI) + ",\"n\":" + String(strlen(SCAN_PROTOS)) + ",\"p\":\"" + String(p) +
+                 "\",\"a\":\"" + jsonEsc(scanA) + "\",\"b\":\"" + jsonEsc(scanB) + "\",\"c\":\"" + jsonEsc(scanC) + "\",\"d\":\"" + jsonEsc(scanD) + "\"}";
+      reply(m, scanSrc);
+      sdEvent("obd scan " + String(p) + ": " + scanA.substring(0, 60));
+      scanI++; scanS = 0;
+      if (scanI >= (int)strlen(SCAN_PROTOS)) {
+        scanOn = false;
+        reply("{\"t\":\"obdscan\",\"done\":true}", scanSrc);
+        obdRestart();   // set the adapter up again (headers off, your protocol setting)
+      }
+    }
+  }
+}
+void obdRestart() { obdStage = 0; obdBusy = false; supNext = -1; obdSup = ObdSupport(); memset(pidMiss, 0, sizeof(pidMiss)); }
 
 // fuel right now, litres per hour: the ECU's own number if it has one, otherwise worked out from load and RPM
 // (a 2.8 CRD makes about 400 Nm; diesel burns about 240 g per kWh). Heep's fuel correction trims it.

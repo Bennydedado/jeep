@@ -44,6 +44,7 @@ void loadSettings() {
   cfg.refreshMs = p.getInt("rf", 250);
   cfg.btnMap = p.getString("bm", "prev,home;mark,pause;next,end");
   cfg.io4 = p.getInt("io4", 0);
+  cfg.obdProto = constrain(p.getInt("opr", 0), 0, 9);
   p.end();
   // anything out of range goes back to a safe value
   if (cfg.fuelCal < 0.3 || cfg.fuelCal > 3) cfg.fuelCal = 1.0;
@@ -111,11 +112,13 @@ bool applySettings(const String& j, bool fromRelay) {
   if (has(j, "rf")) p.putInt("rf", constrain((int)numFieldOr(j, "rf", 250), 100, 2000));
   if (has(j, "bm")) { String bm = jStr(j, "bm"); if (bm.length() < 120) p.putString("bm", bm); }
   if (has(j, "io4")) p.putInt("io4", constrain((int)numFieldOr(j, "io4", 0), 0, 1));
+  if (has(j, "opr")) p.putInt("opr", constrain((int)numFieldOr(j, "opr", 0), 0, 9));
   p.end();
-  long oldBaud = cfg.gpsBaud; int oldIo4 = cfg.io4;
+  long oldBaud = cfg.gpsBaud; int oldIo4 = cfg.io4, oldOpr = cfg.obdProto;
   loadSettings();
   if (cfg.gpsBaud != oldBaud) gpsBegin();
   if (cfg.io4 != oldIo4) tempBegin();
+  if (cfg.obdProto != oldOpr) obdRestart();   // talk to the iCar again on the new protocol
   displaySettingsChanged();
   return true;
 }
@@ -124,7 +127,7 @@ bool applySettings(const String& j, bool fromRelay) {
 void resetSettings() {
   Preferences p;
   p.begin("t3", false);
-  const char* keys[] = { "ss", "pk", "br", "bn", "nf", "nt", "tz", "sp", "spd", "hm", "h16", "hh", "tf", "to", "gb", "li", "lis", "lfl", "sdm", "rot", "rf", "bm", "io4" };
+  const char* keys[] = { "ss", "pk", "br", "bn", "nf", "nt", "tz", "sp", "spd", "hm", "h16", "hh", "tf", "to", "gb", "li", "lis", "lfl", "sdm", "rot", "rf", "bm", "io4", "opr" };
   for (auto k : keys) p.remove(k);
   p.end();
   loadSettings();
@@ -144,7 +147,7 @@ String settingsJson() {
          ",\"tf\":" + String(cfg.tempF ? 1 : 0) + ",\"to\":" + String(cfg.tempOff, 1) + ",\"gb\":" + String(cfg.gpsBaud) +
          ",\"li\":" + String(cfg.logSec) + ",\"lis\":" + String(cfg.logIdleSec) + ",\"lfl\":" + String(cfg.flushSec) +
          ",\"sdm\":" + String(cfg.sdMaxPct) + ",\"rot\":" + String(cfg.flip ? 1 : 0) + ",\"rf\":" + String(cfg.refreshMs) +
-         ",\"bm\":\"" + jsonEsc(cfg.btnMap) + "\",\"io4\":" + String(cfg.io4) + ",\"obdName\":\"" + jsonEsc(cfg.obdName) +
+         ",\"bm\":\"" + jsonEsc(cfg.btnMap) + "\",\"io4\":" + String(cfg.io4) + ",\"opr\":" + String(cfg.obdProto) + ",\"obdName\":\"" + jsonEsc(cfg.obdName) +
          "\",\"ssids\":" + ss + ",\"nets\":" + String(cfg.netCount) + ",\"sheet\":" + String(cfg.sheetUrl.length() ? "true" : "false") +
          ",\"trkSet\":" + String(cfg.trkUrl.length() ? "true" : "false");
 }

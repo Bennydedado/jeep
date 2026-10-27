@@ -1,5 +1,14 @@
 # Changes
 
+## 27 Oct 2026 — T3 2.5, Heep 1.1.5: Scan the Jeep
+
+- The 2006 CRD answered on J1850 VPW (the Chrysler bus) with only check-engine status, RPM and throttle. The diesel's own
+  computer usually talks on the K-line (KWP2000), which "auto" never reaches because VPW answers first.
+- Diagnostics > **Scan the Jeep's computers**: the T3 tries J1850 VPW, KWP2000 fast and slow, ISO 9141-2, J1850 PWM and CAN in
+  turn with headers on, and Heep shows which computer answered on each and every value it offers, marks the one with the most,
+  and "Use this one" sets the protocol (T3 settings > iCar > Talk to the Jeep on; setting `opr`). Results are kept on the phone.
+- Test: `tests/app/obd_scan.js`.
+
 ## 27 Oct 2026 — T3 2.4, Heep 1.1.4: live numbers in Safari any time; Update over Wi-Fi with a progress bar
 
 - **Live in Safari (no Bluefy):** the T3 stays on the relay whenever it's on Wi-Fi, and sends live numbers while you're looking:
