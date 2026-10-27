@@ -6,4 +6,4 @@ T3.ino.elf
 T3.ino.map
 T3.ino.merged.bin
 T3.ino.partitions.bin
-rollback: not found in this core
+rollback: #define CONFIG_APP_ROLLBACK_ENABLE CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE #define CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE 1 
