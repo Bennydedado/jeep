@@ -31,7 +31,8 @@ Sd sd;
 float totalKm = 0, totalL = 0;
 int queued = 0;
 volatile WifiState wifiState = W_IDLE;
-String wifiName, wifiNow = "off", wifiSeen, lastUpload = "not yet", updStatus, trkStatus = "not set up";
+String wifiName, wifiNow = "off", wifiSeen;
+Txt lastUpload, updStatus, trkStatus;
 volatile bool phoneOn = false, obdLinked = false, updating = false;
 uint32_t bootNo = 0;
 String resetWhy;
@@ -40,7 +41,7 @@ int page = 0;
 Screen screens[MAX_SCREENS];
 int screenCount = 0;
 uint32_t screensHash = 0;
-SemaphoreHandle_t fsLock;
+SemaphoreHandle_t fsLock, cfgLock;
 char timeSrc = 0;
 int64_t epochOffset = 0;   // epoch ms minus millis()
 
@@ -88,6 +89,7 @@ static void confirmUpdateStep() {
   if (done || millis() < 20000) return;
   done = true;
   esp_ota_mark_app_valid_cancel_rollback();
+  updateConfirmed();
 }
 
 void setup() {
@@ -102,9 +104,12 @@ void setup() {
   oled.clearDisplay(); oled.setTextColor(SSD1306_WHITE); oled.setCursor(0, 0); oled.print("Jeep T3 " FW "\nstarting..."); oled.display();
   // flash, settings, screens
   fsLock = xSemaphoreCreateMutex();
+  cfgLock = xSemaphoreCreateMutex();
   LittleFS.begin(true);
   Preferences p; p.begin("t3", false); bootNo = p.getUInt("boot", 0) + 1; p.putUInt("boot", bootNo); p.end();
+  lastUpload.set("not yet"); trkStatus.set("not set up");
   loadSettings();
+  netBegin();
   loadScreens();
   displayBegin();
   // the parts

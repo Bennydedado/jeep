@@ -6,6 +6,7 @@
 String liveTopic, cmdTopic;   // relay channels, named from your sheet key so only your Heep finds them
 
 void loadSettings() {
+  xSemaphoreTake(cfgLock, portMAX_DELAY);
   Preferences p;
   p.begin("t3", true);
   cfg.netCount = constrain(p.getInt("n", 0), 0, MAX_NETS);
@@ -62,6 +63,7 @@ void loadSettings() {
     liveTopic = "heep/" + String(hex) + "/live";
     cmdTopic = "heep/" + String(hex) + "/cmd";
   }
+  xSemaphoreGive(cfgLock);
 }
 
 // a {"c":"cfg",...} message. Over the relay (fromRelay) the secrets are refused: Wi-Fi passwords,

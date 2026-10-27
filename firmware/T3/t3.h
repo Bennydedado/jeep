@@ -33,6 +33,10 @@
 #include <PubSubClient.h>
 #include "mbedtls/sha256.h"
 #include "mbedtls/md.h"
+#include "mbedtls/gcm.h"
+#include "mbedtls/base64.h"
+#include <esp_random.h>
+#include <sys/time.h>
 #include <Preferences.h>
 #include <LittleFS.h>
 #include <NimBLEDevice.h>
@@ -133,12 +137,21 @@ extern Trip trip;
 extern float totalKm, totalL;
 extern int queued;
 
+// short status texts written by the upload task (core 0) and read by loop() (core 1): fixed buffers, never Strings,
+// so the two can't corrupt each other's memory (at worst a text reads half-updated for a moment)
+struct Txt {
+  char s[48] = "";
+  void set(const String& v) { strlcpy(s, v.c_str(), sizeof(s)); }
+  operator String() const { return String(s); }
+  bool empty() const { return !s[0]; }
+};
 // ---------------------------------------------------------------- SD card
 struct Sd {
   bool ok = false;
   uint64_t total = 0, used = 0;
   uint32_t rows = 0, errors = 0, tracksWaiting = 0;
-  String file, err;
+  String file;   // loop() only
+  Txt err;
 };
 extern Sd sd;
 // the columns of every trip file on the card (and of the tracks Heep downloads); add new ones at the END only
@@ -147,7 +160,10 @@ extern Sd sd;
 // ---------------------------------------------------------------- connections
 enum WifiState { W_IDLE, W_SCAN, W_JOIN, W_ON };
 extern volatile WifiState wifiState;
-extern String wifiName, wifiNow, wifiSeen, lastUpload, updStatus, trkStatus;
+extern String wifiName, wifiNow, wifiSeen;
+extern Txt lastUpload, updStatus, trkStatus;
+void taskEvent(const String& what);   // log an event from the upload task (passed to loop())
+bool uploadBusy();
 extern volatile bool phoneOn, obdLinked, updating;
 extern uint32_t bootNo;
 extern String resetWhy;
@@ -159,3 +175,4 @@ extern Screen screens[MAX_SCREENS];
 extern int screenCount;
 extern uint32_t screensHash;
 extern SemaphoreHandle_t fsLock;
+extern SemaphoreHandle_t cfgLock;   // held while settings are (re)loaded, and while the upload task copies them

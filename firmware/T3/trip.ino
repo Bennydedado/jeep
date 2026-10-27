@@ -81,7 +81,7 @@ void dropTrips(const String& ids) {
   queued = queuedCount();
 }
 void snapshot() {
-  if (trip.km < 0.05 && trip.gpsKm < 0.05) return;
+  if (trip.s < 1 && trip.gpsKm <= 0) return;   // nothing happened yet
   trip.t1 = nowMs();
   xSemaphoreTake(fsLock, portMAX_DELAY);
   File f = LittleFS.open("/cur.txt", "w");

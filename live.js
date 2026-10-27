@@ -371,10 +371,25 @@ function netBytes(chunk) {
   }
   NET.buf = new Uint8Array(0);
 }
+// T3 2.0 encrypts what it sends through the public relay (AES-GCM, key made from your sheet key): open it here
+let relayKeyP = null, relayKeyFor = '';
+function relayKey() {
+  if (relayKeyFor !== S.conn.k) {
+    relayKeyFor = S.conn.k;
+    relayKeyP = crypto.subtle.digest('SHA-256', new TextEncoder().encode('heep-enc:' + S.conn.k)).then(d => crypto.subtle.importKey('raw', d, 'AES-GCM', false, ['decrypt']));
+  }
+  return relayKeyP;
+}
+async function relayOpen(b64) {
+  const raw = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+  const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: raw.slice(0, 12) }, await relayKey(), raw.slice(12));
+  return new TextDecoder().decode(plain);
+}
 function netLine(text) {
   let m;
   try { m = JSON.parse(text); } catch (e) { return; }
   if (!m || typeof m !== 'object') return;
+  if (typeof m.e === 'string') { relayOpen(m.e).then(netLine, () => { /* not ours, or a different key */ }); return; }
   NET.at = Date.now();
   if (m.t !== 'live') { if (LIVE.mode !== 'bt') t3Message(m, 'net'); return; }
   if (LIVE.mode === 'bt' || LIVE.mode === 'demo') return;

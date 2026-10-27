@@ -23,19 +23,23 @@ void sdBegin() {
 }
 bool sdMount() {
   lastMount = millis();
+  if (uploadBusy()) return false;   // the upload task may have a file open: try again later
+  xSemaphoreTake(sdLock, portMAX_DELAY);
   SD.end();
   sdSPI.end();
   sdSPI.begin(SD_SCK, SD_MISO, SD_MOSI, SD_CS);
-  if (!SD.begin(SD_CS, sdSPI, 20000000) || SD.cardType() == CARD_NONE) { sd.ok = false; sd.err = "no card"; return false; }
+  bool ok = SD.begin(SD_CS, sdSPI, 20000000) && SD.cardType() != CARD_NONE;
+  xSemaphoreGive(sdLock);
+  if (!ok) { sd.ok = false; sd.err.set("no card"); return false; }
   SD.mkdir("/jeep"); SD.mkdir("/jeep/trips");
-  sd.ok = true; sd.err = "";
+  sd.ok = true; sd.err.set("");
   sdSpace();
   sdHousekeep();
   sdCountWaiting();
   return true;
 }
 void sdSpace() { if (sd.ok) { sd.total = SD.totalBytes(); sd.used = SD.usedBytes(); } }
-void sdFail(const String& why) { sd.ok = false; sd.err = why; sd.errors++; }
+void sdFail(const String& why) { sd.ok = false; sd.err.set(why); sd.errors++; }
 
 // append text to a file; false (and the card marked failed) if it didn't go
 bool sdAppend(const String& path, const String& text) {
@@ -169,22 +173,24 @@ String sdIndexLine(const String& id) {
   xSemaphoreGive(sdLock);
   return out;
 }
-// rows [from, from+count) of a track (not counting the header); `more` says if there are rows after them
-String sdTrackRows(const String& id, int from, int count, int* got, bool* more) {
+// the next `count` rows of a track starting at byte *pos (0 = the start: the header is skipped);
+// *pos moves on past them, `more` says if rows remain. Lines with nothing printable (left by a power cut) are skipped.
+String sdTrackRows(const String& id, uint32_t* pos, int count, int* got, bool* more) {
   String out;
   *got = 0; *more = false;
   xSemaphoreTake(sdLock, portMAX_DELAY);
   File f = SD.open("/jeep/trips/" + id + ".csv", FILE_READ);
   if (f) {
-    f.readStringUntil('\n');
-    int i = 0;
+    if (*pos == 0) f.readStringUntil('\n'); else f.seek(*pos);
     while (f.available()) {
+      if (*got >= count) { *more = true; break; }
       String l = f.readStringUntil('\n');
-      if (!l.length()) continue;
-      if (i >= from + count) { *more = true; break; }
-      if (i >= from) { out += l; out += "\n"; (*got)++; }
-      i++;
+      bool printable = false;
+      for (size_t i = 0; i < l.length() && !printable; i++) if ((uint8_t)l[i] > 32) printable = true;
+      if (!printable) continue;
+      out += l; out += "\n"; (*got)++;
     }
+    *pos = f.position();
     f.close();
   }
   xSemaphoreGive(sdLock);

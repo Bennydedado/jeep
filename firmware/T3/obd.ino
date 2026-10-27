@@ -134,6 +134,11 @@ void obdAnswer(String r) {
 }
 void obdStep() {
   obdConnectStep();
+  // a link that died between connecting and attaching, or an adapter that went silent: start over
+  if (obdLinked && obdClient && (!obdClient->isConnected() || (obdStage >= 8 && car.at && millis() - car.at > 20000))) {
+    if (obdClient->isConnected()) obdClient->disconnect();
+    obdLinked = false;
+  }
   if (!obdLinked) { obdStage = 0; obdBusy = false; return; }
   char ch;
   while (xQueueReceive(obdQueue, &ch, 0) == pdTRUE) {

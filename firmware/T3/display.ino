@@ -302,7 +302,7 @@ String fieldText(int f) {
   if (!strcmp(id, "ble")) return phoneOn ? "Heep on" : "-";
   if (!strcmp(id, "wifi")) return wifiState == W_ON ? wifiName.substring(0, 12) : wifiState == W_IDLE ? String(cfg.netCount) + " saved" : String("joining");
   if (!strcmp(id, "nano")) return wheelState();
-  if (!strcmp(id, "sd")) return sd.ok ? "logging" : sd.err.length() ? sd.err.substring(0, 12) : String("no card");
+  if (!strcmp(id, "sd")) return sd.ok ? "logging" : !sd.err.empty() ? String(sd.err).substring(0, 12) : String("no card");
   if (!strcmp(id, "fw")) return FW;
   if (!strcmp(id, "up")) return hm(millis() / 1000);
   if (!strcmp(id, "btn")) return wheel.last;
