@@ -47,6 +47,8 @@ static const FieldDef FIELDS[] = {
   { "totkm", "All km", "km", 0 },
   { "totl", "All L", "L", 0 },
   { "totavg", "All avg", "L/100", 1 },
+  { "dte", "To empty", "km", 0 },       // distance to empty: Heep sends the tank's level, the T3 counts down what it burns
+  { "fuel", "Fuel left", "L", 0 },
   // GPS
   { "gfix", "GPS", "", -1 },            // NO GPS / SEARCHING / 2D / 3D
   { "sats", "Sats", "", -1 },           // used/in view

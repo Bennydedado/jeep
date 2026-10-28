@@ -56,16 +56,17 @@ static String bootUpdateRun() {
   WiFi.mode(WIFI_STA);
   // your networks: the ones a scan sees first, strongest first; then the rest by name (hotspots hide from scans)
   int rssi[MAX_NETS], order[MAX_NETS], n = 0;
+  String seenAs[MAX_NETS];   // the name exactly as it's broadcast (the saved one may differ in an apostrophe or capitals)
   for (int i = 0; i < cfg.netCount; i++) rssi[i] = -999;
   int found = WiFi.scanNetworks();
   for (int k = 0; k < found; k++)
-    for (int i = 0; i < cfg.netCount; i++) if (WiFi.SSID(k) == cfg.nets[i].ssid && WiFi.RSSI(k) > rssi[i]) rssi[i] = WiFi.RSSI(k);
+    for (int i = 0; i < cfg.netCount; i++) if (ssidKey(WiFi.SSID(k)) == ssidKey(cfg.nets[i].ssid) && WiFi.RSSI(k) > rssi[i]) { rssi[i] = WiFi.RSSI(k); seenAs[i] = WiFi.SSID(k); }
   WiFi.scanDelete();
   for (int i = 0; i < cfg.netCount; i++) order[n++] = i;
   for (int a = 0; a < n; a++) for (int b = a + 1; b < n; b++) if (rssi[order[b]] > rssi[order[a]]) { int t = order[a]; order[a] = order[b]; order[b] = t; }
   String joined;
   for (int t = 0; t < n && t < 4 && !joined.length(); t++) {
-    const String& ssid = cfg.nets[order[t]].ssid;
+    String ssid = seenAs[order[t]].length() ? seenAs[order[t]] : cfg.nets[order[t]].ssid;
     if (!ssid.length()) continue;
     bootShow("joining", ssid, -1);
     WiFi.begin(ssid.c_str(), cfg.nets[order[t]].pass.c_str());

@@ -119,6 +119,7 @@ void setup() {
   tempBegin();
   wheelBegin();
   tripBegin();
+  fuelLoad();
   phoneBegin();
   obdBegin();
   sdEvent("boot " FW " (" + resetWhy + ")");

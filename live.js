@@ -33,6 +33,9 @@ function renderLive(v) {
     h('button', { class: 'btn btn-glass glass', onclick: t3Guide }, icon('info'), 'Guide'),
     h('button', { class: 'btn btn-glass glass', onclick: codesSheet }, icon('engine'), 'Trouble codes'),
     h('button', { class: 'btn btn-glass glass', onclick: wifiSheet }, icon('wifi'), 'Wi-Fi & update')));
+  if (STATS && STATS.left != null) v.append(h('button', { class: 'card row tap', style: 'padding:12px 16px;margin-top:12px', onclick: () => dteSheet() },
+    h('div', { class: 'main' }, h('b', { text: '≈' + fmt0(STATS.left) + ' km to empty' }), h('span', { text: fmt0(STATS.fuelL) + ' L left · ' + Math.round(STATS.fuelPct * 100) + '% · tap for the details' })),
+    icon('chev', 'chev')));
   if (!on) {
     if (hasBT()) {
       v.append(card(h('div', { class: 'empty', style: 'padding:16px 6px' },

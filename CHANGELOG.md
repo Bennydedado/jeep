@@ -1,5 +1,20 @@
 # Changes
 
+## 28 Oct 2026 — T3 2.10, Heep 1.1.10: economy from the tank and the T3 together, distance to empty, iPhone hotspot
+
+- A saved network matched the scan loosely (an iPhone's name has a curly apostrophe, Ben’s iPhone; typed it's often
+  straight) but the T3 then asked for it by the saved spelling, which the phone doesn't answer to. It now joins by the
+  exact name it saw, also for Update over Wi-Fi. When the hotspot isn't in the scan, every other try uses the other
+  apostrophe.
+- **Overview economy before two full tanks:** fuel economy from the T3's trips until there are full tanks, then the last 3
+  full tanks plus the T3's driving since the last fill-up. Where both cover a full tank, the tank shows how far off the
+  T3's diesel figure is and the T3 is corrected by it (`econ.js`, tested in `tests/app/test_econ.js`). Cost per km the same
+  way (economy × pump price until there are tanks). Fuel economy by week from the T3.
+- **Distance to empty:** the tank counted down from the last full fill-up with the diesel the T3 measured (corrected) and,
+  for driving it didn't log, the distance at your economy. Overview tile and gauge, Live, and its own screen (live while
+  the T3 is connected). New T3 fields **To empty** and **Fuel left** (Heep sends the level; the T3 counts down as it burns),
+  and a "Distance to empty" screen template. Test: `tests/app/overview.js`.
+
 ## 27 Oct 2026 — T3 2.9, Heep 1.1.9: updates only when you ask
 
 - 2.8 kept restarting to "look for updates": its regular check still ran in the background, failed for want of memory,

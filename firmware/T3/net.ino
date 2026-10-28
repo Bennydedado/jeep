@@ -383,8 +383,9 @@ void wifiStep() {
       int found = WiFi.scanComplete();
       if (found == WIFI_SCAN_RUNNING && now - wifiAt < 10000) return;
       int pick = -1;
+      String seenAs;                                                     // the name exactly as it's broadcast
       for (int i = 0; i < cfg.netCount && pick < 0; i++)                 // in the order you listed them in Heep
-        for (int k = 0; k < found; k++) if (ssidKey(WiFi.SSID(k)) == ssidKey(cfg.nets[i].ssid)) { pick = i; break; }
+        for (int k = 0; k < found; k++) if (ssidKey(WiFi.SSID(k)) == ssidKey(cfg.nets[i].ssid)) { pick = i; seenAs = WiFi.SSID(k); break; }
       // nearby networks (what the scan saw, not who is connected to them)
       wifiSeen = "";
       for (int k = 0, n = 0; k < found && n < 8; k++) { String nm = WiFi.SSID(k); if (nm.length() && wifiSeen.indexOf(nm) < 0) { wifiSeen += (n++ ? ", " : "") + nm + " (" + String(WiFi.RSSI(k)) + ")"; } }
@@ -395,11 +396,19 @@ void wifiStep() {
       if (pick < 0) {
         // none of yours in the scan. An iPhone hotspot often stops showing up in scans while it still lets known
         // devices join, so ask for one of yours by name anyway (a different one each time round).
-        pick = blindNext++ % cfg.netCount;
+        pick = blindNext % cfg.netCount;
+        // an iPhone's name has a curly apostrophe (Ben’s iPhone); typed on a keyboard it's often straight. Not seen,
+        // the name has to match exactly: every other round, try it with the other apostrophe
+        if ((blindNext / cfg.netCount) % 2) {
+          seenAs = cfg.nets[pick].ssid;
+          if (seenAs.indexOf("\xE2\x80\x99") >= 0) seenAs.replace("\xE2\x80\x99", "'"); else seenAs.replace("'", "\xE2\x80\x99");
+        }
+        blindNext++;
       }
       wifiName = cfg.nets[pick].ssid;
       wifiReason = 0;
-      WiFi.begin(cfg.nets[pick].ssid.c_str(), cfg.nets[pick].pass.c_str());
+      // seen in the scan: join it by the exact name it broadcasts (the saved one may differ in an apostrophe or capitals)
+      WiFi.begin((seenAs.length() ? seenAs : cfg.nets[pick].ssid).c_str(), cfg.nets[pick].pass.c_str());
       wifiState = W_JOIN; wifiAt = joinAt = now;
       wifiNow = blindJoin ? "none of yours seen; asking for " + wifiName + " by name" : "joining " + wifiName;
       return;

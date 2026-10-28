@@ -20,6 +20,7 @@ function t3Message(m, via) {
     if (lw != null && via === 'bt' && !LIVE.otaBusy && !LIVE.makingRoom && Number(m.lw) !== lw) { store.del('restoreLw'); send({ c: 'cfg', lw }); }
     else if (lw != null && Number(m.lw) === lw) store.del('restoreLw');
     if (LIVE.onHi) LIVE.onHi(); else if (S.tab === 'live') render();
+    setTimeout(t3SendFuel, 1500);   // after the trips it had waiting have come in
   }
   else if (m.t === 'cfg') { if (LIVE.onCfg) LIVE.onCfg(m); else toast('Saved on the T3', m.reset ? 'Settings back to new' : 'It uses them from now on'); }
   else if (m.t === 'trip' && via === 'bt') saveTrip(m);
@@ -31,6 +32,22 @@ function t3Message(m, via) {
   else if (m.t === 'obdscan') { obdScanMsg(m); }
   else if (m.t === 'codes') { codesMsg(m); }
   else if (m.t === 'upd') { LIVE.upd = m; LIVE.updAt = Date.now(); if (m.fw) LIVE.fw = String(m.fw); if (LIVE.onUpd) LIVE.onUpd(m); }
+}
+
+// the tank's level for the T3's "Fuel left" and "To empty" fields (2.10+). It counts down from there itself, so this
+// only goes again when Heep's own figure moves (a fill-up, a trip saved) or every half hour.
+let fuelSent = null;
+function t3SendFuel() {
+  if (typeof blendEcon !== 'function' || !STATS || !t3Via() || !verAtLeast(LIVE.fw, '2.10') || LIVE.otaBusy) return;
+  const base = blendEcon(STATS, S.data.trip);
+  if (base.fuelL == null || !base.v) return;
+  const sig = { l: base.fuelL, e: base.v };
+  if (fuelSent && Math.abs(fuelSent.l - sig.l) < 0.3 && Math.abs(fuelSent.e - sig.e) < 0.05 && Date.now() - fuelSent.at < 1800000) return;
+  // what's in the tank right now, the drive going on included: the T3 counts down from its own total as of now
+  const live = LIVE.v && LIVE.v.trip && LIVE.v.trip.id ? LIVE.v.trip : null;
+  const e = blendEcon(STATS, S.data.trip, live);
+  fuelSent = Object.assign({ at: Date.now() }, sig);
+  t3Send({ c: 'fuel', l: +e.fuelL.toFixed(1), e: +e.v.toFixed(2), k: +e.cal.toFixed(3) });
 }
 
 // can a command reach the T3 right now?

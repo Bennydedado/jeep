@@ -26,6 +26,24 @@ String tripJson(const Trip& t) {
   return j + "}";
 }
 
+// ---------------------------------------------------------------- the tank (fields "fuel" and "dte")
+// Heep knows the tank: full at your last full fill-up, less what's been used since (econ.js). It sends that over
+// ({"c":"fuel","l":61.2,"e":10.4,"k":1.08}) and the T3 counts down from there with the diesel it works out itself
+// (times k, Heep's correction for the T3 from your full tanks), so the numbers keep up while you drive.
+static float fuelL0 = NAN, fuelBase = 0, fuelE = NAN, fuelK = 1;
+void fuelLoad() {
+  Preferences p; p.begin("t3", true);
+  fuelL0 = p.getFloat("fl", NAN); fuelBase = p.getFloat("fb", 0); fuelE = p.getFloat("fe", NAN); fuelK = p.getFloat("fk", 1);
+  p.end();
+}
+void fuelSet(float l, float e, float k) {
+  if (!(l >= 0 && l < 400) || !(e > 2 && e < 60)) return;
+  fuelL0 = l; fuelE = e; fuelK = (k > 0.3 && k < 3) ? k : 1; fuelBase = totalL + trip.l;
+  Preferences p; p.begin("t3", false); p.putFloat("fl", fuelL0); p.putFloat("fb", fuelBase); p.putFloat("fe", fuelE); p.putFloat("fk", fuelK); p.end();
+}
+float fuelLeft() { return isnan(fuelL0) ? NAN : max(0.0f, fuelL0 - (totalL + trip.l - fuelBase) * fuelK); }
+float fuelToEmpty() { float l = fuelLeft(); return isnan(l) || !(fuelE > 0) ? NAN : l / fuelE * 100; }
+
 bool engineOn() { return obdLinked && car.rpm > 300 && millis() - car.at < 5000; }
 bool gpsMoving() { return gps.valid && gps.kmh > 3; }
 bool tripActive() { return engineOn() || gpsMoving(); }

@@ -276,6 +276,8 @@ float fieldNumber(int f) {
   if (!strcmp(id, "totkm")) return totalKm + trip.km;
   if (!strcmp(id, "totl")) return totalL + trip.l;
   if (!strcmp(id, "totavg")) return totalKm + trip.km >= 1 ? (totalL + trip.l) / (totalKm + trip.km) * 100 : NAN;
+  if (!strcmp(id, "fuel")) return fuelLeft();
+  if (!strcmp(id, "dte")) return fuelToEmpty();
   if (!strcmp(id, "hdop")) return gps.hdop;
   if (!strcmp(id, "alt")) return gps.valid ? gps.alt : NAN;
   if (!strcmp(id, "lat")) return gps.valid ? gps.lat : NAN;
