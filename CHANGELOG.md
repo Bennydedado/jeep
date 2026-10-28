@@ -1,5 +1,12 @@
 # Changes
 
+## 28 Oct 2026 — T3 2.10: joining an iPhone hotspot
+
+- A saved network matched the scan loosely (an iPhone's name has a curly apostrophe, Ben’s iPhone; typed it's often
+  straight) but the T3 then asked for it by the saved spelling, which the phone doesn't answer to. It now joins by the
+  exact name it saw, also for Update over Wi-Fi. When the hotspot isn't in the scan, every other try uses the other
+  apostrophe.
+
 ## 27 Oct 2026 — T3 2.9, Heep 1.1.9: updates only when you ask
 
 - 2.8 kept restarting to "look for updates": its regular check still ran in the background, failed for want of memory,

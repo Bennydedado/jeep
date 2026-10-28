@@ -8,7 +8,7 @@
 // [ours] are choices made for the Jeep wiring; see docs/HARDWARE.md before wiring anything.
 #pragma once
 
-#define FW "2.9"                 // bump this on every change: the T3 only installs a version that differs from its own
+#define FW "2.10"                 // bump this on every change: the T3 only installs a version that differs from its own
 #define PROTO 2                  // the Heep <-> T3 message version (T3.md)
 
 // ---------------------------------------------------------------- where updates and the live relay live
