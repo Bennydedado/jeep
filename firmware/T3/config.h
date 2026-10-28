@@ -8,7 +8,7 @@
 // [ours] are choices made for the Jeep wiring; see docs/HARDWARE.md before wiring anything.
 #pragma once
 
-#define FW "2.11"                 // bump this on every change: the T3 only installs a version that differs from its own
+#define FW "2.12"                 // bump this on every change: the T3 only installs a version that differs from its own
 #define PROTO 2                  // the Heep <-> T3 message version (T3.md)
 
 // ---------------------------------------------------------------- where updates and the live relay live
@@ -30,7 +30,7 @@
 #define SD_MISO 2
 #define SD_MOSI 15
 #define SD_CS 13
-#define LED_PIN 25
+#define LED_PIN 25               // the green LED; 2.12+ uses this pin for the Nano link instead (NANO_TX_PIN)
 
 // ---------------------------------------------------------------- pins for the Jeep add-ons  [ours]
 // GPS (HGLRC M100 Mini): its TX wire goes to GPIO 34 (input-only pin, the one LilyGo uses for GPS on this board).
@@ -40,6 +40,9 @@
 #define GPS_TX_PIN -1
 // Arduino Nano -> T3 one-way link (steering wheel buttons). Nano TX (5 V) goes through a divider to GPIO 39.
 #define NANO_RX_PIN 39
+// T3 -> Nano (2.12+): the right-button map from Heep. GPIO 25 -> 1 kOhm -> Nano D8. The green LED is on the same
+// pin, so it flickers while the T3 sends (only until the Nano has the map).
+#define NANO_TX_PIN 25
 // DS18B20 outdoor probe data wire (with a 4.7 kOhm pull-up to 3.3 V). GPIO 4 was the old optional push button.
 #define ONEWIRE_PIN 4
 

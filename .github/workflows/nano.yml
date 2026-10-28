@@ -3,7 +3,7 @@
 name: Check the Nano code
 on:
   push:
-    paths: ['nano/**', 'tests/firmware/test_nano_link.cpp', '.github/workflows/nano.yml']
+    paths: ['nano/**', 'tests/firmware/test_nano_link.cpp', 'tests/firmware/test_wheelmap.cpp', 'firmware/T3/jlink.h', '.github/workflows/nano.yml']
   workflow_dispatch:
 jobs:
   build:
@@ -15,8 +15,11 @@ jobs:
         run: |
           arduino-cli core update-index
           arduino-cli core install arduino:avr
+          arduino-cli lib install AltSoftSerial
       - name: Link test (PC)
-        run: g++ -std=c++17 -Wall -O1 -I tests/firmware/mock -o /tmp/t_nano tests/firmware/test_nano_link.cpp && /tmp/t_nano
+        run: |
+          g++ -std=c++17 -Wall -O1 -I tests/firmware/mock -o /tmp/t_nano tests/firmware/test_nano_link.cpp && /tmp/t_nano
+          g++ -std=c++17 -Wall -O1 -o /tmp/t_wmap tests/firmware/test_wheelmap.cpp && /tmp/t_wmap
       - name: Compile
         run: |
           for s in nano/NanoT3Example nano/WheelCalibrate; do arduino-cli compile --fqbn arduino:avr:nano:cpu=atmega328 --warnings all "$s"; done

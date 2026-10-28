@@ -74,7 +74,7 @@ the code was compiled and tested on a PC with simulated data (see section 17). E
 | LoRa SCK / MISO / MOSI / CS / RST / DIO0 | 5 / 19 / 27 / 18 / 23 / 26 | The T3 puts the radio to sleep; it never transmits, safe without an antenna |
 | LoRa DIO1 / DIO2 | 33 / 32 | Connected to the radio: don't use for anything else |
 | microSD CS / MOSI / MISO / SCK | 13 / 15 / 2 / 14 | Slot on the board; own SPI bus |
-| LED | 25 | Blinks while the iCar is connected |
+| LED | 25 | Not used as an LED from 2.12: the pin is the T3 → Nano wire (the LED flickers while it sends) |
 | Battery sense | 35 | Unused (no battery) |
 | BOOT button | 0 | Hold while plugging in USB if an install won't start |
 | Flash/PSRAM | 16, 17 | **Never use** |
@@ -87,6 +87,7 @@ the code was compiled and tested on a PC with simulated data (see section 17). E
 | GPS RX ← T3 | not connected | – | The T3 only listens. (LilyGo's page uses GPIO 12 here; 12 is a boot-strapping pin, so it's left out.) |
 | DS18B20 data | **4** | in/out | **PROVISIONAL.** GPIO 4 was the old optional push button in firmware 1.x, so it's on the header, but check the silkscreen. |
 | Nano → T3 | **39** | input only | **PROVISIONAL.** On most T3 V1.6.x boards 39 is labelled "39" or "VN" on a header. Check yours. If it isn't there, use 36 ("VP") instead and change `NANO_RX_PIN` in `firmware/T3/config.h`. |
+| T3 → Nano | **25** | output | 2.12+, right wheel buttons set in Heep: GPIO 25 → 1 kΩ → Nano D8. Optional. **Check the header says 25.** Nowhere near the GPS (34). |
 | 3.3 V out | 3V3 | supply | Powers the GPS (~25–40 mA) and the probe (~1.5 mA): well within the T3's regulator. |
 | 5 V in | 5V | supply | From the keyed buck converter (as before). |
 | GND | GND | | Shared by everything. |
@@ -150,6 +151,18 @@ All pins live in **`firmware/T3/config.h`**. If you move a wire, change it there
 - **Never** connect any T3 pin to the Nano's D0 (RX) or anything else on the Nano.
 - Uploading a new Nano sketch over USB works with this wired (D1 only drives the divider).
 
+**The other way (optional, T3 2.12+ and `jeep_controller_v3`): right wheel buttons set in Heep**
+
+```
+ T3 GPIO 25 ──[ 1 kΩ ]── Nano D8
+```
+
+- 3.3 V is a solid HIGH for the Nano (it needs 3.0 V). The 1 kΩ only protects both pins. Grounds are already joined.
+- D8 is AltSoftSerial's receive pin; it also takes D9 and D10 (keep them free). The Nano link runs at 9600 both ways.
+- Only one thing goes this way: the right-button map, `$N,M,<map>*HH`, every 2 s until the Nano's heartbeat
+  (`$J,<seq>,H,<uptime>,2,<hash>*HH`) shows the same map. The Nano checks it, keeps it in EEPROM and never waits for
+  the T3: unplugged, off or broken, the buttons do what they last did.
+
 **Protocol** (Nano → T3 only, text lines, any of 9600–115200 baud; the T3 finds it):
 
 ```
@@ -187,6 +200,10 @@ Code: `firmware/T3/jlink.h` (T3 side), `nano/NanoT3Example/T3Link.h` (Nano side)
 
   Other actions: screen off/on, brightness, reset peak boost, send/sync now, nothing. Holding Next or Previous
   keeps scrolling. While the T3's screen is off, the first press only wakes it.
+- **Right buttons** (stereo, on the Nano; needs the GPIO 25 → D8 wire and `jeep_controller_v3`): set in Heep (Live →
+  Screens → Right wheel buttons), tap and hold for each. Default: volume +, answer / hang up, volume −. Choices:
+  volume ±, mute, play/pause, next/previous track, source, Siri, answer, hang up, high beams, T3 button 1–3, nothing,
+  or any Kenwood code. Tap and hold the same = goes on press and repeats while held. Tokens: `nano/NanoT3Example/WheelMap.h`.
 
 ## 8. SD card and logging
 

@@ -20,7 +20,7 @@
 #pragma once
 #include <Arduino.h>
 
-#define T3LINK_PROTO 1
+#define T3LINK_PROTO 1   // 2 once mapHash() is set (WheelMap.h: right buttons set in Heep)
 
 class T3Link {
  public:
@@ -36,13 +36,17 @@ class T3Link {
     if (now - lastBeat >= 1000) {
       lastBeat = now;
       char body[32];
-      snprintf(body, sizeof(body), "J,%u,H,%lu,%d", seq, now / 1000UL, T3LINK_PROTO);
+      if (hasMap) snprintf(body, sizeof(body), "J,%u,H,%lu,2,%X", seq, now / 1000UL, map);
+      else snprintf(body, sizeof(body), "J,%u,H,%lu,%d", seq, now / 1000UL, T3LINK_PROTO);
       seq++;
       char line[40];
       int n = frame(body, line);
       if (fits(n)) s.write((const uint8_t*)line, n);
     }
   }
+
+  // the hash of the right-button map this Nano uses (wmapHash): the T3 resends the map until it matches
+  void mapHash(uint16_t h) { map = h; hasMap = true; }
 
   // a button press for the T3: button 1-3, press 'S', 'L' or 'R'
   void button(uint8_t b, char press) {
@@ -58,6 +62,8 @@ class T3Link {
  private:
   HardwareSerial& s;
   uint8_t seq = 0;
+  uint16_t map = 0;
+  bool hasMap = false;
   unsigned long lastBeat = 0, pendingAt = 0;
   char pending[40];
   int pendingLen = 0;

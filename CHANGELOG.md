@@ -1,5 +1,14 @@
 # Changes
 
+## 28 Oct 2026 — T3 2.12, Heep 1.1.13: right wheel buttons set in Heep
+
+- **Right steering wheel buttons are programmable** (Live → Screens → Right wheel buttons): tap and hold for top,
+  middle and bottom: volume, mute, play/pause, tracks, source, Siri, answer, hang up, high beams, a T3 button, nothing,
+  or any Kenwood code (handy for finding the answer-call code). "Saved on the Nano ✓" once the Nano has it.
+- One new wire, T3 GPIO 25 → 1 kΩ → Nano D8, and the Nano sketch `jeep_controller_v3` (based on v2, link at 9600).
+  The T3 sends the map until the Nano's heartbeat shows it; the Nano keeps it in EEPROM and works without the T3.
+- The T3's green LED is no longer used (its pin is the new wire).
+
 ## 28 Oct 2026 — T3 2.11, Heep 1.1.12: Heep over Wi-Fi works everywhere
 
 - **"Not connected to the T3" with the T3 on your hotspot:** Heep only counted the relay as connected once the T3 had
