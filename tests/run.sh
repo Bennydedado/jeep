@@ -17,5 +17,6 @@ if node -e "require('playwright')" 2>/dev/null; then
   SHOTS=$T/shots node tests/app/relay_live.js          # Safari: live numbers and Update over Wi-Fi through the relay
   SHOTS=$T/shots node tests/app/obd_scan.js            # Diagnostics > Scan the Jeep: protocols, computers, values, Use this one
   SHOTS=$T/shots node tests/app/codes_trips.js         # Trouble codes, Driving totals, a trip's breakdown, Live in Safari
+  SHOTS=$T/shots node tests/app/overview.js            # Overview economy from the T3 + tanks, Distance to empty, the tank level sent to the T3
 else echo "smoke.js, editor.js and wifi_ota.js skipped (no Playwright)"; fi
 echo "ALL PASSED"

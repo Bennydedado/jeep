@@ -13,6 +13,7 @@ const TAB_DEFS = [
 let TB = null; // the tab bar
 function render() {
   STATS = calc(S.data);
+  if (typeof t3SendFuel === 'function') t3SendFuel();   // a new fill-up or trip moves the T3's "To empty" too
   const v = document.getElementById('view');
   if (!v) return;
   const def = TAB_DEFS.find(t => t[0] === S.tab) || TAB_DEFS[0];

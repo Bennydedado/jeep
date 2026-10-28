@@ -18,6 +18,7 @@ const FIELDS = [
   ['tstate', 'Trip', '', -1, 'Trip'], ['tkm', 'Trip', 'km', 1, 'Trip'], ['ttime', 'Time', '', -1, 'Trip'], ['tl', 'Diesel', 'L', 2, 'Trip'],
   ['tavg', 'Trip avg', 'L/100', 1, 'Trip'], ['tavgs', 'Avg spd', 'km/h', 0, 'Trip'], ['tvmax', 'Top spd', 'km/h', 0, 'Trip'], ['tidle', 'Idle', '', -1, 'Trip'],
   ['totkm', 'All km', 'km', 0, 'Trip'], ['totl', 'All L', 'L', 0, 'Trip'], ['totavg', 'All avg', 'L/100', 1, 'Trip'],
+  ['dte', 'To empty', 'km', 0, 'Trip'], ['fuel', 'Fuel left', 'L', 0, 'Trip'],
   ['gfix', 'GPS', '', -1, 'GPS'], ['sats', 'Sats', '', -1, 'GPS'], ['hdop', 'HDOP', '', 1, 'GPS'], ['alt', 'Altitude', 'm', 0, 'GPS'],
   ['lat', 'Lat', '', 5, 'GPS'], ['lon', 'Lon', '', 5, 'GPS'],
   ['obd', 'iCar', '', -1, 'Status'], ['ble', 'Phone', '', -1, 'Status'], ['wifi', 'Wi-Fi', '', -1, 'Status'], ['nano', 'Wheel', '', -1, 'Status'],
@@ -29,7 +30,7 @@ const FIELD = Object.fromEntries(FIELDS.map(f => [f.id, f]));
 // what the preview draws when there are no live numbers
 const SAMPLE = { kmh: 87, kmhg: 86, kmho: 87, hdg: 'NE', hdgd: '047°', otemp: -12.5, clock: '18:42', date: '2026-10-27', rpm: 1850, boost: 14.2, bmax: 21.6,
   ect: 86, iat: 8, volt: 14.1, load: 52, lph: 7.4, econ: 8.5, maf: 38.5, rail: 850, tstate: 'RUNNING', tkm: 42.7, ttime: '0:38', tl: 3.94, tavg: 9.2, tavgs: 67, tvmax: 104,
-  tidle: '0:03', totkm: 15204, totl: 1421, totavg: 9.3, gfix: '3D FIX', sats: '9/14', hdop: 0.9, alt: 702, lat: 56.24650, lon: -120.84760,
+  tidle: '0:03', totkm: 15204, totl: 1421, totavg: 9.3, dte: 512, fuel: 61, gfix: '3D FIX', sats: '9/14', hdop: 0.9, alt: 702, lat: 56.24650, lon: -120.84760,
   obd: 'reading', ble: 'Heep on', wifi: 'Ben iPhone', nano: 'ok', sd: 'logging', sdfree: 29811, logn: 2311, queue: 0, fw: '2.0', up: '0:41', heap: 92, btn: '3S' };
 
 // same screens a new T3 starts with: keep in step with DEFAULT_SCREENS in firmware/T3/screens.h
@@ -52,6 +53,7 @@ const SCREEN_TEMPLATES = [
   ['Boost gauge', 'Boost|1|v,boost,0,0,128,40,4,c,lu,0,0,|b,boost,0,42,128,12,1,l,,0,30,|r,bmax,0,56,64,8,1,l,l,0,0,|r,rpm,66,56,62,8,1,r,l,0,0,'],
   ['Temperature & direction', DEFAULT_SCREENS[0].replace('Temp & dir', 'Temp & dir 2')],
   ['One big number', 'Big|1|v,kmh,0,0,128,64,4,c,lu,0,0,'],
+  ['Distance to empty', 'Range|1|v,dte,0,0,128,42,4,c,lu,0,0,|r,fuel,0,46,128,8,1,l,lu,0,0,|r,tavg,0,56,128,8,1,l,lu,0,0,'],
   ['Two big numbers', 'Two|1|v,kmh,0,0,63,64,4,c,lu,0,0,|n,-,64,4,1,56,1,l,,0,0,|v,otemp,65,0,63,64,3,c,lu,0,0,'],
   ['List of six', 'List|1|r,rpm,0,0,128,8,1,l,l,0,0,|r,boost,0,11,128,8,1,l,lu,0,0,|r,ect,0,22,128,8,1,l,lu,0,0,|r,iat,0,33,128,8,1,l,lu,0,0,|r,volt,0,44,128,8,1,l,lu,0,0,|r,otemp,0,55,128,8,1,l,lu,0,0,'],
 ];
@@ -194,6 +196,8 @@ function previewLive() {
   if (d.ot != null) o.otemp = t3TempF() ? d.ot * 9 / 5 + 32 : d.ot;
   if (d.hdg != null) o.hdg = (d.hdgAge > 3 ? '(' : '') + compass(d.hdg) + (d.hdgAge > 3 ? ')' : '');
   if (d.trip) { o.tkm = d.trip.km; o.tl = d.trip.l; o.tvmax = d.trip.vmax; }
+  if (d.dte != null) o.dte = d.dte;
+  if (d.fl != null) o.fuel = d.fl;
   return o;
 }
 function compass(deg) { if (deg == null || deg < 0) return '--'; return ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(((deg % 360) + 360) % 360 / 45) % 8]; }

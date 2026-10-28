@@ -1,7 +1,7 @@
 'use strict';
 // core.js - the Jeep log on this phone, syncing with the Google Sheet, and the numbers.
 
-const VERSION = '1.1.9';
+const VERSION = '1.1.10';
 const TANK_DEFAULT = 77.6; // 2006 Liberty CRD: 20.5 US gal
 const PERSONAL = 'Personal tank'; // the Station value for fill-ups from the tank at home
 
@@ -298,6 +298,13 @@ function calc(d) {
     st.fuelPct = st.fuelL / st.tank;
     st.left = st.fuelL / st.avg * 100;
     st.driven = driven;
+  }
+  // with the T3's trips too (econ.js): an economy before two full tanks, the tank's level from what was really used
+  if (typeof blendEcon === 'function') {
+    st.econ = blendEcon(st, d.trip);
+    const e = st.econ;
+    if (e.fuelL != null) { st.fuelL = e.fuelL; st.fuelPct = e.fuelPct; st.left = e.left; st.driven = e.used.driven; }
+    if (e.range) st.range = e.range;
   }
   return st;
 }

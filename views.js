@@ -32,7 +32,8 @@ function renderHome(v) {
   const st = STATS;
   v.append(titleRow('Heep', S.prefs.vehicle + (st.odo ? ' · ' + fmt0(st.odo) + ' km' : '')));
   topBanners(v);
-  if (!st.n) {
+  const e = st.econ || { all: {}, since: {} };
+  if (!st.n && !e.v) {
     v.append(card(h('div', { class: 'empty' },
       h('div', { class: 'ico' }, icon('pump')), h('h3', { text: 'Log your first fill-up' }),
       h('p', { text: 'Tap + at the pump: the odometer, the litres and what it cost. Fuel economy shows up after two full tanks.' }),
@@ -40,14 +41,17 @@ function renderHome(v) {
     homeService(v, st);
     return;
   }
-  // the headline: average economy, and the tank
+  // the headline: the best economy there is (econ.js: full tanks, and the T3's trips corrected by them), and the tank
   const hero = h('div', { class: 'hero' });
+  const tanksWord = e.tanks + (e.tanks > 1 ? ' full tanks' : ' full tank');
   hero.append(h('div', null,
-    h('div', { class: 'big', text: st.avg ? fmt1(st.avg) : '—' }),
-    h('div', { class: 'unit', text: st.avg ? 'L/100 km average' : 'L/100 km after two full tanks' })));
+    h('div', { class: 'big', text: e.v ? fmt1(e.v) : '—' }),
+    h('div', { class: 'unit', text: ({ tank: 'L/100 km · your last ' + tanksWord, mix: 'L/100 km · last ' + tanksWord + ' + the T3 since',
+      t3: 'L/100 km · the T3 so far (' + fmt0(e.all.km) + ' km)' })[e.src] || 'L/100 km after two full tanks' })));
   if (st.fuelPct != null) {
     const stale = !st.odoT || Date.now() - st.odoT > 3 * 864e5;
-    hero.append(fuelGauge(st.fuelPct, Math.round(st.fuelPct * 100) + '%', '≈' + fmt0(st.left) + ' km', stale));
+    hero.append(h('button', { class: 'gauge-btn', 'aria-label': 'Distance to empty', onclick: () => dteSheet() },
+      fuelGauge(st.fuelPct, Math.round(st.fuelPct * 100) + '%', '≈' + fmt0(st.left) + ' km', stale)));
   }
   const chips = h('div', { class: 'chips' });
   if (st.last != null) {
@@ -55,18 +59,23 @@ function renderHome(v) {
     chips.append(h('span', { class: 'chip' }, h('i', { class: 'dot', style: 'background:' + (worse ? 'var(--warn)' : better ? 'var(--good)' : 'var(--ink-3)') }),
       'Last tank ' + fmt1(st.last) + (st.avg != null ? ' · ' + econWord(st.last, st.avg).replace(' than average', '') : '')));
   }
+  if (e.src === 'mix' && e.since.v != null) chips.append(h('span', { class: 'chip', text: 'Since your fill-up ' + fmt1(e.since.v) }));
+  if (e.src === 't3') chips.append(h('span', { class: 'chip', text: 'Estimate: exact after two full tanks' }));
   if (st.best != null && st.tanks.length > 1) chips.append(h('span', { class: 'chip', text: 'Best ' + fmt1(st.best) }));
+  if (st.avg != null && st.tanks.length > e.tanks) chips.append(h('span', { class: 'chip', text: 'All tanks ' + fmt1(st.avg) }));
   if (st.tanks.length) chips.append(h('span', { class: 'chip', text: st.tanks.length + (st.tanks.length > 1 ? ' tanks' : ' tank') }));
+  if (e.calN) chips.append(h('span', { class: 'chip', text: 'T3 corrected ×' + e.cal.toFixed(2) }));
   hero.append(chips);
   v.append(card(hero));
 
   // four numbers worth glancing at
   const m = st.thisMonth;
   v.append(h('div', { class: 'tiles' },
-    tile('Cost per km', 'dollar', st.perKm ? '$' + st.perKm.toFixed(3) : '—', null, 'diesel only'),
+    tile('Cost per km', 'dollar', e.perKm ? '$' + e.perKm.toFixed(3) : '—', null, e.perKm ? (e.perKmEst ? 'estimate: economy × pump price' : 'diesel only') : 'after a fill-up with a price'),
     tile('This month', 'calendar', money(m.cost, 0), null, m.n ? m.n + (m.n > 1 ? ' fill-ups · ' : ' fill-up · ') + fmt0(m.lit) + ' L' : 'no fill-ups yet'),
     tile('Diesel', 'pump', st.lastPpl ? '$' + st.lastPpl.toFixed(3) : '—', '/L', st.ppl ? 'average $' + st.ppl.toFixed(3) : 'last price'),
-    tile('Full tank', 'road', st.range ? '≈' + fmt0(st.range) : '—', 'km', st.range ? fmt1(st.tank) + ' L at your average' : 'after two full tanks')));
+    tile('To empty', 'road', st.left != null ? '≈' + fmt0(st.left) : '—', st.left != null ? 'km' : null,
+      st.fuelL != null ? fmt0(st.fuelL) + ' L left · tap for more' : 'after a full fill-up', () => dteSheet())));
 
   // fuel economy for each full tank
   if (st.tanks.length) {
@@ -77,6 +86,16 @@ function renderHome(v) {
         avg: st.avg, avgLabel: st.avg ? 'avg ' + fmt1(st.avg) : '', fmt: fmt1, fmtAxis: g => (g % 1 ? g.toFixed(1) : String(g)), label: 'Fuel economy per tank',
       }),
       h('div', { class: 'foot', text: 'Every litre since the last full tank, over the distance since it. Lower is better.' })));
+  }
+  // the T3's trips, week by week (corrected by the tanks when it can be)
+  if (e.all.n && typeof tripTotals === 'function') {
+    const wk = tripTotals(S.data.trip, 'w', 8);
+    const items = wk.map(p => ({ v: p.litKm > 1 ? p.lit / p.litKm * 100 * e.cal : 0, x: MON[new Date(p.start).getMonth()].slice(0, 1) + new Date(p.start).getDate(),
+      tip: 'Week of ' + MON[new Date(p.start).getMonth()] + ' ' + new Date(p.start).getDate() + ' · ' + fmt0(p.km) + ' km' + (p.lit ? ' · ' + fmt1(p.lit * e.cal) + ' L' : '') }));
+    if (items.some(x => x.v > 0)) v.append(card(cardHead('Fuel economy by week', 'from the T3' + (e.calN ? ', corrected' : '')),
+      barChart({ items, hl: items.length - 1, fmt: fmt1, fmtAxis: g => (g % 1 ? g.toFixed(1) : String(g)), label: 'Fuel economy per week from the T3' }),
+      h('div', { class: 'foot', text: e.calN ? 'The T3 works the diesel out from the engine; your full tanks show it reads ' + Math.abs(Math.round((e.cal - 1) * 100)) + ' % ' + (e.cal >= 1 ? 'low' : 'high') + ', so these are corrected.' :
+        'The T3 works the diesel out from the engine. After two full tanks it gets checked against the pump and corrected.' })));
   }
   homeService(v, st);
 
@@ -112,10 +131,57 @@ function renderHome(v) {
     ['Average fill-up', fmt1(st.lit / st.n) + ' L · ' + money(st.cost / st.n, 0)],
   ];
   if (st.daysBetween) rows.push(['Days between fill-ups', fmt1(st.daysBetween)], ['Distance per day', fmt0(st.kmPerDay) + ' km']);
+  if (e.all && e.all.n) rows.push(['Logged by the T3', fmt0(e.all.km) + ' km · ' + e.all.n + (e.all.n > 1 ? ' trips' : ' trip') + (e.all.v ? ' · ' + fmt1(e.all.v) + ' L/100 km' : '')]);
   if (st.best != null && st.tanks.length > 1) rows.push(['Best and worst tank', fmt1(st.best) + ' · ' + fmt1(st.worst) + ' L/100 km']);
   if (st.personal.n) rows.push(['From your personal tank', st.personal.n + (st.personal.n > 1 ? ' fill-ups · ' : ' fill-up · ') + fmt0(st.personal.lit) + ' L' + (st.personal.cost ? ' · ' + money(st.personal.cost, 0) : '')]);
   if (st.year.n) rows.push([new Date().getFullYear() + ' so far', money(st.year.cost, 0) + ' · ' + fmt0(st.year.lit) + ' L']);
   v.append(h('div', { class: 'card list' }, rows.map(([k, val]) => h('div', { class: 'row' }, h('div', { class: 'main' }, h('b', { text: k })), h('div', { class: 'end' }, h('span', { text: val, style: 'font-size:15px' }))))));
+}
+
+// ======================================================= Distance to empty
+// The tank: full at your last full fill-up, plus top-ups, less the diesel the T3 measured since (corrected by your
+// full tanks) and, for driving it didn't measure, the distance at your economy (econ.js). With the T3 connected the
+// drive going on now counts too, and it updates as you go.
+function dteSheet() {
+  openSheet({
+    title: 'Distance to empty',
+    onClose: () => clearInterval(S.dteTimer),
+    build(b) {
+      const body = h('div', { style: 'display:grid;gap:14px' });
+      const paint = () => {
+        body.textContent = '';
+        const st = STATS = calc(S.data);
+        const live = typeof LIVE !== 'undefined' && LIVE.mode && LIVE.mode !== 'demo' && LIVE.v && LIVE.v.trip && LIVE.v.trip.id ? LIVE.v.trip : null;
+        const e = blendEcon(st, S.data.trip, live);
+        if (!e.v || e.fuelL == null) {
+          body.append(card(h('div', { class: 'empty', style: 'padding:14px 6px' }, h('div', { class: 'ico' }, icon('road')), h('h3', { text: 'Not known yet' }),
+            h('p', { text: !st.lastFull ? 'Log a fill-up where you filled it to the top: from then on the tank is counted down.' :
+              'Needs an economy: some driving with the T3 logging, or two full tanks.' }))));
+          return;
+        }
+        const u = e.used, low = e.fuelPct < .15;
+        body.append(card(h('div', { class: 'dte' },
+          fuelGauge(e.fuelPct, Math.round(e.fuelPct * 100) + '%', fmt0(e.fuelL) + ' L', false),
+          h('div', null, h('div', { class: 'big' + (low ? ' bad' : ''), text: '≈' + fmt0(e.left) }), h('div', { class: 'unit', text: 'km to empty' }),
+            h('div', { class: 'small muted', text: fmt1(e.fuelL) + ' of ' + fmt1(st.tank) + ' L at ' + fmt1(e.v) + ' L/100 km' + (live ? ' · live' : '') })))));
+        const rows = [
+          ['Last full fill-up', fmtDay(u.from.t, true) + ' · ' + fmt0(u.from.odo) + ' km'],
+          ['Driven since', fmt0(u.driven) + ' km' + (u.liveKm ? ' (' + fmt1(u.liveKm) + ' km this drive)' : '')],
+          ['Diesel the T3 measured', fmt1(u.measuredL) + ' L over ' + fmt0(u.measuredKm) + ' km' + (e.calN ? ' (corrected ×' + e.cal.toFixed(2) + ')' : '')],
+          u.otherKm > 0.5 ? ['Driving it didn’t measure', fmt0(u.otherKm) + ' km ≈ ' + fmt1(u.otherL) + ' L at your economy'] : null,
+          u.topped > 0 ? ['Top-ups since', fmt1(u.topped) + ' L'] : null,
+          ['Economy', fmt1(e.v) + ' L/100 km · ' + ({ tank: 'your full tanks', mix: 'full tanks + the T3 since', t3: 'the T3 so far (estimate)' })[e.src]],
+          ['A full tank goes', '≈' + fmt0(e.range) + ' km (' + fmt1(st.tank) + ' L)'],
+        ].filter(Boolean);
+        body.append(h('div', { class: 'card list' }, rows.map(([k, val]) => h('div', { class: 'row' }, h('div', { class: 'main' }, h('b', { text: k })), h('div', { class: 'end' }, h('span', { text: val, style: 'font-size:15px' }))))));
+        body.append(h('p', { class: 'foot', style: 'margin:0', text: 'Counted down from your last full fill-up. It gets more exact with every full tank you log (the T3’s diesel gets checked against the pump). The T3 can show it too: add “To empty” to a screen.' }));
+      };
+      b.append(body);
+      paint();
+      clearInterval(S.dteTimer);
+      S.dteTimer = setInterval(() => { if (typeof LIVE !== 'undefined' && LIVE.mode && LIVE.mode !== 'demo') paint(); }, 3000);
+    },
+  });
 }
 
 function homeService(v, st) {
