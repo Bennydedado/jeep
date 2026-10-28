@@ -191,7 +191,7 @@ String diagJson() {
        ",\"dups\":" + String(jlink.dups) + ",\"up\":" + String(wheel.nanoUp) + ",\"proto\":" + String(wheel.proto) + ",\"last\":\"" + String(wheel.last) +
        "\",\"lastAgo\":" + String(wheel.lastAt ? (long)(millis() - wheel.lastAt) / 1000 : -1) + ",\"presses\":" + String(wheel.presses) + "}";
   m += ",\"wifi\":{\"state\":\"" + jsonEsc(wifiNow) + "\",\"rssi\":" + String(wifiState == W_ON ? WiFi.RSSI() : 0) + ",\"ip\":\"" + (wifiState == W_ON ? WiFi.localIP().toString() : String("")) +
-       "\",\"seen\":\"" + jsonEsc(wifiSeen) + "\",\"relay\":" + String(relayUp() ? 1 : 0) + "}";
+       "\",\"seen\":\"" + jsonEsc(wifiSeen) + "\",\"relay\":" + String(relayUp() ? 1 : 0) + ",\"relayTxt\":\"" + jsonEsc(relayStatus()) + "\"}";
   m += "," + obdDiagJson();
   m += ",\"ble\":{\"phone\":" + String(phoneOn ? 1 : 0) + ",\"icar\":" + String(obdLinked ? 1 : 0) + ",\"icarAge\":" + String(car.at ? (long)(millis() - car.at) / 1000 : -1) + "}";
   m += ",\"sd\":{\"ok\":" + String(sd.ok ? 1 : 0) + ",\"totalMB\":" + String((uint32_t)(sd.total / 1048576)) + ",\"usedMB\":" + String((uint32_t)(sd.used / 1048576)) +

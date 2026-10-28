@@ -125,8 +125,8 @@ function codesMsg(m) {
   }
   if (LIVE.onCodes) LIVE.onCodes();
 }
-function codesStart(clear) {
-  if (!t3CanSend()) { toast('Not connected to the T3', 'Bluetooth, or the T3 on your hotspot', 'bad'); return; }
+async function codesStart(clear) {
+  if (!(await t3Ready())) { if (!t3CanSend()) toast('Not connected to the T3', 'Bluetooth, or the T3 on your hotspot', 'bad'); return; }
   if (!verAtLeast(LIVE.fw, '2.7')) { toast('Update the T3 first', 'Reading codes needs T3 2.7 (Live > Wi-Fi & update)', 'bad'); return; }
   const p = codesProtos();
   LIVE.codes = { running: true, n: p.length, clear: !!clear, items: [], at: Date.now() };

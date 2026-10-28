@@ -161,7 +161,7 @@ function widgetSheet() {
             'Copy your setup link, then tap Heep in Scriptable: it finds the link and connects. It stays on your phone.',
             S.sample ? null : h('div', { style: 'margin-top:8px' }, h('button', { class: 'btn btn-small btn-glass glass', onclick: e => copyText(setupLink(), e.currentTarget) }, icon('link'), 'Copy your setup link'))),
           step(4, 'Choose what it shows', 'Tap Heep in Scriptable any time: preview every size, and pick what each one shows (the first is the big one).'),
-          step(5, 'Add the widget', 'Touch and hold an empty spot (Home Screen or Today View) > Edit > Add Widget > Scriptable > pick a size > Add. Tap the new widget > Script: Heep. Lock Screen: touch and hold it > Customize > Lock Screen > the widget row > Scriptable.')),
+          step(5, 'Add the widget', 'Touch and hold an empty spot (Home Screen or Today View) > Edit > Add Widget > Scriptable > pick a size > Add. Tap the new widget > Script: Heep (whatever you named it). Lock Screen: touch and hold it > Customize > Lock Screen > the widget row > Scriptable.')),
         h('div', { class: 'label', text: 'Different blocks on one widget' }),
         h('div', { class: 'card' }, h('p', { class: 'foot', style: 'margin:0', text: 'While editing, tap the widget > Parameter, and type the blocks you want, first one big, e.g.  dte,econ,week\n\n' +
           'dte to empty · econ fuel economy · cost cost per km · week · month · trip last trip · odo odometer · service next service · fill last fill-up · chart driving by week (medium, large)' })),

@@ -221,9 +221,9 @@ function scrStatus(st) {
 }
 
 // send the whole set; resolves true when the T3 says it has them
-function sendScreens(st) {
+async function sendScreens(st) {
+  if (!(await t3Ready())) { if (!t3CanSend()) toast('Not connected to the T3', 'Connect over Bluetooth, or have the T3 on your hotspot', 'bad'); return false; }
   return new Promise(resolve => {
-    if (!t3CanSend()) { toast('Not connected to the T3', 'Connect over Bluetooth, or have the T3 on your hotspot', 'bad'); resolve(false); return; }
     const list = st.list.slice(0, MAX_SCREENS);
     const hash = screensHash(list);
     st.sentHash = hash; scrSave(st);
@@ -245,9 +245,9 @@ function sendScreens(st) {
   });
 }
 // ask the T3 for the screens it has (replaces the phone's copy)
-function loadScreensFromT3() {
+async function loadScreensFromT3() {
+  if (!(await t3Ready())) { if (!t3CanSend()) toast('Not connected to the T3', '', 'bad'); return null; }
   return new Promise(resolve => {
-    if (!t3CanSend()) { toast('Not connected to the T3', '', 'bad'); resolve(null); return; }
     const got = [];
     const timer = setTimeout(() => { LIVE.onScrd = null; resolve(null); toast('The T3 didn\'t answer', '', 'bad'); }, 12000);
     LIVE.onScrd = m => {

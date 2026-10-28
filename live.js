@@ -20,6 +20,7 @@ const GAUGES = [
 
 function renderLive(v) {
   const on = !!LIVE.mode;
+  if (typeof netWatch === 'function') setTimeout(netWatch, 0);   // the relay is already open: ask for live numbers now
   v.append(titleRow('Live', on ? (LIVE.mode === 'demo' ? 'Demo, made-up numbers' : LIVE.status + (LIVE.fw ? ' · T3 ' + LIVE.fw : '')) : 'Straight from the T3 in the Jeep'));
   topBanners(v);
   // the T3 only updates when asked (2.9+): say when there's something newer
@@ -446,7 +447,8 @@ async function netStart() {
   ws.onopen = () => {
     ws.send(mqPacket(0x10, [...mqStr('MQTT'), 4, 0x02, 0, 60, ...mqStr('heep-' + Math.random().toString(36).slice(2, 12))]));
     ws.send(mqPacket(0x82, [0, 1, ...mqStr(NET.topic), 0]));
-    NET.watchAt = 0; NET.openAt = Date.now(); NET.fails = 0; netWatch();   // tell a parked T3 someone's looking, so it starts sending
+    NET.watchAt = 0; NET.openAt = Date.now(); NET.fails = 0;
+    if (S.tab === 'live') netWatch();   // tell a parked T3 someone's looking, so it starts sending
     clearInterval(NET.ping);
     NET.ping = setInterval(() => { try { ws.send(new Uint8Array([0xC0, 0])); } catch (e) { /* closing */ } }, 30000);
     if (S.tab === 'live' && !LIVE.mode) render();
@@ -509,10 +511,12 @@ function netLine(text) {
 // listen while Live is on screen, let go when it isn't (saves data), and drop the view when the T3 goes quiet
 function netCheck() {
   if (S.tab !== 'live') NET.off = false;
-  const want = S.tab === 'live' && !document.hidden && LIVE.mode !== 'bt' && LIVE.mode !== 'demo';
+  // open on any tab while Heep is on screen (screens, settings and codes can go to the T3 from anywhere); a tiny
+  // keep-alive every 30 s costs next to nothing. Live numbers are only asked for while Live is showing.
+  const want = !document.hidden && LIVE.mode !== 'bt' && LIVE.mode !== 'demo' && !!S.conn && !S.sample;
   if (!want) { if (NET.ws || LIVE.mode === 'net') netStop(); return; }
   if (!NET.ws) netStart();
-  netWatch();
+  if (S.tab === 'live') netWatch();
   paintWait();
   if (LIVE.mode === 'net' && Date.now() - NET.at > 15000) { LIVE.mode = null; LIVE.v = {}; LIVE.els = null; wake(false); render(); }
 }

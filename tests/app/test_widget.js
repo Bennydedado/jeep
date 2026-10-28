@@ -34,8 +34,8 @@ class Stack {
 }
 class ListWidget extends Stack { async presentMedium() {} }
 const STORE = {}, KC = {};
-const FileManager = { local: () => ({ documentsDirectory: () => '/docs', joinPath: (a, b) => a + '/' + b, fileExists: p => p in STORE,
-  readString: p => STORE[p], writeString: (p, s) => { STORE[p] = s; } }) };
+const FileManager = { local: () => ({ documentsDirectory: () => '/docs', libraryDirectory: () => '/lib', joinPath: (a, b) => a + '/' + b, fileExists: p => p in STORE,
+  readString: p => STORE[p], writeString: (p, s) => { STORE[p] = s; }, remove: p => { delete STORE[p]; } }) };
 const Keychain = { contains: k => k in KC, get: k => KC[k], set: (k, v) => { KC[k] = v; }, remove: k => { delete KC[k]; } };
 const Data = { fromBase64String: s => ({ toRawString: () => Buffer.from(s, 'base64').toString('utf8') }) };
 let LOG = null, set = null;
@@ -106,7 +106,17 @@ ok(W.parseSetup('https://example.com/#setup=abc', b64) === null && W.parseSetup(
 
 // a widget refresh, start to finish
 (async () => {
+  // what the first version left in Documents (they showed up as scripts): tidied away, and the pasted script updated
+  const oldLoader = "const path = fm.joinPath(fm.documentsDirectory(), 'heep-widget-module.js');\nawait importModule(path).run();";
+  Object.assign(STORE, { '/docs/Untitled Script.js': oldLoader, '/docs/heep-widget-module.js': '// HEEP_WIDGET', '/docs/heep-lib-core.js': 'x', '/docs/heep-lib-econ.js': 'x',
+    '/docs/heep-lib-trips.js': 'x', '/docs/heep-config.json': '{"small":["odo"]}', '/docs/heep-log.json': '{}', '/docs/Other.js': 'leave me' });
+  global.Script.name = () => 'Untitled Script';
   global.config = { runsInWidget: true, widgetFamily: 'medium' }; global.args = { widgetParameter: null };
+  await W.run();
+  ok(!STORE['/docs/heep-lib-core.js'] && !STORE['/docs/heep-widget-module.js'] && !STORE['/docs/heep-log.json'] && STORE['/docs/Other.js'] === 'leave me', 'old copies cleared out of the Scripts list (nothing else touched)');
+  ok(/libraryDirectory/.test(STORE['/docs/Untitled Script.js']) && STORE['/lib/heep-widget-module.js'], 'the pasted script brought up to date by itself');
+  ok(STORE['/lib/heep-config.json'] === '{"small":["odo"]}', 'your choices kept');
+  delete STORE['/lib/heep-config.json'];
   set = null; texts.length = 0;
   await W.run();
   ok(set && /Connect your Jeep log/.test(texts.join(' ')), 'not connected yet: the widget says how');
@@ -114,7 +124,7 @@ ok(W.parseSetup('https://example.com/#setup=abc', b64) === null && W.parseSetup(
   LOG = ben; set = null; texts.length = 0;
   await W.run();
   ok(set && texts.some(t => /^≈\d/.test(t)), 'connected: downloads Heep\'s code, asks the log, draws the numbers');
-  ok(STORE['/docs/heep-lib-core.js'] && STORE['/docs/heep-log.json'], 'keeps Heep\'s code and the log for no signal');
+  ok(STORE['/lib/heep-lib-core.js'] && STORE['/lib/heep-log.json'] && !Object.keys(STORE).some(k => /^\/docs\/heep-/.test(k)), 'keeps Heep\'s code and the log for no signal, out of the Scripts list');
   global.args = { widgetParameter: 'service' }; global.config = { runsInWidget: true, widgetFamily: 'small' }; texts.length = 0;
   await W.run();
   ok(texts.includes('OIL CHANGE'), 'a widget\'s Parameter changes what it shows');

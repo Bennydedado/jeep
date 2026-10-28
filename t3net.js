@@ -76,12 +76,16 @@ function wifiSheet() {
         const via = t3Via(), m = wifiModel();
         head.textContent = ''; nets.textContent = ''; near.textContent = ''; tips.textContent = '';
         if (!via) {
-          head.append(h('div', { class: 'card' }, h('p', { class: 'foot', style: 'margin:0', text: LIVE.updWaitUntil > Date.now() ? 'The T3 is busy updating over Wi-Fi. Heep reconnects as soon as it’s back.' : 'Connect to the T3 first: Live > Connect over Bluetooth (in Bluefy), or have the T3 on your hotspot.' })));
+          head.append(h('div', { class: 'card' }, h('p', { class: 'foot', style: 'margin:0', text: LIVE.updWaitUntil > Date.now() ? 'The T3 is busy updating over Wi-Fi. Heep reconnects as soon as it’s back.' :
+            relayReady() ? 'Reaching the T3 over Wi-Fi… It answers when the key is on and it’s on your hotspot or home Wi-Fi.' : 'Connect to the T3 first: Live > Connect over Bluetooth (in Bluefy), or have the T3 on your hotspot.' })));
         } else {
           const [kind, title, sub] = wifiHeadline(m);
           head.append(h('div', { class: 'card list' }, h('div', { class: 'row' },
             h('div', { class: 'main' }, h('b', { text: title }), h('span', { class: 'wrap', text: sub })),
-            m.on && m.rssi != null ? sigBars(m.rssi) : h('span', { class: 'pill ' + kind }, h('i')))));
+            m.on && m.rssi != null ? sigBars(m.rssi) : h('span', { class: 'pill ' + kind }, h('i'))),
+            // the relay: how Safari (and Heep without Bluetooth) reaches the T3 (2.11+ says why when it can't)
+            LIVE.wifi && LIVE.wifi.relayTxt ? h('div', { class: 'row' }, h('div', { class: 'main' }, h('b', { text: 'Relay (Heep over Wi-Fi)' }),
+              h('span', { class: 'wrap', text: LIVE.wifi.relayTxt })), h('span', { class: 'pill ' + (LIVE.wifi.relay ? 'ok' : 'due') }, h('i'))) : null));
           // your networks, in the order the T3 tries them
           const seenBy = k => m.seen.find(x => ssidKey(x.n) === k);
           nets.append(h('div', { class: 'label', text: 'Your networks (tried in this order)' }));

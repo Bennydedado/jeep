@@ -50,6 +50,10 @@ async function onFrame(bytes) {
   T3.lastNonce = j.n;
   const m = JSON.parse(j.m);
   T3.cmds.push(m.c);
+  if (T3.dead) return;   // key off: nothing answers
+  if (m.c === 'scr') { (T3.scr = T3.scr || [])[m.i] = m.d; return; }
+  if (m.c === 'scrok') { await push({ t: 'scr', ok: true, h: m.h, n: m.n }); return; }
+  if (m.c === 'watch' && T3.quiet) return;   // a parked T3 that isn't sending live numbers
   if (m.c === 'watch') { T3.watched++; await push({ t: 'live', rpm: 1850, kmh: 0, src: 'obd', ect: 71, g: 0, tp: 0, pg: 0, btn: '-', bn: 0, nano: 'none', sd: 1, trip: { id: 't9-1', km: 0, l: 0, s: 0, idle: 0, vmax: 0, gkm: 0 } }); }
   else if (m.c === 'status') await push({ t: 'hi', fw: T3.fw, proto: 2, obd: true, queued: 0, wifi: 'on starlink2.4', seen: '', ssids: ['starlink2.4'], nets: 1 });
   else if (m.c === 'wifi') await push({ t: 'wifi', fw: T3.fw, state: 'on starlink2.4', on: true, ssid: 'starlink2.4', rssi: -40, ch: 11, ip: '192.168.1.122', onFor: 300, scanning: false, scanAgo: 30, seen: [['starlink2.4', -40, 11, 1]], saved: ['starlink2.4'] });
@@ -139,6 +143,28 @@ const srv = http.createServer((q, r) => {
   while (Date.now() - t1 < 8000 && !/running 2\.5 ✓/.test(await page.locator(W).innerText())) await page.waitForTimeout(300);
   check(/The T3 is running 2\.5 ✓/.test(await page.locator(W).innerText()), 'after the restart: running 2.5');
   await page.screenshot({ path: shots + '/relay-3-done.png' });
+
+  await page.locator(W + ' button[aria-label="Close"]').click(); await page.waitForTimeout(400);
+
+  // ---- from another tab, a T3 that's quiet (not sending live numbers): Heep wakes it and the screens go over Wi-Fi
+  T3.quiet = true;
+  await page.click('.tab[data-tab="home"]'); await page.waitForTimeout(17000);   // longer than "heard lately" (15 s)
+  check(await page.evaluate(() => !t3Via() && relayReady()), 'on Overview the relay stays open, and the T3 hasn\'t been heard lately');
+  const before = T3.cmds.length;
+  await page.evaluate(() => screensSheet()); await page.waitForTimeout(600);
+  await page.locator('.sheet.on button', { hasText: 'Send to the T3' }).click();
+  const t2 = Date.now();
+  while (Date.now() - t2 < 10000 && !/Screens are on the T3/.test(await page.locator('body').innerText())) await page.waitForTimeout(200);
+  check(T3.cmds.slice(before).includes('status'), 'Heep asked the quiet T3 first (signed status)');
+  check(/Screens are on the T3/.test(await page.locator('body').innerText()) && (T3.scr || []).length >= 5, 'the screens went over Wi-Fi and the T3 confirmed (' + (T3.scr || []).length + ')');
+  await page.screenshot({ path: shots + '/relay-4-screens.png' });
+  // ---- a T3 that doesn't answer at all: says so instead of "connect"
+  T3.dead = true;
+  await page.waitForTimeout(16000);
+  await page.locator('.sheet.on button', { hasText: 'Send to the T3' }).click();
+  const t3 = Date.now();
+  while (Date.now() - t3 < 12000 && !/didn’t answer over Wi-Fi/.test(await page.locator('body').innerText())) await page.waitForTimeout(200);
+  check(/didn’t answer over Wi-Fi/.test(await page.locator('body').innerText()), 'a T3 that doesn\'t answer: Heep says so (key on? on Wi-Fi?)');
 
   check(!errors.length, 'no errors in the page: ' + errors.join(' | '));
   console.log('relay_live.js: ' + checks + ' checks, ' + failed + ' failed');

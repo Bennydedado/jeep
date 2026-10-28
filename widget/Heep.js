@@ -4,7 +4,7 @@
 // Nothing private is in here: your Jeep log link is asked for once and kept in Scriptable's Keychain.
 const URL = 'https://bennydedado.github.io/jeep/widget/heep-widget.js';
 const fm = FileManager.local();
-const path = fm.joinPath(fm.documentsDirectory(), 'heep-widget-module.js');
+const path = fm.joinPath(fm.libraryDirectory(), 'heep-widget-module.js');   // out of sight (not in your Scripts list)
 try {
   const r = new Request(URL + '?t=' + Math.floor(Date.now() / 600000));
   r.timeoutInterval = 8;

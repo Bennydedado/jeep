@@ -344,7 +344,27 @@ function messageWidget(title, text) {
 
 // ---------------------------------------------------------------- data and files (Scriptable)
 const fm = () => FileManager.local();
-const file = name => fm().joinPath(fm().documentsDirectory(), 'heep-' + name);
+// kept in Scriptable's Library folder: in its Documents folder, .js files show up in your Scripts list
+const file = name => fm().joinPath(fm().libraryDirectory(), 'heep-' + name);
+// the first version kept them in Documents (and its pasted script fetched this file into there): tidy up once,
+// and bring that script up to date so it stops making "heep-widget-module" too
+async function tidyUp() {
+  const f = fm(), docs = f.documentsDirectory(), at = n => f.joinPath(docs, n);
+  try {
+    if (f.fileExists(at('heep-config.json')) && !f.fileExists(file('config.json'))) f.writeString(file('config.json'), f.readString(at('heep-config.json')));
+    for (const n of ['heep-lib-core.js', 'heep-lib-econ.js', 'heep-lib-trips.js', 'heep-log.json', 'heep-config.json']) if (f.fileExists(at(n))) f.remove(at(n));
+    const me = at(Script.name() + '.js');
+    if (f.fileExists(me) && /documentsDirectory\(\), 'heep-widget-module\.js'/.test(f.readString(me))) {
+      const r = new Request(BASE + 'widget/Heep.js?t=' + Date.now()); r.timeoutInterval = 8;
+      const loader = await r.loadString();
+      if (r.response && r.response.statusCode === 200 && /libraryDirectory/.test(loader)) {
+        f.writeString(me, loader);
+        if (!f.fileExists(f.joinPath(f.libraryDirectory(), 'heep-widget-module.js'))) f.writeString(f.joinPath(f.libraryDirectory(), 'heep-widget-module.js'), f.readString(at('heep-widget-module.js')));
+        f.remove(at('heep-widget-module.js'));
+      }
+    }
+  } catch (e) { /* next time */ }
+}
 function readJSON(name, d) { try { return fm().fileExists(file(name)) ? JSON.parse(fm().readString(file(name))) : d; } catch (e) { return d; } }
 function writeJSON(name, v) { try { fm().writeString(file(name), JSON.stringify(v)); } catch (e) { /* full? */ } }
 const b64 = s => Data.fromBase64String(s).toRawString();
@@ -475,6 +495,7 @@ async function appMenu() {
 
 // ---------------------------------------------------------------- start here
 async function run() {
+  await tidyUp();
   if (config.runsInApp && !config.runsInWidget && !config.runsInAccessoryWidget) { await appMenu(); Script.complete(); return; }
   const family = config.widgetFamily || 'medium';
   let w;

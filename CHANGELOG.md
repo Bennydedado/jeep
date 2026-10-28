@@ -1,5 +1,20 @@
 # Changes
 
+## 28 Oct 2026 — T3 2.11, Heep 1.1.12: Heep over Wi-Fi works everywhere
+
+- **"Not connected to the T3" with the T3 on your hotspot:** Heep only counted the relay as connected once the T3 had
+  sent something in the last 15 s, and a parked T3 only sends when Live asks. Now the relay stays open on every tab
+  while Heep is on screen, and before screens, settings, codes and the rest Heep asks a quiet T3 (signed "status") and
+  goes ahead when it answers; if it doesn't within 8 s Heep says so (key on? on Wi-Fi?) instead of "connect".
+- **The T3 gets on the relay far more easily:** plain MQTT (1883) instead of TLS, which needed ~40 KB of memory the T3
+  often hadn't got with Bluetooth running. Nothing changes for privacy: live numbers are AES-GCM sealed with a key from
+  your sheet key and commands are signed with it, as before. TLS is still tried after two failures.
+- Without a clock yet (no GPS, no internet time), a correctly signed command sets it, so the first command isn't lost.
+- Relay status with reasons on the Wi-Fi page and Diagnostics: connected, or why not (and free memory), commands
+  taken and refused (bad signature, replay, time off).
+- iPhone widget: its saved copies (heep-lib-core and the rest) showed up in Scriptable's Scripts list. They live in
+  Scriptable's Library folder now; the old ones are cleared away and the pasted script updates itself.
+
 ## 28 Oct 2026 — Heep 1.1.11: iPhone widget
 
 - **Widgets for the Home Screen, the Today View and the Lock Screen** through the free Scriptable app: small, medium and

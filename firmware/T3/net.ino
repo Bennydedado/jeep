@@ -13,8 +13,17 @@
 uint32_t lastUploadAt = 0;
 static uint32_t wifiAt = 0, nextWifiTry = 15000, nextUploadTry = 0, wifiIdleSince = 0, mqttTry = 0, lastPub = 0, nextNtpAt = 0;
 static volatile bool uploading = false, flushReq = false;
+// The relay goes over plain MQTT (port 1883) by default: everything on it is already sealed end to end (live numbers
+// AES-GCM with a key from your sheet key, commands signed with it), and a TLS connection needs ~40 KB of memory the T3
+// often hasn't got with Bluetooth running (it then never got on the relay). Two failures in a row: TLS (8883) next.
+static WiFiClient mqttTcp;
 static WiFiClientSecure mqttTls;
-static PubSubClient mqtt(mqttTls);
+static PubSubClient mqtt(mqttTcp);
+static bool relayTls = false;
+static int relayFails = 0;
+static Txt relayTxt;                 // how the relay is doing, for Heep's Wi-Fi page and Diagnostics
+static uint32_t relayCmds = 0, relayRefused = 0;
+static Txt relayRefusedWhy;
 static int64_t lastNonce = 0;
 static volatile bool relayBusy = false;       // a relay connection attempt is running in its own task (loop() keeps its hands off mqtt)
 static uint32_t watchedAt = 0, nonceSavedAt = 0;
@@ -86,7 +95,7 @@ String wifiJson() {
   for (int i = 0; i < cfg.netCount; i++) m += String(i ? "," : "") + "\"" + jsonEsc(cfg.nets[i].ssid) + "\"";
   m += "]";
   if (lastTrySsid.length()) m += ",\"last\":{\"ssid\":\"" + jsonEsc(lastTrySsid) + "\",\"res\":\"" + jsonEsc(lastTryRes) + "\",\"reason\":" + String(lastReason) + ",\"ago\":" + String((now - lastTryAt) / 1000) + "}";
-  m += ",\"relay\":" + String(relayUp() ? 1 : 0) + ",\"up\":\"" + jsonEsc(lastUpload) + "\",\"upd\":\"" + jsonEsc(updStatus) + "\",\"queued\":" + String(queued) + "}";
+  m += ",\"relay\":" + String(relayUp() ? 1 : 0) + ",\"relayTxt\":\"" + jsonEsc(relayStatus()) + "\",\"up\":\"" + jsonEsc(lastUpload) + "\",\"upd\":\"" + jsonEsc(updStatus) + "\",\"queued\":" + String(queued) + "}";
   return m;
 }
 static void tryDone(const String& res) { lastTrySsid = wifiName; lastTryRes = res; lastTryAt = millis(); }
@@ -125,6 +134,15 @@ String updJson() {
 }
 void wifiNudge() { wifiNudge(false); }
 bool relayUp() { return !relayBusy && mqtt.connected(); }
+// for Heep: connected or why not, and what came in
+String relayStatus() {
+  if (!liveWanted()) return cfg.liveWifi ? "off (no sheet key yet)" : "off (Live over Wi-Fi is off)";
+  if (wifiState != W_ON) return "waiting for Wi-Fi";
+  String s = relayUp() ? String("connected") + (relayTls ? " (TLS)" : "") : relayTxt.empty() ? String("connecting") : String(relayTxt);
+  s += " · " + String(relayCmds) + " commands";
+  if (relayRefused) s += ", " + String(relayRefused) + " refused (last: " + String(relayRefusedWhy) + ")";
+  return s;
+}
 bool uploadBusy() { return uploading; }
 void taskEvent(const String& what) { char b[96]; strlcpy(b, what.c_str(), sizeof(b)); if (evQ) xQueueSend(evQ, b, 0); }
 
@@ -295,22 +313,26 @@ void wifiOff(uint32_t retryIn) {
 }
 
 // ---------------------------------------------------------------- Heep's commands over the relay: only if signed with your sheet key
+static void refused(const char* why) { relayRefused++; relayRefusedWhy.set(why); }
 void onRelay(char* topic, byte* payload, unsigned int len) {
-  if (!timeSrc) return;   // no clock yet: can't tell a fresh command from a recorded one
   String j; j.reserve(len + 1);
   for (unsigned int i = 0; i < len; i++) j += (char)payload[i];
   int64_t n = llField(j, "n");
   String m = jStr(j, "m"), h = jStr(j, "h");
-  if (!m.length() || h.length() != 64 || n <= lastNonce) return;
-  if (llabs(n - nowMs()) > 10LL * 60 * 1000) return;   // too old or from the future: a replay
+  if (!m.length() || h.length() != 64) { refused("not a command"); return; }
+  if (n <= lastNonce) { refused("already seen (replay)"); return; }
+  // with a clock: within 10 minutes of it, else it's a recording. Without one yet (no GPS, no internet time) the
+  // signature and the nonce still have to be right, and the command's own time sets the clock
+  if (timeSrc && llabs(n - nowMs()) > 10LL * 60 * 1000) { refused("time off by more than 10 min"); return; }
   String msg = ll(n) + "|" + m;
   unsigned char mac[32];
   mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), (const unsigned char*)cfg.sheetKey.c_str(), cfg.sheetKey.length(),
                   (const unsigned char*)msg.c_str(), msg.length(), mac);
   char hex[65];
   for (int i = 0; i < 32; i++) sprintf(hex + 2 * i, "%02x", mac[i]);
-  if (h != String(hex)) return;
-  lastNonce = n;
+  if (h != String(hex)) { refused("bad signature (different sheet key?)"); return; }
+  if (!timeSrc) setClock(n, 'a');
+  lastNonce = n; relayCmds++;
   // kept in flash at most every 5 minutes (Heep's "watching" note comes every 30 s); older replays fail the time check anyway
   if (!nonceSavedAt || millis() - nonceSavedAt > 300000) { nonceSavedAt = millis(); Preferences p; p.begin("t3", false); p.putLong64("nonce", n); p.end(); }
   onCommand(m, 1);
@@ -334,20 +356,41 @@ static void netChores() {
   if ((ph == UP_FAIL || ph == UP_CURRENT) && millis() - sentAt > 60000) { updPhase = UP_NONE; sentPhase = -1; }
 }
 
-// connecting to the relay (TLS, up to ~10 s on a slow hotspot) happens in its own task so the screen never freezes
+static const char* mqttWhy(int s) {
+  switch (s) {
+    case -4: return "no answer in time"; case -3: return "connection lost"; case -2: return "couldn't reach the relay";
+    case -1: return "disconnected"; case 1: case 2: case 3: return "the relay refused"; case 4: case 5: return "not allowed";
+  }
+  return "unknown";
+}
+// connecting to the relay (up to ~10 s on a slow hotspot) happens in its own task so the screen never freezes
 static void relayConnectTask(void*) {
   xSemaphoreTake(cfgLock, portMAX_DELAY);
   String topic = cmdTopic;
   xSemaphoreGive(cfgLock);
-  mqttTls.setInsecure();
-  mqttTls.setConnectionTimeout(4000);
-  mqttTls.setHandshakeTimeout(6);
-  mqtt.setServer(RELAY_HOST, RELAY_PORT);
+  bool tls = relayFails >= 2 && relayFails % 2 == 0;   // plain first; after two misses every other try is TLS
+  if (tls) {
+    mqttTls.setInsecure();
+    mqttTls.setConnectionTimeout(4000);
+    mqttTls.setHandshakeTimeout(6);
+    mqtt.setClient(mqttTls);
+    mqtt.setServer(RELAY_HOST, RELAY_PORT_TLS);
+  } else {
+    mqtt.setClient(mqttTcp);
+    mqtt.setServer(RELAY_HOST, RELAY_PORT);
+  }
   mqtt.setBufferSize(2048);
   mqtt.setSocketTimeout(4);
   mqtt.setCallback(onRelay);
+  relayTxt.set(String("connecting") + (tls ? " (TLS)" : ""));
   String id = "jeep-t3-" + String((uint32_t)ESP.getEfuseMac(), HEX);
-  if (mqtt.connect(id.c_str()) && mqtt.subscribe(topic.c_str())) subscribed = topic;
+  if (mqtt.connect(id.c_str()) && mqtt.subscribe(topic.c_str())) {
+    subscribed = topic; relayTls = tls; relayFails = 0;
+    relayTxt.set(String("connected") + (tls ? " (TLS)" : ""));
+  } else {
+    relayFails++;
+    relayTxt.set("couldn't connect" + String(tls ? " (TLS)" : "") + ": " + mqttWhy(mqtt.state()) + " (" + String(ESP.getFreeHeap() / 1024) + " KB free)");
+  }
   relayBusy = false;
   vTaskDelete(nullptr);
 }

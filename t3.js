@@ -56,14 +56,35 @@ function t3Via() {
   if (NET.ws && NET.ws.readyState === 1 && NET.at && Date.now() - NET.at < 15000) return 'net';
   return null;
 }
-const t3CanSend = () => !!t3Via();
+// the relay is open: a signed command can go right now. The T3 hears it whenever it's on Wi-Fi; it doesn't have to have
+// spoken first (a parked T3 is quiet until something asks).
+const relayReady = () => !!(S.conn && !S.sample && NET.ws && NET.ws.readyState === 1 && NET.topic);
+const t3CanSend = () => !!t3Via() || relayReady();
+// before something that needs an answer: Bluetooth, or a T3 heard over Wi-Fi lately, or one that answers a signed
+// "status" within 8 s. Says so when it doesn't.
+let wakeP = null, quietAt = 0, quietToastAt = 0;
+async function t3Ready() {
+  if (t3Via()) return true;
+  if (!relayReady()) return false;
+  if (Date.now() - quietAt < 12000) return false;   // just asked and got nothing: don't make every step wait again
+  if (!wakeP) wakeP = (async () => {
+    const since = Date.now();
+    await relayCommand({ c: 'status' });
+    for (let i = 0; i < 40; i++) { if (NET.at >= since) return true; await new Promise(r => setTimeout(r, 200)); }
+    quietAt = Date.now();
+    if (Date.now() - quietToastAt > 60000) { quietToastAt = Date.now(); toast('The T3 didn’t answer over Wi-Fi', 'Is the key on and the T3 on your hotspot or home Wi-Fi? Over Bluetooth, its Wi-Fi page shows the relay.', 'bad'); }
+    return false;
+  })().finally(() => { wakeP = null; });
+  return wakeP;
+}
 
 // send one command: Bluetooth if connected, otherwise the relay (signed). Secrets never go over the relay.
 let t3Nonce = 0;
 async function t3Send(obj) {
   const via = t3Via();
   if (via === 'bt') { await send(obj); return true; }
-  if (via !== 'net') return false;
+  if (!relayReady()) return false;
+  if (via !== 'net' && obj.c !== 'status' && obj.c !== 'watch' && !(await t3Ready())) return false;
   return relayCommand(obj);
 }
 // a signed command through the relay; works as soon as Heep is connected to it (the T3 doesn't have to have spoken yet)
@@ -94,8 +115,8 @@ const T3_DEFAULTS = { fc: 100, dc: 100, ss: 60, pk: 90, br: 2, bn: 0, nf: -1, nt
 function t3Cfg() { return Object.assign({}, T3_DEFAULTS, store.get('t3', {})); }
 async function t3SendSettings() {
   const v = t3Cfg();
+  if (!(await t3Ready())) { toast('Saved on this phone', 'Connect to the T3 (Bluetooth, or the T3 on your hotspot) and send again', 'info'); return false; }
   const via = t3Via();
-  if (!via) { toast('Saved on this phone', 'Connect to the T3 (Bluetooth, or the T3 on your hotspot) and send again', 'info'); return false; }
   const msg = { c: 'cfg', fc: Math.max(30, Math.min(300, num(v.fc) || 100)) / 100, dc: Math.max(50, Math.min(200, num(v.dc) || 100)) / 100 };
   for (const k of ['ss', 'pk', 'br', 'bn', 'nf', 'nt', 'tz', 'sp', 'lw', 'spd', 'hm', 'h16', 'hh', 'tf', 'to', 'gb', 'li', 'lis', 'lfl', 'sdm', 'rot', 'rf', 'io4', 'opr', 'etf']) msg[k] = Number(v[k]);
   msg.bm = String(v.bm); msg.obd = String(v.obd || '');
@@ -312,7 +333,7 @@ function diagSheet() {
           sec('Steering wheel (Nano link, GPIO 39)', [['Link', ({ ok: 'Hearing the Nano', lost: 'Lost (was working)', none: 'Never heard it' })[n.state] || n.state, n.state === 'ok' ? 'ok' : 'due'],
             ['Baud', n.baud], ['Good / bad / repeats', n.good + ' / ' + n.bad + ' / ' + n.dups], ['Nano up', n.up ? dur(n.up) : '-'], ['Last button', n.last + (n.lastAgo >= 0 ? ' (' + n.lastAgo + ' s ago)' : '')], ['Presses', n.presses]]),
           sec('Wi-Fi and relay', [['Wi-Fi', w.state], w.rssi ? ['Signal', w.rssi + ' dBm' + (w.rssi > -60 ? ' (strong)' : w.rssi > -75 ? ' (ok)' : ' (weak)')] : null, w.ip ? ['T3 address', w.ip] : null,
-            ['Networks the last scan saw', w.seen || '-'], ['Relay', w.relay ? 'Connected' : 'Not connected']]),
+            ['Networks the last scan saw', w.seen || '-'], ['Relay', w.relayTxt || (w.relay ? 'Connected' : 'Not connected'), w.relay ? 'ok' : 'due']]),
           sec('Bluetooth', [['Heep', bl.phone ? 'Connected' : 'Not connected'], ['iCar', bl.icar ? 'Connected' + (bl.icarAge >= 0 ? ', last answer ' + bl.icarAge + ' s ago' : '') : 'Not connected', bl.icar ? 'ok' : 'soon']]),
           d.obd ? sec('Engine (through the iCar)', [
             d.obd.data != null ? ['Engine answering', d.obd.data ? 'Yes' : 'No: is the key on?', d.obd.data ? 'ok' : 'due'] : null,
