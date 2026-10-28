@@ -1,5 +1,13 @@
 # Changes
 
+## 27 Oct 2026 — T3 2.9, Heep 1.1.9: updates only when you ask
+
+- 2.8 kept restarting to "look for updates": its regular check still ran in the background, failed for want of memory,
+  asked for a fresh start, the fresh start found nothing new, and round again. The T3 now never looks for updates by
+  itself: only Heep's Update over Wi-Fi (or over Bluetooth) does it. A 2.8 T3 in that loop installs 2.9 by itself on its
+  next round.
+- Live shows "T3 x.y is ready" when GitHub has something newer than the T3 you're connected to.
+
 ## 27 Oct 2026 — T3 2.8, Heep 1.1.8: Update over Wi-Fi from a fresh start
 
 - **"couldn't reach GitHub: connection refused"** with a strong signal: the secure download needs about 50 KB of memory in

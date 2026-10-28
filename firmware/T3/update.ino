@@ -7,8 +7,7 @@
 // the new program, restart into it. The screen shows how far it is. If it can't, the T3 starts up as usual with the
 // program it has and tells Heep why (the "upd" text in "hi").
 //
-// Asked for by Heep ("update", 2.8+), and by the T3 itself when its regular check finds a newer version (or can't
-// get through: at most twice in a row, setting "ubf").
+// Only when you ask from Heep ("update"): the T3 never looks for updates by itself (2.9+).
 
 static uint32_t bootUpdAt = 0;   // restart for the update at this millis() (0 = not asked)
 String bootUpdNote;               // how the update at start-up went, for the event log
@@ -49,7 +48,6 @@ static void bootShow(const String& a, const String& b, int pct) {   // pct -1: n
   if (pct >= 0) { oled.drawRect(0, 46, 128, 10, SSD1306_WHITE); oled.fillRect(2, 48, 124 * constrain(pct, 0, 100) / 100, 6, SSD1306_WHITE); }
   oled.display();
 }
-static void autoTries(int v) { Preferences p; p.begin("t3", false); p.putUChar("ubf", v); p.end(); }
 
 // the update itself: only comes back if it didn't install (the answer says why)
 static String bootUpdateRun() {
@@ -96,7 +94,6 @@ static String bootUpdateRun() {
   String v = jStr(body, "v"), url = jStr(body, "url");
   if (!v.length() || !url.length())
     return "couldn't reach GitHub: " + (why.length() ? why : String("no answer")) + " (" + String(WiFi.RSSI()) + " dBm, " + String(ESP.getFreeHeap() / 1024) + " KB free)";
-  autoTries(0);   // GitHub answered: the regular check may ask for a fresh start again
   if (!verNewer(v, FW)) return "up to date (" FW ")";
   if (v == badVersion) return v + " failed before; waiting for a newer one";
   bootShow("downloading " + v, "keep the key on", 0);

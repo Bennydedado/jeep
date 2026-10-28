@@ -22,6 +22,10 @@ function renderLive(v) {
   const on = !!LIVE.mode;
   v.append(titleRow('Live', on ? (LIVE.mode === 'demo' ? 'Demo, made-up numbers' : LIVE.status + (LIVE.fw ? ' · T3 ' + LIVE.fw : '')) : 'Straight from the T3 in the Jeep'));
   topBanners(v);
+  // the T3 only updates when asked (2.9+): say when there's something newer
+  if (!LIVE.latestAsked) { LIVE.latestAsked = true; latestT3().then(x => { LIVE.latest = x; if (x && LIVE.fw && S.tab === 'live') render(); }); }
+  if (LIVE.fw && LIVE.mode !== 'demo' && LIVE.latest && LIVE.latest.v && verNewer(LIVE.latest.v, LIVE.fw))
+    v.append(banner('download', 'T3 ' + LIVE.latest.v + ' is ready', 'You have ' + LIVE.fw + '. Tap, then Update over Wi-Fi', wifiSheet));
   v.append(h('div', { class: 'btn-grid' },
     h('button', { class: 'btn btn-primary', onclick: t3Setup }, icon('sliders'), 'T3 settings'),
     h('button', { class: 'btn btn-glass glass', onclick: screensSheet }, icon('odo'), 'Screens'),

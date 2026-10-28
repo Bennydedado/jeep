@@ -82,6 +82,7 @@ const srv = http.createServer((q, r) => {
   const text = () => page.locator(W).innerText();
   await page.click('.tab[data-tab="live"]'); await page.waitForTimeout(400);
   await page.evaluate(() => btConnect()); await page.waitForTimeout(700);
+  check(/T3 2\.9 is ready/.test(await page.locator('#view').innerText()), 'Live says a newer T3 program is ready (2.9+ only updates when asked)');
   await page.locator('button', { hasText: 'Wi-Fi & update' }).click(); await page.waitForTimeout(900);
 
   // ---- 1. it works
