@@ -96,7 +96,6 @@ void setup() {
   Serial.begin(115200);
   Serial.println("Jeep T3 " FW " starting");
   resetWhy = resetReason();
-  pinMode(LED_PIN, OUTPUT); digitalWrite(LED_PIN, LOW);
   loraSleep();
   // the screen first, so there's something to look at
   Wire.begin(OLED_SDA, OLED_SCL);
@@ -139,6 +138,5 @@ void loop() {
   otaStep();
   confirmUpdateStep();
   bootUpdateStep();
-  digitalWrite(LED_PIN, obdLinked && (millis() / 500) % 2);
   delay(2);
 }

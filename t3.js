@@ -111,7 +111,7 @@ function t3Act(a) { return t3Send({ c: 'act', a }); }
 // ---------------------------------------------------------------- settings
 // everything kept on this phone under 't3' and sent as one cfg message
 const T3_DEFAULTS = { fc: 100, dc: 100, ss: 60, pk: 90, br: 2, bn: 0, nf: -1, nt: 7, tz: -420, sp: 0, lw: 1, spd: 0, hm: 5, h16: 0, hh: 1, tf: 0, to: 0,
-  gb: 0, li: 1, lis: 10, lfl: 5, sdm: 90, rot: 0, rf: 250, bm: 'prev,home;mark,pause;next,end', io4: 0, obd: '', opr: 0, etf: 1 };
+  gb: 0, li: 1, lis: 10, lfl: 5, sdm: 90, rot: 0, rf: 250, bm: 'prev,home;mark,pause;next,end', wb: 'V+,V+;AN,HU;V-,V-', io4: 0, obd: '', opr: 0, etf: 1 };
 function t3Cfg() { return Object.assign({}, T3_DEFAULTS, store.get('t3', {})); }
 async function t3SendSettings() {
   const v = t3Cfg();
@@ -119,7 +119,7 @@ async function t3SendSettings() {
   const via = t3Via();
   const msg = { c: 'cfg', fc: Math.max(30, Math.min(300, num(v.fc) || 100)) / 100, dc: Math.max(50, Math.min(200, num(v.dc) || 100)) / 100 };
   for (const k of ['ss', 'pk', 'br', 'bn', 'nf', 'nt', 'tz', 'sp', 'lw', 'spd', 'hm', 'h16', 'hh', 'tf', 'to', 'gb', 'li', 'lis', 'lfl', 'sdm', 'rot', 'rf', 'io4', 'opr', 'etf']) msg[k] = Number(v[k]);
-  msg.bm = String(v.bm); msg.obd = String(v.obd || '');
+  msg.bm = String(v.bm); msg.wb = typeof writeWheelMap === 'function' ? writeWheelMap(parseWheelMap(v.wb)) : String(v.wb); msg.obd = String(v.obd || '');
   if (via === 'bt') {
     // the secrets only ever go over Bluetooth
     const nets = Array.isArray(v.nets) ? v.nets : [];

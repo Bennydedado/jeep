@@ -1,15 +1,16 @@
 // wheel.ino - steering wheel buttons: the Nano reads them and sends one line per press (jlink.h); this tab
-// turns each press into an action. The link only goes Nano -> T3, so nothing the T3 does (or fails to do)
-// can ever affect the Nano's stereo or headlight jobs.
+// turns each press into an action. The other way (2.12+, NANO_TX_PIN) only carries the Nano's right-button
+// map from Heep; the Nano keeps it, so nothing the T3 does (or fails to do) can stop its stereo or headlight jobs.
 //
 // Wiring: Nano TX (D1) -> 10 kOhm -> GPIO 39, and GPIO 39 -> 20 kOhm -> GND (makes the Nano's 5 V into 3.3 V).
+//         GPIO 25 -> 1 kOhm -> Nano D8 (right-button map; jeep_controller_v3 only).
 // Grounds joined. The baud rate is found automatically (9600 is what nano/T3Link uses).
 //
 // What each button does is set in Heep (T3 screens & buttons > Buttons) and stored as cfg.btnMap:
 //   "short,long;short,long;short,long" for buttons 1, 2, 3, e.g. "prev,home;mark,pause;next,end"
 // Actions: none next prev home mark pause end sleep bright peak send
 
-#define nanoSerial Serial2   // UART2, receive only, on NANO_RX_PIN
+#define nanoSerial Serial2   // UART2: receive on NANO_RX_PIN, send the button map on NANO_TX_PIN
 static const long NANO_BAUDS[] = { 9600, 19200, 38400, 57600, 115200 };
 static int nanoBaudIdx = 0;
 static uint32_t nanoBaudAt = 0, nanoGoodAtSwitch = 0, nanoLastByte = 0;
@@ -19,7 +20,7 @@ static uint32_t btnAt = 0;
 
 void wheelOpen(long baud) {
   nanoSerial.end();
-  nanoSerial.begin(baud, SERIAL_8N1, NANO_RX_PIN, -1);   // receive only: the T3 never drives a wire to the Nano
+  nanoSerial.begin(baud, SERIAL_8N1, NANO_RX_PIN, NANO_TX_PIN);   // sends at the speed the Nano uses (9600 for v3)
   wheel.baud = baud;
   nanoBaudAt = millis();
   nanoGoodAtSwitch = jlink.good;
@@ -38,7 +39,7 @@ void wheelStep() {
     char c = nanoSerial.read(); n++; nanoLastByte = now;
     if (jlink.feed(c, now, e)) {
       wheel.heardAt = now;
-      if (e.kind == 'H') { wheel.nanoUp = e.uptime; wheel.proto = e.proto; }
+      if (e.kind == 'H') { wheel.nanoUp = e.uptime; wheel.proto = e.proto; wheel.cfg = e.cfg; }
       else if (e.kind == 'B') onWheelButton(e.button, e.press, "wheel");
     }
   }
@@ -48,6 +49,29 @@ void wheelStep() {
     wheelOpen(NANO_BAUDS[nanoBaudIdx]);
   }
   if (cfg.io4 == 1) localButtonStep();
+  wheelMapStep(now);
+}
+
+// the right-button map is only for a Nano that says protocol 2 with a hash; the bare minimum is checked here (the
+// Nano checks every token and ignores a map it doesn't understand)
+bool wheelMapOk(const String& m) {
+  if (m.length() < 17 || m.length() > 40) return false;
+  for (unsigned i = 0; i < m.length(); i++) if (!strchr("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789+-,;", m[i])) return false;
+  return true;
+}
+// "saved" (the Nano has it), "sending", "old" (the Nano's sketch can't take one), "none" (no Nano heard)
+const char* wheelMapState() {
+  if (strcmp(wheelState(), "ok")) return "none";
+  if (wheel.proto < 2 || wheel.cfg < 0) return "old";
+  return wheel.cfg == jlinkMapHash(cfg.wheelMap.c_str()) ? "saved" : "sending";
+}
+// every 2 s until the Nano's heartbeat shows the same map; never waits for room
+void wheelMapStep(uint32_t now) {
+  if (strcmp(wheelMapState(), "sending") || now - wheel.mapSentAt < 2000) return;
+  char line[64];
+  int n = jlinkMapLine(cfg.wheelMap.c_str(), line, sizeof(line));
+  if (n && nanoSerial.availableForWrite() >= n) { nanoSerial.write((const uint8_t*)line, n); wheel.mapSent++; }
+  wheel.mapSentAt = now;
 }
 
 // "ok" (heard in the last 3 s), "lost" (heard before, not now), "none" (never)

@@ -172,7 +172,7 @@ String liveJson() {
   if (tempFresh()) m += ",\"ot\":" + String(otemp.c, 1);
   if (!isnan(fuelLeft())) m += ",\"fl\":" + String(fuelLeft(), 1) + ",\"dte\":" + String(fuelToEmpty(), 0);
   m += ",\"tp\":" + String(trip.paused ? 1 : 0) + ",\"pg\":" + String(page) + ",\"btn\":\"" + String(wheel.last) + "\",\"bn\":" + String(wheel.presses);
-  m += ",\"nano\":\"" + String(wheelState()) + "\",\"sd\":" + String(sd.ok ? 1 : 0);
+  m += ",\"nano\":\"" + String(wheelState()) + "\",\"wbs\":\"" + String(wheelMapState()) + "\",\"sd\":" + String(sd.ok ? 1 : 0);
   m += ",\"trip\":{\"id\":\"" + trip.id + "\",\"km\":" + String(trip.km, 2) + ",\"l\":" + String(trip.l, 2) + ",\"s\":" + String((long)trip.s) +
        ",\"idle\":" + String((long)trip.idle) + ",\"vmax\":" + String((long)trip.vmax) + ",\"gkm\":" + String(trip.gpsKm, 2) + "}}";
   return m;
@@ -189,7 +189,8 @@ String diagJson() {
        ",\"err\":" + String(otemp.errors) + ",\"rom\":\"" + String(otemp.rom) + "\",\"pin\":" + String(cfg.io4 == 0 ? ONEWIRE_PIN : -1) + "}";
   m += ",\"nano\":{\"state\":\"" + String(wheelState()) + "\",\"baud\":" + String(wheel.baud) + ",\"good\":" + String(jlink.good) + ",\"bad\":" + String(jlink.bad) +
        ",\"dups\":" + String(jlink.dups) + ",\"up\":" + String(wheel.nanoUp) + ",\"proto\":" + String(wheel.proto) + ",\"last\":\"" + String(wheel.last) +
-       "\",\"lastAgo\":" + String(wheel.lastAt ? (long)(millis() - wheel.lastAt) / 1000 : -1) + ",\"presses\":" + String(wheel.presses) + "}";
+       "\",\"lastAgo\":" + String(wheel.lastAt ? (long)(millis() - wheel.lastAt) / 1000 : -1) + ",\"presses\":" + String(wheel.presses) +
+       ",\"map\":\"" + String(wheelMapState()) + "\",\"hash\":" + String(wheel.cfg) + ",\"sent\":" + String(wheel.mapSent) + "}";
   m += ",\"wifi\":{\"state\":\"" + jsonEsc(wifiNow) + "\",\"rssi\":" + String(wifiState == W_ON ? WiFi.RSSI() : 0) + ",\"ip\":\"" + (wifiState == W_ON ? WiFi.localIP().toString() : String("")) +
        "\",\"seen\":\"" + jsonEsc(wifiSeen) + "\",\"relay\":" + String(relayUp() ? 1 : 0) + ",\"relayTxt\":\"" + jsonEsc(relayStatus()) + "\"}";
   m += "," + obdDiagJson();

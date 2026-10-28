@@ -22,7 +22,7 @@ comments in plain English, explain changes in plain words, and never leave him w
 | `sw.js`, `manifest.webmanifest` | Offline copy of the app | browser |
 | `firmware/T3/` | The T3 program (ESP32). `T3.ino` + tabs; `t3.h` explains them; pins in `config.h` | LilyGo T3 |
 | `firmware/T3.bin` etc. | **Built by GitHub Actions. Never edit or commit these by hand.** | |
-| `nano/` | Nano add-on (`T3Link.h`, `WheelButtons.h`) and the button calibration sketch | Arduino Nano |
+| `nano/` | Nano add-on (`T3Link.h`, `WheelButtons.h`, `WheelMap.h` right-button map) and the button calibration sketch | Arduino Nano |
 | `tracks/TrackStore.gs` | Ben's track store (Apps Script in his Drive) | Google |
 | `tests/` | PC tests: `bash tests/run.sh` | PC |
 | `docs/HARDWARE.md` | Wiring, setup, troubleshooting | |
@@ -39,7 +39,8 @@ answers with all tabs (see `core.js` `sync()`).
 2. **Bump `FW` in `firmware/T3/config.h`** for every firmware change. T3s only install a newer number.
 3. **Bump the app version** for every app change: `VERSION` in `core.js`, every `?v=` in `index.html`, and `CACHE` +
    `SHELL` in `sw.js` (all the same number), or phones keep the old copy.
-4. **The Nano must never depend on the T3.** The link is one-way (Nano TX → T3). Nothing on the Nano may wait for the T3.
+4. **The Nano must never depend on the T3.** Nano TX → T3 carries buttons and a heartbeat; T3 → Nano (GPIO 25 → D8, 2.12+)
+   carries only the right-button map, which the Nano checks and keeps in EEPROM. Nothing on the Nano may wait for the T3.
 5. **The T3's loop must never block.** No `delay()` over a few ms, no waiting for Wi-Fi or a server in `loop()`.
    Slow network work goes in `uploadTask` (net.ino), which must not touch loop()'s `String`s
    (use `taskEvent()` and the `Txt` status buffers).

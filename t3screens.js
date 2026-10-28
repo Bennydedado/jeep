@@ -290,7 +290,8 @@ function screensSheet() {
             h('button', { class: 'btn btn-primary', onclick: async () => { await sendScreens(st); paint(); } }, icon('bt'), 'Send to the T3'),
             h('button', { class: 'btn btn-glass glass', onclick: async () => { const got = await loadScreensFromT3(); if (got) { st.list = got; st.ackHash = screensHash(got); st.ackAt = Date.now(); scrSave(st); paint(); toast('Loaded the T3’s screens', got.length + ' screens'); } } }, icon('sync'), 'Load from T3')),
           h('div', { class: 'foot', text: 'Changes are kept on this phone as you make them. "Send to the T3" puts them on the T3 and waits for it to confirm it has exactly the same set.' }),
-          h('div', { class: 'label', text: 'Steering wheel buttons' }), buttonsCard(),
+          h('div', { class: 'label', text: 'Steering wheel buttons (left: the T3)' }), buttonsCard(),
+          h('div', { class: 'label', text: 'Right wheel buttons (stereo, on the Nano)' }), rightButtonsCard(),
           h('div', { class: 'label', text: 'Display' }), displayCard(),
           confirmButton('Go back to the default screens', 'Tap again: the default screens replace yours on this phone', () => { st.list = DEFAULT_SCREENS.slice(); scrSave(st); paint(); toast('Default screens', 'Send them to the T3 to use them'); }));
       };
@@ -433,6 +434,51 @@ function buttonsCard() {
     h('button', { class: 'btn btn-glass glass btn-wide', onclick: () => t3SendSettings() }, icon('bt'), 'Send settings to the T3'));
 }
 
+// ---------------------------------------------------------------- right buttons (the Nano: jeep_controller_v3)
+// "<tap>,<hold>;<tap>,<hold>;<tap>,<hold>" for top, middle, bottom: the same tokens as nano/NanoT3Example/WheelMap.h
+const WHEEL_DEFAULT = 'V+,V+;AN,HU;V-,V-';
+const WHEEL_ACTIONS = [['V+', 'Volume +'], ['V-', 'Volume −'], ['MU', 'Mute'], ['PP', 'Play / pause'], ['NX', 'Next track'], ['PV', 'Previous track'],
+  ['SR', 'Source'], ['SI', 'Siri'], ['AN', 'Answer call'], ['HU', 'Hang up'], ['HB', 'High beams on / off'],
+  ['T1', 'T3 button 1'], ['T2', 'T3 button 2'], ['T3', 'T3 button 3'], ['--', 'Nothing'], ['K', 'Kenwood code…']];
+const wheelTokenOk = t => WHEEL_ACTIONS.some(([v]) => v === t && v !== 'K') || /^K[0-9A-F]{2}$/.test(t);
+function parseWheelMap(s) {
+  const parts = String(s || '').split(';');
+  const ok = parts.length === 3 && parts.every(p => { const a = p.split(','); return a.length === 2 && a.every(wheelTokenOk); });
+  return (ok ? String(s) : WHEEL_DEFAULT).split(';').map(p => p.split(','));
+}
+const writeWheelMap = m => m.map(p => p.join(',')).join(';');
+const WHEEL_STATE = { saved: ['ok', 'Saved on the Nano ✓'], sending: ['warn', 'Sending to the Nano…'], old: ['warn', 'The Nano needs jeep_controller_v3 (and the GPIO 25 → D8 wire)'], none: ['', 'Nano not heard'] };
+function rightButtonsCard() {
+  const map = parseWheelMap(store.get('t3', {}).wb || (LIVE.t3 && LIVE.t3.wb));
+  const keep = () => { const v = store.get('t3', {}); v.wb = writeWheelMap(map); store.set('t3', v); };
+  const sel = (i, k) => {
+    const cur = map[i][k], custom = /^K/.test(cur);
+    const s = h('select', null, WHEEL_ACTIONS.map(([v, l]) => h('option', { value: v, text: v === 'K' && custom ? 'Kenwood code ' + cur.slice(1) : l })));
+    s.value = custom ? 'K' : cur;
+    const hex = h('input', { value: custom ? cur.slice(1) : '', maxlength: 2, placeholder: 'hex', style: 'width:4.5em;' + (custom ? '' : 'display:none'), 'aria-label': 'Kenwood code (2 hex digits)' });
+    const setHex = () => { const x = hex.value.toUpperCase().replace(/[^0-9A-F]/g, '').slice(0, 2); if (x.length === 2) { map[i][k] = 'K' + x; keep(); } };
+    hex.addEventListener('input', setHex);
+    s.addEventListener('change', () => {
+      hex.style.display = s.value === 'K' ? '' : 'none';
+      if (s.value === 'K') { hex.focus(); setHex(); } else { map[i][k] = s.value; keep(); }
+    });
+    return h('span', { style: 'display:flex;gap:6px;align-items:center' }, s, hex);
+  };
+  const names = ['Right top', 'Right middle', 'Right bottom'];
+  const state = h('span');
+  const paint = () => { const st = WHEEL_STATE[(LIVE.v && LIVE.v.wbs) || (LIVE.t3 && LIVE.t3.wbs)] || WHEEL_STATE.none; state.textContent = st[1]; state.style.color = st[0] === 'ok' ? 'var(--good)' : ''; };
+  paint();
+  const tick = setInterval(() => { if (!document.body.contains(state)) clearInterval(tick); else paint(); }, 1000);
+  return h('div', { style: 'display:grid;gap:10px' },
+    names.map((n, i) => h('div', { class: 'group' }, h('div', { class: 'gr' }, h('b', { text: n })),
+      h('label', { class: 'gr' }, h('span', { text: 'Tap' }), sel(i, 0)), h('label', { class: 'gr' }, h('span', { text: 'Hold 1 s' }), sel(i, 1)))),
+    h('div', { class: 'foot' }, state),
+    h('div', { class: 'foot', text: 'Tap and hold the same (like Volume) = repeats while held. Answer / hang up need their codes set on the Nano; “Kenwood code…” lets you try one (e.g. 89). The Nano keeps these, so they work with the T3 off.' }),
+    h('div', { class: 'btn-row' },
+      h('button', { class: 'btn btn-glass glass', onclick: () => { map.splice(0, 3, ...parseWheelMap(WHEEL_DEFAULT)); keep(); toast('Right buttons back to normal', 'Tap Send settings to put it on the Nano'); } }, 'Defaults'),
+      h('button', { class: 'btn btn-primary', onclick: () => t3SendSettings() }, icon('bt'), 'Send settings')));
+}
+
 // ---------------------------------------------------------------- display settings (part of the T3 settings)
 function displayCard() {
   const v = Object.assign({ ss: 60, br: 2, bn: 0, nf: -1, nt: 7, rot: 0, rf: 250, sp: 0 }, LIVE.t3 || {}, store.get('t3', {}));
@@ -455,4 +501,4 @@ function displayCard() {
     h('button', { class: 'btn btn-glass glass btn-wide', onclick: () => t3SendSettings() }, icon('bt'), 'Send settings to the T3'));
 }
 
-if (typeof module !== 'undefined') module.exports = { FIELDS, DEFAULT_SCREENS, SCREEN_TEMPLATES, parseScreen, writeScreen, fnv1a, screensHash, parseBtnMap, fitLabel };
+if (typeof module !== 'undefined') module.exports = { FIELDS, DEFAULT_SCREENS, SCREEN_TEMPLATES, parseScreen, writeScreen, fnv1a, screensHash, parseBtnMap, fitLabel, parseWheelMap, writeWheelMap, WHEEL_DEFAULT };

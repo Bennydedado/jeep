@@ -155,6 +155,19 @@ const srv = http.createServer((q, r) => {
   await page.locator(LIST + ' button', { hasText: 'Send settings to the T3' }).first().click(); await page.waitForTimeout(1500);
   check(T3.cfg && /^sleep,/.test(T3.cfg.bm), 'button 1 press = screen off/on reached the T3: ' + (T3.cfg && T3.cfg.bm));
   check(T3.cfg && Array.isArray(T3.cfg.wifi), 'over Bluetooth the Wi-Fi list is included');
+  check(T3.cfg && T3.cfg.wb === 'V+,V+;AN,HU;V-,V-', 'right buttons go too (default): ' + (T3.cfg && T3.cfg.wb));
+
+  // right buttons (the Nano): top tap = play/pause, middle hold = a Kenwood code typed in
+  const R = LIST + ' .group:has(b:text-is("Right top"))', M = LIST + ' .group:has(b:text-is("Right middle"))';
+  await page.locator(R + ' label:has-text("Tap") select').selectOption('PP');
+  await page.locator(M + ' label:has-text("Hold") select').selectOption('K');
+  await page.locator(M + ' label:has-text("Hold") input').fill('89');
+  await page.locator(LIST + ' .group:has(b:text-is("Right bottom"))').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: shots + '/right-buttons.png' });
+  await page.locator(LIST + ' button', { hasText: /^Send settings$/ }).click(); await page.waitForTimeout(1500);
+  check(T3.cfg && T3.cfg.wb === 'PP,V+;AN,K89;V-,V-', 'right-button map reached the T3: ' + (T3.cfg && T3.cfg.wb));
+  await notify({ t: 'live', wbs: 'saved', nano: 'ok' }); await page.waitForTimeout(1200);
+  check(/Saved on the Nano ✓/.test(await page.locator(LIST).innerText()), 'says when the Nano has it');
 
   check(!errors.length, 'no errors in the page: ' + errors.join(' | '));
   console.log('editor.js: ' + checks + ' checks, ' + failed + ' failed');

@@ -49,5 +49,19 @@ int main() {
   CHECK(p.bad - bad0 == 10);
   // a truncated line followed by a good one: the good one still gets through
   CHECK(feed(p, std::string("$J,20,B,2") + frame("J,21,B,2,S"), 7000, &e) == 1 && e.seq == 21);
+  // protocol 2 heartbeat: + the Nano's right-button map hash
+  CHECK(feed(p, frame("J,22,H,50,2,3FA0"), 8000, &e) == 1);
+  CHECK(e.kind == 'H' && e.proto == 2 && e.cfg == 0x3FA0);
+  CHECK(feed(p, frame("J,23,H,51,1"), 9000, &e) == 1 && e.cfg == -1);
+  CHECK(feed(p, frame("J,24,H,52,2,XYZ"), 10000) == 0);              // not hex
+  CHECK(feed(p, frame("J,25,H,53,2,12345"), 10000) == 0);            // too long
+  CHECK(feed(p, frame("J,26,H,54,2,1,2"), 10000) == 0);              // extra field
+  // the T3 -> Nano map line
+  char line[64];
+  int n = jlinkMapLine("V+,V+;AN,HU;V-,V-", line, sizeof(line));
+  CHECK(n > 0 && std::string(line, n) == frame("N,M,V+,V+;AN,HU;V-,V-"));
+  CHECK(jlinkMapLine(std::string(70, 'A').c_str(), line, sizeof(line)) == 0);
+  CHECK(jlinkMapHash("") == (uint16_t)(2166136261u ^ (2166136261u >> 16)));
+  CHECK(jlinkMapHash("V+,V+;AN,HU;V-,V-") != jlinkMapHash("V-,V-;AN,HU;V+,V+"));
   DONE();
 }

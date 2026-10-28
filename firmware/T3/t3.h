@@ -77,6 +77,7 @@ struct Settings {
   bool flip = false;                        // screen upside down (mounted the other way)
   int refreshMs = 250;
   String btnMap = "prev,home;mark,pause;next,end";   // button 1;2;3 as short,long
+  String wheelMap = "V+,V+;AN,HU;V-,V-";               // the Nano's right buttons (nano/NanoT3Example/WheelMap.h)
   int io4 = 0;                              // GPIO 4: 0 = DS18B20 probe, 1 = old push button
   int obdProto = 0;                         // OBD protocol for the iCar: 0 auto, 1-9 the ELM327 numbers (Heep: Scan the Jeep)
 };
@@ -127,6 +128,8 @@ struct Wheel {
   uint32_t heardAt = 0;                     // last good message of any kind
   long baud = 0, nanoUp = 0;
   int proto = 0;
+  long cfg = -1;                            // the Nano's right-button map hash (protocol 2), -1 = never said
+  uint32_t mapSent = 0, mapSentAt = 0;      // map lines sent to the Nano
   char last[8] = "-";                       // last button, e.g. "3S"
   uint32_t lastAt = 0, presses = 0;
 };
