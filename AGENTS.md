@@ -13,6 +13,7 @@ comments in plain English, explain changes in plain words, and never leave him w
 | `t3screens.js` | T3 screen format, preview, screen/button editor | browser |
 | `t3net.js` | Live > Wi-Fi & update: the T3's Wi-Fi state and scan, update over Bluetooth (pairs with `firmware/T3/ota.ino` + `otarx.h`) | browser |
 | `firmware/T3/update.ino` | Update over Wi-Fi from a fresh start: restart, then join Wi-Fi and download before Bluetooth starts (memory) | T3 |
+| `widget/heep-widget.js`, `widget/Heep.js` | iPhone widget for the free Scriptable app: Heep.js is pasted into Scriptable once and downloads heep-widget.js, which runs Heep's own core.js/econ.js/trips.js on the Jeep log (tested in Node: tests/app/test_widget.js) | iPhone (Scriptable) |
 | `econ.js` | Fuel economy from full tanks and the T3's trips together (the T3 corrected by the tanks), the tank's level and distance to empty; plain functions tested in Node | browser |
 | `codes.js` | Live > Trouble codes: read and clear the Jeep's codes through the T3 (pairs with the `codes` command in `firmware/T3/obd.ino`); the decoding is plain functions tested in Node | browser |
 | `map.js`, `trips.js` | Map & Trip History tab (Leaflet), and the track maths (pure functions, tested in Node) | browser |

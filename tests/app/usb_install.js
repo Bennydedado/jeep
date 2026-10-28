@@ -55,7 +55,7 @@ const srv = http.createServer((q, r) => {
   check(r.log.includes('detect:default_reset') && r.log.includes('stub'), 'normal: resets the T3 and starts the helper');
   check(r.log.includes(expect), 'all four files, right addresses and sizes, nothing erased: ' + r.log.find(x => x.startsWith('write')));
   check(r.log.includes('after:hard_reset') && r.log.includes('disconnect'), 'restarts the T3 and lets go of the port');
-  check(/Installed T3 2\.\d ✓/.test(r.msg) && r.steps.every(c => c === 'ok'), 'says installed, every step ticked: ' + r.msg.split('\n')[0]);
+  check(/Installed T3 \d+\.\d+ ✓/.test(r.msg) && r.steps.every(c => c === 'ok'), 'says installed, every step ticked: ' + r.msg.split('\n')[0]);
   check(await page.locator('#bar').evaluate(b => b.style.width) === '100%', 'progress bar full');
   // 2. holding BOOT, skipping the helper
   r = await run(() => { document.querySelector('input[value=boot]').checked = true; document.querySelector('#nostub').checked = true; });

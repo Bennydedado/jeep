@@ -138,6 +138,38 @@ function renderHome(v) {
   v.append(h('div', { class: 'card list' }, rows.map(([k, val]) => h('div', { class: 'row' }, h('div', { class: 'main' }, h('b', { text: k })), h('div', { class: 'end' }, h('span', { text: val, style: 'font-size:15px' }))))));
 }
 
+// ======================================================= iPhone widget (the free Scriptable app runs widget/Heep.js)
+function widgetSheet() {
+  openSheet({
+    title: 'iPhone widget',
+    build(b) {
+      const step = (n, title, text, ...extra) => h('li', null, h('div', null, h('b', { text: title, style: 'display:block;margin-bottom:2px' }),
+        h('span', { class: 'muted', style: 'font-size:15px', text }), ...extra));
+      // fetched now, so the button copies straight away (Safari only lets a tap copy, not something that finishes later)
+      let script = null;
+      fetch('widget/Heep.js?t=' + Date.now(), { cache: 'no-store' }).then(r => (r.ok ? r.text() : null)).then(t => { script = t; }, () => {});
+      const copyScript = e => {
+        if (script) copyText(script, e.currentTarget);
+        else toast('Getting the script…', 'Needs signal: try again in a moment', 'info');
+      };
+      put(b, h('p', { class: 'foot', style: 'margin:0 0 12px', text: 'Distance to empty, fuel economy, cost per km, this week, your last trip, the next service and more, on your Home Screen, in the Today View (swipe right from your first Home Screen page) and on the Lock Screen. Small, medium and large, and you choose what each shows. Free, through the Scriptable app.' }),
+        h('ol', { class: 'steps' },
+          step(1, 'Get Scriptable', 'Free on the App Store.', h('div', { style: 'margin-top:8px' }, h('a', { class: 'btn btn-small btn-glass glass', style: 'text-decoration:none;color:inherit', href: 'https://apps.apple.com/app/scriptable/id1405459188', target: '_blank', rel: 'noopener' }, icon('download'), 'App Store'))),
+          step(2, 'Add the script', 'Copy it, open Scriptable, tap +, paste, tap the title and call it Heep, then Done.',
+            h('div', { style: 'margin-top:8px' }, h('button', { class: 'btn btn-small btn-primary', onclick: copyScript }, icon('copy'), 'Copy the script'))),
+          step(3, 'Connect it', S.sample ? 'Connect Heep to your Jeep log first (Settings > Connect your Jeep log); until then the widget shows made-up numbers.' :
+            'Copy your setup link, then tap Heep in Scriptable: it finds the link and connects. It stays on your phone.',
+            S.sample ? null : h('div', { style: 'margin-top:8px' }, h('button', { class: 'btn btn-small btn-glass glass', onclick: e => copyText(setupLink(), e.currentTarget) }, icon('link'), 'Copy your setup link'))),
+          step(4, 'Choose what it shows', 'Tap Heep in Scriptable any time: preview every size, and pick what each one shows (the first is the big one).'),
+          step(5, 'Add the widget', 'Touch and hold an empty spot (Home Screen or Today View) > Edit > Add Widget > Scriptable > pick a size > Add. Tap the new widget > Script: Heep. Lock Screen: touch and hold it > Customize > Lock Screen > the widget row > Scriptable.')),
+        h('div', { class: 'label', text: 'Different blocks on one widget' }),
+        h('div', { class: 'card' }, h('p', { class: 'foot', style: 'margin:0', text: 'While editing, tap the widget > Parameter, and type the blocks you want, first one big, e.g.  dte,econ,week\n\n' +
+          'dte to empty · econ fuel economy · cost cost per km · week · month · trip last trip · odo odometer · service next service · fill last fill-up · chart driving by week (medium, large)' })),
+        h('p', { class: 'foot', text: 'The widget gets its updates from here by itself. iPhone refreshes widgets when it wants (often every 15-30 minutes); tap one to open Heep.' }));
+    },
+  });
+}
+
 // ======================================================= Distance to empty
 // The tank: full at your last full fill-up, plus top-ups, less the diesel the T3 measured since (corrected by your
 // full tanks) and, for driving it didn't measure, the distance at your economy (econ.js). With the T3 connected the
@@ -565,6 +597,9 @@ function settingsSheet() {
         h('div', { class: 'group' }, h('label', { class: 'gr' }, h('span', { text: 'Name' }), veh), h('label', { class: 'gr' }, h('span', { text: 'Tank (L)' }), tank)),
         h('div', { class: 'label', text: 'Appearance' }),
         seg([['system', 'Automatic'], ['dark', 'Dark'], ['light', 'Light']], S.prefs.theme, v2 => { S.prefs.theme = v2; savePrefs(); applyTheme(); }),
+        h('div', { class: 'label', text: 'iPhone' }),
+        h('div', { class: 'card list' }, h('button', { class: 'row', onclick: () => widgetSheet() }, h('div', { class: 'main' }, h('b', { text: 'iPhone widget' }),
+          h('span', { text: 'To empty, economy and more on your Home Screen, Today View and Lock Screen' })), icon('chev', 'chev'))),
         h('div', { class: 'label', text: 'Live' }),
         h('div', { class: 'card list' },
           h('button', { class: 'row', onclick: () => { sheet.close(); go('live'); demoStart(); } }, h('div', { class: 'main' }, h('b', { text: 'Try the live demo' }), h('span', { text: 'Made-up numbers, to see the Live screen' })), icon('play', 'chev')),

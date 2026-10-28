@@ -1,5 +1,16 @@
 # Changes
 
+## 28 Oct 2026 — Heep 1.1.11: iPhone widget
+
+- **Widgets for the Home Screen, the Today View and the Lock Screen** through the free Scriptable app: small, medium and
+  large, the Lock Screen circle, rectangle and line. Blocks: distance to empty (with the tank gauge), fuel economy, cost
+  per km, this week, this month, last trip, odometer, next service, last fill-up, and a chart of driving by week. Run
+  Heep in Scriptable to preview every size and choose what each shows; or per widget, Parameter "dte,econ,week".
+- The script pasted into Scriptable (`widget/Heep.js`) only downloads `widget/heep-widget.js`, so the widget updates
+  itself; the numbers come from Heep's own code (core.js, econ.js, trips.js), kept with the last log for no signal.
+  The setup link is asked for once and kept in Scriptable's Keychain. Heep: Settings > iPhone widget has the steps.
+  Test: `tests/app/test_widget.js` (a pretend Scriptable in Node).
+
 ## 28 Oct 2026 — T3 2.10, Heep 1.1.10: economy from the tank and the T3 together, distance to empty, iPhone hotspot
 
 - A saved network matched the scan loosely (an iPhone's name has a curly apostrophe, Ben’s iPhone; typed it's often

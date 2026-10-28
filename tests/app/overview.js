@@ -86,6 +86,18 @@ const DATA = { fill: [{ id: 'f1', t: now - 5 * day, odo: 159557, lit: 70.2, cost
   await page.evaluate(() => send({ c: 'status' })); await page.waitForTimeout(2000);
   check(T3.cmds.filter(c => c.c === 'fuel').length === 1, 'and not again while nothing changed');
 
+  // Settings > iPhone widget: the steps, and the script copies straight from the tap
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.evaluate(() => settingsSheet()); await page.waitForTimeout(500);
+  await page.locator('.sheet.on button.row', { hasText: 'iPhone widget' }).click(); await page.waitForTimeout(800);
+  const WS = '.sheet.on[aria-label="iPhone widget"]';
+  t = await page.locator(WS).innerText();
+  check(/Get Scriptable/.test(t) && /Copy the script/.test(t) && /Copy your setup link/.test(t) && /dte,econ,week/.test(t), 'iPhone widget: steps, buttons and the Parameter help');
+  await page.locator(WS + ' button', { hasText: 'Copy the script' }).click(); await page.waitForTimeout(400);
+  const clip = await page.evaluate(() => navigator.clipboard.readText());
+  check(/importModule\(path\)\.run\(\)/.test(clip) && /bennydedado\.github\.io\/jeep\/widget\/heep-widget\.js/.test(clip) && !/setup=/.test(clip), 'copies the Scriptable script (nothing private in it)');
+  await page.screenshot({ path: shots + '/widget-setup.png' });
+
   check(!errors.length, 'no errors in the page: ' + errors.join(' | '));
   console.log('overview.js: ' + checks + ' checks, ' + failed + ' failed');
   await browser.close(); srv.close();
