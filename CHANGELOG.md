@@ -1,5 +1,10 @@
 # Changes
 
+## 29 Oct 2026 — Heep 1.1.14: Fuel left screen
+
+- New screen to add in Heep (Screens → Add a screen → Fuel left): litres left big, a tank bar (0–78 L) and the
+  distance to empty underneath. Uses the tank level Heep sends the T3 from your last full fill-up.
+
 ## 28 Oct 2026 — T3 2.13: trips reach the sheet
 
 - Trips could sit on the T3 for good: the secure connection to Google needs ~50 KB of memory in one piece, which the

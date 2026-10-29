@@ -53,6 +53,7 @@ const SCREEN_TEMPLATES = [
   ['Boost gauge', 'Boost|1|v,boost,0,0,128,40,4,c,lu,0,0,|b,boost,0,42,128,12,1,l,,0,30,|r,bmax,0,56,64,8,1,l,l,0,0,|r,rpm,66,56,62,8,1,r,l,0,0,'],
   ['Temperature & direction', DEFAULT_SCREENS[0].replace('Temp & dir', 'Temp & dir 2')],
   ['One big number', 'Big|1|v,kmh,0,0,128,64,4,c,lu,0,0,'],
+  ['Fuel left', 'Fuel|1|v,fuel,0,0,128,40,4,c,lu,0,0,|b,fuel,0,42,128,12,1,l,,0,78,|r,dte,0,56,128,8,1,l,lu,0,0,'],
   ['Distance to empty', 'Range|1|v,dte,0,0,128,42,4,c,lu,0,0,|r,fuel,0,46,128,8,1,l,lu,0,0,|r,tavg,0,56,128,8,1,l,lu,0,0,'],
   ['Two big numbers', 'Two|1|v,kmh,0,0,63,64,4,c,lu,0,0,|n,-,64,4,1,56,1,l,,0,0,|v,otemp,65,0,63,64,3,c,lu,0,0,'],
   ['List of six', 'List|1|r,rpm,0,0,128,8,1,l,l,0,0,|r,boost,0,11,128,8,1,l,lu,0,0,|r,ect,0,22,128,8,1,l,lu,0,0,|r,iat,0,33,128,8,1,l,lu,0,0,|r,volt,0,44,128,8,1,l,lu,0,0,|r,otemp,0,55,128,8,1,l,lu,0,0,'],
