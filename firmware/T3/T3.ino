@@ -118,11 +118,13 @@ void setup() {
   tempBegin();
   wheelBegin();
   tripBegin();
+  bootSend();     // trips waiting for the sheet: sent now, before Bluetooth takes the memory (update.ino)
   fuelLoad();
   phoneBegin();
   obdBegin();
   sdEvent("boot " FW " (" + resetWhy + ")");
   if (bootUpdNote.length()) sdEvent(bootUpdNote);
+  if (bootNote.length()) sdEvent(bootNote);
 }
 
 void loop() {

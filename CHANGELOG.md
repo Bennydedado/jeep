@@ -1,5 +1,13 @@
 # Changes
 
+## 28 Oct 2026 — T3 2.13: trips reach the sheet
+
+- Trips could sit on the T3 for good: the secure connection to Google needs ~50 KB of memory in one piece, which the
+  T3 often hasn't got with Bluetooth running (the same thing that stopped updates over Wi-Fi). Now at every key-on the
+  T3 sends the waiting trips first, before Bluetooth starts, if your Wi-Fi is in sight (a few seconds; skipped quickly
+  when it isn't). The screen says "Sending trips". Sending while driving still happens as before.
+- A failed send says how much memory was free (Diagnostics → Uploads).
+
 ## 28 Oct 2026 — T3 2.12, Heep 1.1.13: right wheel buttons set in Heep
 
 - **Right steering wheel buttons are programmable** (Live → Screens → Right wheel buttons): tap and hold for top,

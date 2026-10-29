@@ -11,6 +11,7 @@
 
 static uint32_t bootUpdAt = 0;   // restart for the update at this millis() (0 = not asked)
 String bootUpdNote;               // how the update at start-up went, for the event log
+String bootNote;                  // how sending trips at start-up went, for the event log
 
 // remember to update at the next start, save the trip so far and the card, and restart in 2 s (time to tell Heep)
 void bootUpdateSoon(bool manual) {
@@ -38,21 +39,21 @@ void bootUpdateStep() {
   ESP.restart();
 }
 
-static void bootShow(const String& a, const String& b, int pct) {   // pct -1: no bar
+static void bootShowAs(const char* title, const String& a, const String& b, int pct) {   // pct -1: no bar
   oled.setRotation(cfg.flip ? 2 : 0);
   oled.clearDisplay(); oled.setTextColor(SSD1306_WHITE); oled.setTextSize(1);
-  oled.setCursor(0, 0); oled.print("Update over Wi-Fi");
+  oled.setCursor(0, 0); oled.print(title);
   oled.drawFastHLine(0, 10, 128, SSD1306_WHITE);
   oled.setCursor(0, 16); oled.print(a.substring(0, 21));
   oled.setCursor(0, 28); oled.print(b.substring(0, 21));
   if (pct >= 0) { oled.drawRect(0, 46, 128, 10, SSD1306_WHITE); oled.fillRect(2, 48, 124 * constrain(pct, 0, 100) / 100, 6, SSD1306_WHITE); }
   oled.display();
 }
+static void bootShow(const String& a, const String& b, int pct) { bootShowAs("Update over Wi-Fi", a, b, pct); }
 
-// the update itself: only comes back if it didn't install (the answer says why)
-static String bootUpdateRun() {
-  if (!cfg.netCount) return "no Wi-Fi saved";
-  bootShow("looking for Wi-Fi...", "", -1);
+
+// join one of your saved networks, strongest first; blind = also try the ones a scan can't see (hotspots hide)
+static String bootJoin(bool blind) {
   WiFi.mode(WIFI_STA);
   // your networks: the ones a scan sees first, strongest first; then the rest by name (hotspots hide from scans)
   int rssi[MAX_NETS], order[MAX_NETS], n = 0;
@@ -66,16 +67,25 @@ static String bootUpdateRun() {
   for (int a = 0; a < n; a++) for (int b = a + 1; b < n; b++) if (rssi[order[b]] > rssi[order[a]]) { int t = order[a]; order[a] = order[b]; order[b] = t; }
   String joined;
   for (int t = 0; t < n && t < 4 && !joined.length(); t++) {
+    if (!blind && !seenAs[order[t]].length()) continue;   // quick: only networks in sight
     String ssid = seenAs[order[t]].length() ? seenAs[order[t]] : cfg.nets[order[t]].ssid;
     if (!ssid.length()) continue;
-    bootShow("joining", ssid, -1);
+    if (blind) bootShow("joining", ssid, -1); else bootShowAs("Sending trips", "joining", ssid, -1);
     WiFi.begin(ssid.c_str(), cfg.nets[order[t]].pass.c_str());
     uint32_t t0 = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - t0 < 15000) delay(100);
+    while (WiFi.status() != WL_CONNECTED && millis() - t0 < (blind ? 15000 : 10000)) delay(100);
     if (WiFi.status() == WL_CONNECTED) joined = ssid;
     else { WiFi.disconnect(); delay(300); }
   }
-  if (!joined.length()) return "couldn't join your Wi-Fi" + String(found > 0 ? "" : " (none in sight)");
+  return joined;
+}
+
+// the update itself: only comes back if it didn't install (the answer says why)
+static String bootUpdateRun() {
+  if (!cfg.netCount) return "no Wi-Fi saved";
+  bootShow("looking for Wi-Fi...", "", -1);
+  String joined = bootJoin(true);
+  if (!joined.length()) return "couldn't join your Wi-Fi";
   bootShow("on " + joined, "asking GitHub...", -1);
   String body, why;
   for (int attempt = 0; attempt < 3 && !body.length(); attempt++) {
@@ -132,4 +142,23 @@ void bootUpdate() {
   bootUpdNote = "update over Wi-Fi: " + why;   // into the card's event log once it's started (T3.ino)
   oled.clearDisplay(); oled.setCursor(0, 0); oled.print("Jeep T3 " FW "\n" + why.substring(0, 80)); oled.display();
   delay(2500);   // long enough to read
+}
+
+// at key-on (T3.ino setup, after the last trip is finished and before Bluetooth): trips waiting for the sheet go now,
+// while all the memory is free. With Bluetooth running the secure connection to Google often can't get the ~50 KB it
+// needs, so trips sat on the T3. Only networks in sight, about 10 s at most when there's nothing to join.
+void bootSend() {
+  if (queued <= 0 || !cfg.sheetUrl.length() || !cfg.netCount) return;
+  bootShowAs("Sending trips", String(queued) + (queued == 1 ? " trip" : " trips") + " waiting", "looking for Wi-Fi...", -1);
+  String joined = bootJoin(false);
+  if (joined.length()) {
+    if (!timeSrc) {   // the trip times are kept; this is only for a trip that never had a clock
+      configTime(0, 0, "pool.ntp.org", "time.google.com");
+      struct tm tmv; if (getLocalTime(&tmv, 3000)) { struct timeval tv; gettimeofday(&tv, nullptr); setClock((int64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000, 'n'); }
+    }
+    bootShowAs("Sending trips", "on " + joined, "sending...", -1);
+    uploadTrips(cfg.sheetUrl, cfg.sheetKey);
+    bootNote = "trips at start: " + String(lastUpload);
+  } else bootNote = "trips at start: no Wi-Fi in sight";
+  WiFi.disconnect(true); WiFi.mode(WIFI_OFF);
 }
