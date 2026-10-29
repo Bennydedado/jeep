@@ -84,6 +84,7 @@ struct Settings {
 extern Settings cfg;
 extern String liveTopic, cmdTopic;   // relay channels (settings.ino)
 extern String bootUpdNote;           // how an update at start-up went (update.ino)
+extern String bootNote;              // how sending trips at start-up went (update.ino)
 
 // ---------------------------------------------------------------- the clock
 // Best source wins: GPS ('g') over internet time ('n') over the phone ('a'). 0 = unknown.

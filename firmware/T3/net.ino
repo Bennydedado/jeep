@@ -242,7 +242,7 @@ void uploadTrips(const String& url, const String& key) {
   String body;
   int code = httpPost(url, "{\"k\":\"" + jsonEsc(key) + "\",\"ops\":[" + ops + "]}", body);
   bool ok = code == 200 && body.indexOf("\"ok\":true") >= 0;
-  lastUpload.set(ok ? "sent " + String(n) + (n == 1 ? " trip" : " trips") : (body.indexOf("key") >= 0 ? "sheet key wrong" : "send failed (" + String(code) + ")"));
+  lastUpload.set(ok ? "sent " + String(n) + (n == 1 ? " trip" : " trips") : (body.indexOf("key") >= 0 ? "sheet key wrong" : "send failed (" + String(code) + ", " + String(ESP.getFreeHeap() / 1024) + " KB free)"));
   if (ok) { dropTrips(ids); lastUploadAt = millis(); } else nextUploadTry = millis() + 120000;
 }
 
