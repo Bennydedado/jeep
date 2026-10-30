@@ -1,5 +1,10 @@
 # Changes
 
+## 30 Oct 2026 — Heep 1.1.19: headlight mode with tap, hold
+
+- Heep → Nano → Headlight mode: "Turn it on / off with" Tap, tap, hold (as before) or Tap, hold. A plain hold is still
+  the pedal's Hold action. Needs the updated jeep_controller_v3.
+
 ## 29 Oct 2026 — Heep 1.1.18: bad stereo codes stay off; right middle in headlight mode
 
 - Find stereo codes: "Bad: never send again" marks a code (one that turned the stereo off, say). Bad codes are skipped by

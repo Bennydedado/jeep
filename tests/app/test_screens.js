@@ -38,6 +38,8 @@ ok(A.writeWheelMap(A.parseWheelMap('K8G,--;T2,HB;NX,PV')) === RDEF && A.writeWhe
 ok(A.writeNanoCfg(A.parseNanoCfg('V+,V+;AN,HU;V-,V-')) === A.WHEEL_DEFAULT, '1.1.13 settings (right buttons only) grow the defaults');
 const full = 'PP,--;AN,HU;K5E,V-|MU,NX,PV,HB|01|8992';
 ok(A.writeNanoCfg(A.parseNanoCfg(full)) === full, 'full Nano settings round trip');
+for (const o of ['0101', '0111', '011']) { const t = 'V+,V+;AN,HU;V-,V-|PP,NX,PV,SI|' + o + '|FFFF'; ok(A.writeNanoCfg(A.parseNanoCfg(t)) === t, 'options ' + o + ' round trip'); }
+ok(A.parseNanoCfg('V+,V+;AN,HU;V-,V-|PP,NX,PV,SI|1101|FFFF').quickMode, 'tap, hold option read');
 const c2 = A.parseNanoCfg(full); ok(!c2.lmidBeams && c2.lmidMode && c2.answer === '89' && c2.hangup === '92' && c2.pedal[3] === 'HB', 'Nano settings read right');
 ok(A.writeNanoCfg(A.parseNanoCfg('V+,V+;AN,HU;V-,V-|PP,NX|11|FFFF')) === A.WHEEL_DEFAULT, 'a broken pedal part keeps the default pedal');
 ok(A.WHEEL_DEFAULT.length <= 64 && 'K8A,K8B;K8C,K8D;K8E,K8F|K90,K91,K92,K93|11|FFFF'.length <= 64, 'fits the Nano and T3 (64)');

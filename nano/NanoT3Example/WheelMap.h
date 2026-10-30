@@ -7,6 +7,7 @@
 //   options: 2 digits: 1st = left middle switches the beams in headlight mode (0 = pedal only)
 //                      2nd = left middle click-click-hold turns headlight mode on/off (0 = pedal only)
 //            optional 3rd = right middle switches the beams in headlight mode instead of its own job (1 = yes)
+//            optional 4th = headlight mode on/off with tap, hold (1) instead of tap, tap, hold (0)
 //   codes:   4 hex digits: the answer-call code, then the hang-up code (FF = not known yet, nothing is sent)
 // A line with only the right buttons (T3 2.12, "V+,V+;AN,HU;V-,V-") still works: the rest stays as it was.
 //
@@ -88,6 +89,7 @@ struct WConfig {
   bool lmidBeams = true;     // left middle switches the beams in headlight mode
   bool lmidMode = true;      // left middle click-click-hold turns headlight mode on/off
   bool rmidBeams = false;    // right middle switches the beams in headlight mode (instead of its own job)
+  uint8_t modeTaps = 2;      // taps before the hold that turns headlight mode on/off (1 or 2)
   uint8_t answer = 0xFF, hangup = 0xFF;
 };
 
@@ -113,9 +115,9 @@ inline bool wcfgParse(const char* s, WConfig& c) {
     }
     const char* o = part[2];
     int ol = strlen(o);
-    if (ol < 2 || ol > 3) return false;
+    if (ol < 2 || ol > 4) return false;
     for (int i = 0; i < ol; i++) if (o[i] != '0' && o[i] != '1') return false;
-    t.lmidBeams = o[0] == '1'; t.lmidMode = o[1] == '1'; t.rmidBeams = ol == 3 && o[2] == '1';
+    t.lmidBeams = o[0] == '1'; t.lmidMode = o[1] == '1'; t.rmidBeams = ol >= 3 && o[2] == '1'; t.modeTaps = ol == 4 && o[3] == '1' ? 1 : 2;
     const char* x = part[3];
     if (strlen(x) != 4) return false;
     for (int i = 0; i < 4; i++) if (wmapHex(x[i]) < 0) return false;
