@@ -42,6 +42,7 @@ struct SeenNet { char ssid[33]; int8_t rssi; uint8_t ch; bool open; };
 static SeenNet seenNets[16];
 static int seenN = -1;                        // -1 = no scan yet
 static uint32_t scanAt = 0, joinAt = 0, onSince = 0, wifiWantUntil = 0;
+uint32_t wifiLastOn = 0;   // last time the T3 was on one of your networks (update.ino: send trips when parked)
 static volatile int wifiReason = 0;           // why the last join/connection ended (ESP-IDF reason code), set by the Wi-Fi task
 static int lastReason = 0, blindNext = 0;
 static String lastTrySsid, lastTryRes;        // the last network the T3 tried, and how it went
@@ -459,7 +460,7 @@ void wifiStep() {
     case W_JOIN: {
       if (WiFi.status() == WL_CONNECTED) {
         if (timeSrc != 'g') configTime(0, 0, "pool.ntp.org", "time.google.com");   // answers arrive by themselves
-        wifiState = W_ON; wifiIdleSince = 0; wifiNow = "on " + wifiName; nextNtpAt = now + 2000; onSince = now;
+        wifiState = W_ON; wifiIdleSince = 0; wifiNow = "on " + wifiName; nextNtpAt = now + 2000; onSince = now; wifiLastOn = now;
         lastReason = 0; tryDone("joined");
         return;
       }
@@ -477,6 +478,7 @@ void wifiStep() {
       return;
     }
     case W_ON:
+      wifiLastOn = now;
       if (WiFi.status() != WL_CONNECTED) {
         lastReason = wifiReason; tryDone(String("dropped: ") + wifiReasonText(wifiReason));
         wifiNow = "lost " + wifiName; scanOnly = false; wifiOff(5000); return;

@@ -1,6 +1,15 @@
-// WheelMap.h - what the right steering wheel buttons do, set in Heep and passed on by the T3.
+// WheelMap.h - the Nano's settings from Heep, passed on by the T3: the right steering wheel buttons, the pedal,
+// headlight mode and the stereo codes nobody has found yet.
 //
-// The map is one short line of text, "<tap>,<hold>;<tap>,<hold>;<tap>,<hold>" for right top, middle, bottom:
+// The whole thing is one line:  <right buttons>|<pedal>|<options>|<codes>
+//   "V+,V+;AN,HU;V-,V-|PP,NX,PV,SI|11|FFFF"   (the default)
+//   pedal:   <1 click>,<2 clicks>,<3 clicks>,<hold>        (any token below; click-click-hold is always headlight mode)
+//   options: 2 digits: 1st = left middle switches the beams in headlight mode (0 = pedal only)
+//                      2nd = left middle click-click-hold turns headlight mode on/off (0 = pedal only)
+//   codes:   4 hex digits: the answer-call code, then the hang-up code (FF = not known yet, nothing is sent)
+// A line with only the right buttons (T3 2.12, "V+,V+;AN,HU;V-,V-") still works: the rest stays as it was.
+//
+// The right buttons are one short line of text, "<tap>,<hold>;<tap>,<hold>;<tap>,<hold>" for right top, middle, bottom:
 //   "V+,V+;AN,HU;V-,V-"   (the default: volume up, answer / hang up, volume down)
 // Tokens:  V+ V-  volume      MU mute      PP play/pause   NX next track   PV previous track
 //          SR source          SI Siri      AN answer call  HU hang up      HB high beams on/off
@@ -17,7 +26,8 @@
 #include <string.h>
 
 #define WMAP_DEFAULT "V+,V+;AN,HU;V-,V-"
-#define WMAP_MAX 40          // longest map kept (the longest possible is 23)
+#define WCFG_DEFAULT "V+,V+;AN,HU;V-,V-|PP,NX,PV,SI|11|FFFF"
+#define WMAP_MAX 64          // longest settings line kept (the longest possible is 49)
 #define WMAP_HOLD_MS 1000
 #define WMAP_REP_DELAY_MS 500
 #define WMAP_REP_MS 180
@@ -70,6 +80,48 @@ inline bool wmapParse(const char* s, WAction out[3][2]) {
   return true;
 }
 
+// all the Nano's settings
+struct WConfig {
+  WAction right[3][2];
+  WAction pedal[4];          // 1, 2, 3 clicks, hold
+  bool lmidBeams = true;     // left middle switches the beams in headlight mode
+  bool lmidMode = true;      // left middle click-click-hold turns headlight mode on/off
+  uint8_t answer = 0xFF, hangup = 0xFF;
+};
+
+// "<right>|<pedal>|<options>|<codes>" (or just "<right>") -> c; false (and c untouched) unless every part is right
+inline bool wcfgParse(const char* s, WConfig& c) {
+  if (!s || strlen(s) > WMAP_MAX) return false;
+  char buf[WMAP_MAX + 1];
+  strcpy(buf, s);
+  char* part[5]; int n = 0;
+  part[n++] = buf;
+  for (char* p = buf; *p; p++) if (*p == '|') { if (n == 4) return false; *p = 0; part[n++] = p + 1; }
+  if (n != 1 && n != 4) return false;
+  WConfig t = c;
+  if (!wmapParse(part[0], t.right)) return false;
+  if (n == 4) {
+    const char* p = part[1];
+    for (int k = 0; k < 4; k++) {
+      const char* end = p;
+      while (*end && *end != ',') end++;
+      if (!wmapToken(p, end - p, t.pedal[k])) return false;
+      if ((k < 3) != (*end == ',')) return false;
+      p = end + (k < 3 ? 1 : 0);
+    }
+    const char* o = part[2];
+    if (strlen(o) != 2 || (o[0] != '0' && o[0] != '1') || (o[1] != '0' && o[1] != '1')) return false;
+    t.lmidBeams = o[0] == '1'; t.lmidMode = o[1] == '1';
+    const char* x = part[3];
+    if (strlen(x) != 4) return false;
+    for (int i = 0; i < 4; i++) if (wmapHex(x[i]) < 0) return false;
+    t.answer = wmapHex(x[0]) * 16 + wmapHex(x[1]); t.hangup = wmapHex(x[2]) * 16 + wmapHex(x[3]);
+  }
+  c = t;
+  return true;
+}
+inline WConfig wcfgDefault() { WConfig c; wcfgParse(WCFG_DEFAULT, c); return c; }
+
 // one right button: call every loop with whether it's down; fire(action, isHold) runs the action
 struct WButton { bool down = false, held = false; unsigned long downAt = 0, lastRep = 0; };
 template <class F>
@@ -95,26 +147,34 @@ void wmapStep(WButton& b, const WAction& tap, const WAction& hold, bool isDown, 
   }
 }
 
-// reads "$N,M,<map>*HH" lines one character at a time; true when a good line with a good map arrived
+// reads the T3's lines one character at a time:
+//   "$N,M,<settings>*HH"  new settings: returns 'M' with the line in out (only if wcfgParse takes it)
+//   "$N,K,<2 hex>*HH"     send this Kenwood code once now (Heep's code tester): returns 'K' with the code in *code
 class WMapRx {
  public:
   uint16_t good = 0, bad = 0;
-  bool feed(char c, char* mapOut) {   // mapOut: WMAP_MAX + 1 chars
-    if (c == '$') { len = 0; buf[len++] = c; return false; }
-    if (!len || c == '\r') return false;
-    if (c != '\n') { if (len < (int)sizeof(buf) - 1) buf[len++] = c; else { len = 0; bad++; } return false; }
+  char feed(char c, char* out, uint8_t* code = nullptr) {   // out: WMAP_MAX + 1 chars
+    if (c == '$') { len = 0; buf[len++] = c; return 0; }
+    if (!len || c == '\r') return 0;
+    if (c != '\n') { if (len < (int)sizeof(buf) - 1) buf[len++] = c; else { len = 0; bad++; } return 0; }
     buf[len] = 0; len = 0;
     char* star = strchr(buf, '*');
-    if (strncmp(buf, "$N,M,", 5) || !star || wmapHex(star[1]) < 0 || wmapHex(star[2]) < 0 || star[3]) { bad++; return false; }
+    if ((strncmp(buf, "$N,M,", 5) && strncmp(buf, "$N,K,", 5)) || !star || wmapHex(star[1]) < 0 || wmapHex(star[2]) < 0 || star[3]) { bad++; return 0; }
     uint8_t x = 0;
     for (char* q = buf + 1; q < star; q++) x ^= (uint8_t)*q;
-    if (x != wmapHex(star[1]) * 16 + wmapHex(star[2])) { bad++; return false; }
+    if (x != wmapHex(star[1]) * 16 + wmapHex(star[2])) { bad++; return 0; }
     *star = 0;
-    WAction m[3][2];
-    if (!wmapParse(buf + 5, m)) { bad++; return false; }
-    strcpy(mapOut, buf + 5);
+    if (buf[3] == 'K') {
+      if (strlen(buf + 5) != 2 || wmapHex(buf[5]) < 0 || wmapHex(buf[6]) < 0) { bad++; return 0; }
+      if (code) *code = wmapHex(buf[5]) * 16 + wmapHex(buf[6]);
+      good++;
+      return 'K';
+    }
+    WConfig parsed;
+    if (!wcfgParse(buf + 5, parsed)) { bad++; return 0; }
+    strcpy(out, buf + 5);
     good++;
-    return true;
+    return 'M';
   }
  private:
   char buf[WMAP_MAX + 16];

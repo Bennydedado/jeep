@@ -292,7 +292,7 @@ function screensSheet() {
             h('button', { class: 'btn btn-glass glass', onclick: async () => { const got = await loadScreensFromT3(); if (got) { st.list = got; st.ackHash = screensHash(got); st.ackAt = Date.now(); scrSave(st); paint(); toast('Loaded the T3’s screens', got.length + ' screens'); } } }, icon('sync'), 'Load from T3')),
           h('div', { class: 'foot', text: 'Changes are kept on this phone as you make them. "Send to the T3" puts them on the T3 and waits for it to confirm it has exactly the same set.' }),
           h('div', { class: 'label', text: 'Steering wheel buttons (left: the T3)' }), buttonsCard(),
-          h('div', { class: 'label', text: 'Right wheel buttons (stereo, on the Nano)' }), rightButtonsCard(),
+          h('div', { class: 'label', text: 'Nano: right wheel buttons, pedal, headlights' }), nanoCard(),
           h('div', { class: 'label', text: 'Display' }), displayCard(),
           confirmButton('Go back to the default screens', 'Tap again: the default screens replace yours on this phone', () => { st.list = DEFAULT_SCREENS.slice(); scrSave(st); paint(); toast('Default screens', 'Send them to the T3 to use them'); }));
       };
@@ -409,9 +409,9 @@ function screenEditor(st, idx, after) {
 
 // ---------------------------------------------------------------- buttons
 const ACTIONS = [['next', 'Next screen'], ['prev', 'Previous screen'], ['home', 'Key-on screen'], ['mark', 'Mark this spot'], ['pause', 'Pause / resume trip'],
-  ['end', 'End trip (start a new one)'], ['sleep', 'Screen off / on'], ['bright', 'Brightness'], ['peak', 'Reset peak boost'], ['send', 'Send / sync now'], ['none', 'Nothing']];
+  ['end', 'End trip (start a new one)'], ['menu', 'Settings menu'], ['sleep', 'Screen off / on'], ['bright', 'Brightness'], ['peak', 'Reset peak boost'], ['send', 'Send / sync now'], ['none', 'Nothing']];
 function parseBtnMap(s) {
-  const out = [['prev', 'home'], ['mark', 'pause'], ['next', 'end']];
+  const out = [['prev', 'home'], ['mark', 'menu'], ['next', 'end']];
   String(s || '').split(';').slice(0, 3).forEach((p, i) => { const [a, b2] = p.split(','); if (a) out[i][0] = a.trim(); if (b2) out[i][1] = b2.trim(); });
   return out;
 }
@@ -431,75 +431,173 @@ function buttonsCard() {
     names.map((n, i) => h('div', { class: 'group' }, h('div', { class: 'gr' }, h('b', { text: n })),
       h('label', { class: 'gr' }, h('span', { text: 'Press' }), sel(i, 0)), h('label', { class: 'gr' }, h('span', { text: 'Hold' }), sel(i, 1)))),
     h('div', { class: 'foot' }, last),
-    h('div', { class: 'foot', text: 'Hold = 0.6 s. Holding a button set to Next or Previous keeps scrolling. When the T3’s screen is off, the first press only wakes it. Saved with T3 settings: tap "Send settings" below.' }),
+    h('div', { class: 'foot', text: 'Hold = 1 s (0.6 s with the NanoT3Example sketch). Holding a button set to Next or Previous keeps scrolling. When the T3’s screen is off, the first press only wakes it. "Settings menu" opens T3 settings on the screen: top / bottom move, middle changes, hold middle to close. Saved with T3 settings: tap "Send settings" below.' }),
     h('button', { class: 'btn btn-glass glass btn-wide', onclick: () => t3SendSettings() }, icon('bt'), 'Send settings to the T3'));
 }
 
-// ---------------------------------------------------------------- right buttons (the Nano: jeep_controller_v3)
-// "<tap>,<hold>;<tap>,<hold>;<tap>,<hold>" for top, middle, bottom: the same tokens as nano/NanoT3Example/WheelMap.h
-const WHEEL_DEFAULT = 'V+,V+;AN,HU;V-,V-';
+// ---------------------------------------------------------------- the Nano (jeep_controller_v3): wheel, pedal, headlights
+// One line, the same as nano/NanoT3Example/WheelMap.h:  <right buttons>|<pedal>|<options>|<codes>
+//   right: "<tap>,<hold>;<tap>,<hold>;<tap>,<hold>" for top, middle, bottom
+//   pedal: "<1 click>,<2 clicks>,<3 clicks>,<hold>"
+//   options: 2 digits, left middle in headlight mode: switches the beams, turns the mode on/off
+//   codes: answer and hang-up Kenwood codes, 2 hex digits each (FF = not known)
+const WHEEL_DEFAULT = 'V+,V+;AN,HU;V-,V-|PP,NX,PV,SI|11|FFFF';
 const WHEEL_ACTIONS = [['V+', 'Volume +'], ['V-', 'Volume −'], ['MU', 'Mute'], ['PP', 'Play / pause'], ['NX', 'Next track'], ['PV', 'Previous track'],
   ['SR', 'Source'], ['SI', 'Siri'], ['AN', 'Answer call'], ['HU', 'Hang up'], ['HB', 'High beams on / off'],
   ['T1', 'T3 button 1'], ['T2', 'T3 button 2'], ['T3', 'T3 button 3'], ['--', 'Nothing'], ['K', 'Kenwood code…']];
+const KENWOOD_NAMES = { '00': '0', '01': '1', '02': '2', '03': '3', '04': '4', '05': '5', '06': '6', '07': '7', '08': '8', '09': '9', '0A': 'Track −', '0B': 'Track +',
+  '0C': 'Rewind', '0D': 'Fast forward', '0E': 'Play / pause', '13': 'Source', '14': 'Volume +', '15': 'Volume −', '16': 'Mute', '1C': 'Tuner', '1D': 'Tape', '1E': 'CD',
+  '1F': 'CD-MD-CH', '5E': 'DNPP', '8B': 'Siri' };
 const wheelTokenOk = t => WHEEL_ACTIONS.some(([v]) => v === t && v !== 'K') || /^K[0-9A-F]{2}$/.test(t);
-function parseWheelMap(s) {
-  const parts = String(s || '').split(';');
-  const ok = parts.length === 3 && parts.every(p => { const a = p.split(','); return a.length === 2 && a.every(wheelTokenOk); });
-  return (ok ? String(s) : WHEEL_DEFAULT).split(';').map(p => p.split(','));
+const hex2 = v => /^[0-9A-F]{2}$/.test(String(v || '').toUpperCase()) ? String(v).toUpperCase() : null;
+function parseNanoCfg(s) {
+  const d = { right: [['V+', 'V+'], ['AN', 'HU'], ['V-', 'V-']], pedal: ['PP', 'NX', 'PV', 'SI'], lmidBeams: true, lmidMode: true, answer: 'FF', hangup: 'FF' };
+  const parts = String(s || '').split('|');
+  const right = (parts[0] || '').split(';').map(p => p.split(','));
+  if (right.length === 3 && right.every(p => p.length === 2 && p.every(wheelTokenOk))) d.right = right;
+  if (parts.length === 4) {
+    const ped = parts[1].split(',');
+    if (ped.length === 4 && ped.every(wheelTokenOk)) d.pedal = ped;
+    if (/^[01]{2}$/.test(parts[2])) { d.lmidBeams = parts[2][0] === '1'; d.lmidMode = parts[2][1] === '1'; }
+    if (/^[0-9A-F]{4}$/.test(parts[3])) { d.answer = parts[3].slice(0, 2); d.hangup = parts[3].slice(2); }
+  }
+  return d;
 }
+const writeNanoCfg = c => c.right.map(p => p.join(',')).join(';') + '|' + c.pedal.join(',') + '|' + (c.lmidBeams ? '1' : '0') + (c.lmidMode ? '1' : '0') + '|' + c.answer + c.hangup;
+// (older names, kept for the tests and 1.1.13 settings)
+const parseWheelMap = s => parseNanoCfg(s).right;
 const writeWheelMap = m => m.map(p => p.join(',')).join(';');
 const WHEEL_STATE = { saved: ['ok', 'Saved on the Nano ✓'], sending: ['warn', 'Sending to the Nano…'], old: ['warn', 'The Nano needs jeep_controller_v3 (and the GPIO 25 → D8 wire)'], none: ['', 'Nano not heard'] };
-function rightButtonsCard() {
-  const map = parseWheelMap(store.get('t3', {}).wb || (LIVE.t3 && LIVE.t3.wb));
-  const keep = () => { const v = store.get('t3', {}); v.wb = writeWheelMap(map); store.set('t3', v); };
-  const sel = (i, k) => {
-    const cur = map[i][k], custom = /^K/.test(cur);
-    const s = h('select', null, WHEEL_ACTIONS.map(([v, l]) => h('option', { value: v, text: v === 'K' && custom ? 'Kenwood code ' + cur.slice(1) : l })));
+
+function nanoCard() {
+  const c = parseNanoCfg(store.get('t3', {}).wb || (LIVE.t3 && LIVE.t3.wb));
+  const keep = () => { const v = store.get('t3', {}); v.wb = writeNanoCfg(c); store.set('t3', v); };
+  // one action picker: get() / set(token)
+  const pick = (get, set) => {
+    const cur = get(), custom = /^K/.test(cur);
+    const note = custom ? (KENWOOD_NAMES[cur.slice(1)] || store.get('kwLog', {})[cur.slice(1)] || '') : '';
+    const s = h('select', null, WHEEL_ACTIONS.map(([v, l]) => h('option', { value: v, text: v === 'K' && custom ? 'Kenwood code ' + cur.slice(1) + (note ? ' (' + note + ')' : '') : l })));
     s.value = custom ? 'K' : cur;
     const hex = h('input', { value: custom ? cur.slice(1) : '', maxlength: 2, placeholder: 'hex', style: 'width:4.5em;' + (custom ? '' : 'display:none'), 'aria-label': 'Kenwood code (2 hex digits)' });
-    const setHex = () => { const x = hex.value.toUpperCase().replace(/[^0-9A-F]/g, '').slice(0, 2); if (x.length === 2) { map[i][k] = 'K' + x; keep(); } };
+    const setHex = () => { const x = hex2(hex.value); if (x) { set('K' + x); keep(); } };
     hex.addEventListener('input', setHex);
     s.addEventListener('change', () => {
       hex.style.display = s.value === 'K' ? '' : 'none';
-      if (s.value === 'K') { hex.focus(); setHex(); } else { map[i][k] = s.value; keep(); }
+      if (s.value === 'K') { hex.focus(); setHex(); } else { set(s.value); keep(); }
     });
     return h('span', { style: 'display:flex;gap:6px;align-items:center' }, s, hex);
   };
-  const names = ['Right top', 'Right middle', 'Right bottom'];
+  const row = (label, el) => h('label', { class: 'gr' }, h('span', { text: label }), el);
+  const yesNo = (get, set) => { const s = h('select', null, h('option', { value: '1', text: 'Yes' }), h('option', { value: '0', text: 'No (pedal only)' })); s.value = get() ? '1' : '0'; s.addEventListener('change', () => { set(s.value === '1'); keep(); }); return s; };
+  const codeIn = (k) => {
+    const i = h('input', { value: c[k] === 'FF' ? '' : c[k], maxlength: 2, placeholder: 'not known', style: 'width:7em', 'aria-label': k === 'answer' ? 'Answer code' : 'Hang-up code' });
+    i.addEventListener('input', () => { const x = hex2(i.value); c[k] = x || 'FF'; keep(); });
+    return i;
+  };
   const state = h('span');
   const paint = () => { const st = WHEEL_STATE[(LIVE.v && LIVE.v.wbs) || (LIVE.t3 && LIVE.t3.wbs)] || WHEEL_STATE.none; state.textContent = st[1]; state.style.color = st[0] === 'ok' ? 'var(--good)' : ''; };
   paint();
   const tick = setInterval(() => { if (!document.body.contains(state)) clearInterval(tick); else paint(); }, 1000);
-  return h('div', { style: 'display:grid;gap:10px' },
+
+  // ---- finding codes: the Nano sends one code, you say what the stereo did (or nothing), on to the next.
+  // Your notes are kept on this phone ('kwLog': code -> what it did, '' = nothing) and named in the pickers above.
+  const log = store.get('kwLog', {});
+  const H = n => ((n % 256 + 256) % 256).toString(16).toUpperCase().padStart(2, '0');
+  const untried = from => { for (let k = 0; k < 256; k++) { const x = H(from + k); if (!(x in log) && !KENWOOD_NAMES[x]) return x; } return H(from); };
+  let cur = hex2(store.get('kwTest', '')) || untried(0);
+  const codeBox = h('input', { value: cur, maxlength: 2, style: 'width:4.5em;text-align:center', 'aria-label': 'Code to test' });
+  const said = h('div', { class: 'foot' });
+  const what = h('input', { placeholder: 'What did it do? (e.g. answer, band, power off)', 'aria-label': 'What the code did' });
+  const tally = h('div', { class: 'foot' });
+  const found = h('div', { class: 'card list' });
+  const known = x => KENWOOD_NAMES[x] || log[x] || '';
+  const paintLog = () => {
+    const did = Object.keys(log).filter(x => log[x]).sort();
+    tally.textContent = 'Tried ' + Object.keys(log).length + ' of 256 codes, ' + did.length + ' did something.';
+    found.textContent = '';
+    put(found, did.length ? did.map(x => h('div', { class: 'row' }, h('div', { class: 'main' }, h('b', { text: x + '  ' + log[x] })),
+      h('button', { class: 'btn btn-small btn-glass glass', onclick: () => { cur = x; show(); fire(); } }, 'Again'),
+      h('button', { class: 'btn btn-small btn-glass glass', 'aria-label': 'Forget ' + x, onclick: () => { delete log[x]; store.set('kwLog', log); paintLog(); } }, '✕'))) : h('div', { class: 'row' }, h('span', { text: 'Codes that did something show up here.' })));
+  };
+  const show = () => { codeBox.value = cur; what.value = log[cur] || ''; said.textContent = 'Code ' + cur + (known(cur) ? ' (' + known(cur) + ')' : '') + (cur in log && !log[cur] ? ' (did nothing last time)' : '') + '.'; store.set('kwTest', cur); };
+  const fire = async () => {
+    cur = hex2(codeBox.value) || cur; show();
+    LIVE.onKw = m => { if (m.x && m.x.toUpperCase() === cur) said.textContent = m.ok ? 'Sent ' + cur + (known(cur) ? ' (' + known(cur) + ')' : '') + '. Did the stereo do anything?' : 'The T3 couldn’t pass it on: ' + (m.nano === 'none' ? 'Nano not heard' : m.nano === 'old' ? 'the Nano needs jeep_controller_v3' : 'try again'); };
+    await t3Send({ c: 'kw', x: cur });
+  };
+  const step = d => { cur = H(parseInt(cur, 16) + d); show(); fire(); };
+  const answer = note => { log[cur] = note; store.set('kwLog', log); paintLog(); cur = untried(parseInt(cur, 16) + 1); show(); fire(); };
+  const useAs = k => { c[k] = cur; keep(); log[cur] = log[cur] || (k === 'answer' ? 'answer call' : 'hang up'); store.set('kwLog', log); toast((k === 'answer' ? 'Answer' : 'Hang up') + ' = ' + cur, 'Tap Send settings to put it on the Nano'); root.replaceWith(nanoCard()); };
+  const copyList = async () => {
+    const txt = Object.keys(log).filter(x => log[x]).sort().map(x => '0x' + x + '  ' + log[x]).join('\n');
+    try { await navigator.clipboard.writeText(txt); toast('Copied', 'Your list of codes', 'info'); } catch (e) { toast('Couldn’t copy', '', 'bad'); }
+  };
+  codeBox.addEventListener('change', () => { const x = hex2(codeBox.value); if (x) { cur = x; show(); } });
+  paintLog(); show();
+  show();
+
+  const names = ['Right top', 'Right middle', 'Right bottom'];
+  let root;
+  root = h('div', { style: 'display:grid;gap:10px' },
     names.map((n, i) => h('div', { class: 'group' }, h('div', { class: 'gr' }, h('b', { text: n })),
-      h('label', { class: 'gr' }, h('span', { text: 'Tap' }), sel(i, 0)), h('label', { class: 'gr' }, h('span', { text: 'Hold 1 s' }), sel(i, 1)))),
+      row('Tap', pick(() => c.right[i][0], t => { c.right[i][0] = t; })), row('Hold 1 s', pick(() => c.right[i][1], t => { c.right[i][1] = t; })))),
+    h('div', { class: 'group' }, h('div', { class: 'gr' }, h('b', { text: 'Pedal' })),
+      ['1 click', '2 clicks', '3 clicks', 'Hold 1 s'].map((l, k) => row(l, pick(() => c.pedal[k], t => { c.pedal[k] = t; })))),
+    h('div', { class: 'foot', text: 'Click, click, hold the pedal = headlight mode on / off (always). In headlight mode each pedal press switches high / low.' }),
+    h('div', { class: 'group' }, h('div', { class: 'gr' }, h('b', { text: 'Headlight mode: left middle button' })),
+      row('Switches the beams', yesNo(() => c.lmidBeams, v => { c.lmidBeams = v; })),
+      row('Click-click-hold turns it on / off', yesNo(() => c.lmidMode, v => { c.lmidMode = v; }))),
+    h('div', { class: 'group' }, h('div', { class: 'gr' }, h('b', { text: 'Stereo codes you’ve found' })),
+      row('Answer call', codeIn('answer')), row('Hang up', codeIn('hangup'))),
     h('div', { class: 'foot' }, state),
-    h('div', { class: 'foot', text: 'Tap and hold the same (like Volume) = repeats while held. Answer / hang up need their codes set on the Nano; “Kenwood code…” lets you try one (e.g. 89). The Nano keeps these, so they work with the T3 off.' }),
     h('div', { class: 'btn-row' },
-      h('button', { class: 'btn btn-glass glass', onclick: () => { map.splice(0, 3, ...parseWheelMap(WHEEL_DEFAULT)); keep(); toast('Right buttons back to normal', 'Tap Send settings to put it on the Nano'); } }, 'Defaults'),
-      h('button', { class: 'btn btn-primary', onclick: () => t3SendSettings() }, icon('bt'), 'Send settings')));
+      h('button', { class: 'btn btn-glass glass', onclick: () => { Object.assign(c, parseNanoCfg(WHEEL_DEFAULT)); keep(); toast('Nano back to normal', 'Tap Send settings to put it on the Nano'); root.replaceWith(nanoCard()); } }, 'Defaults'),
+      h('button', { class: 'btn btn-primary', onclick: () => t3SendSettings() }, icon('bt'), 'Send settings')),
+    h('div', { class: 'label', text: 'Find stereo codes' }),
+    h('div', { class: 'foot', text: 'Key on, stereo on. Send a code, watch the stereo, then tap Nothing or write what it did: either one sends the next code you haven’t tried. Some codes turn the stereo off or change the source: just put it back and write that down. For answer / hang up, have a call coming in on the paired phone.' }),
+    h('div', { class: 'group' },
+      h('div', { class: 'gr', style: 'display:flex;gap:8px;align-items:center;justify-content:space-between' },
+        h('button', { class: 'btn btn-glass glass', onclick: () => step(-1), 'aria-label': 'Previous code' }, '◀'),
+        codeBox,
+        h('button', { class: 'btn btn-primary', onclick: fire }, 'Send'),
+        h('button', { class: 'btn btn-glass glass', onclick: () => step(1), 'aria-label': 'Next code' }, '▶'))),
+    said,
+    h('div', { class: 'btn-row' },
+      h('button', { class: 'btn btn-glass glass', onclick: () => answer('') }, 'Nothing → next'),
+      h('button', { class: 'btn btn-primary', onclick: () => { const t = what.value.trim(); if (!t) { what.focus(); return; } answer(t); } }, 'Save → next')),
+    h('div', { class: 'group' }, h('label', { class: 'gr' }, what)),
+    h('div', { class: 'btn-row' },
+      h('button', { class: 'btn btn-glass glass', onclick: () => useAs('answer') }, 'Use as Answer'),
+      h('button', { class: 'btn btn-glass glass', onclick: () => useAs('hangup') }, 'Use as Hang up')),
+    tally, found,
+    h('button', { class: 'btn btn-glass glass btn-wide', onclick: copyList }, 'Copy the list'));
+  return root;
 }
 
 // ---------------------------------------------------------------- display settings (part of the T3 settings)
+const hour12 = i => (i % 12 === 0 ? 12 : i % 12) + ' ' + (i < 12 ? 'AM' : 'PM') + (i === 0 ? ' (midnight)' : i === 12 ? ' (noon)' : '');
 function displayCard() {
   const v = Object.assign({ ss: 60, br: 2, bn: 0, nf: -1, nt: 7, rot: 0, rf: 250, sp: 0 }, LIVE.t3 || {}, store.get('t3', {}));
   const keep = (k, x) => { const s = store.get('t3', {}); s[k] = x; store.set('t3', s); };
   const st = scrState();
   const pages = st.list.map((t, i) => [i, (parseScreen(t) || { name: '?' }).name]);
-  const hours = [[-1, 'Never']].concat(Array.from({ length: 24 }, (_, i) => [i, String(i).padStart(2, '0') + ':00']));
-  const sel = (k, opts) => { const s = h('select', null, opts.map(([a, b2]) => h('option', { value: String(a), text: b2 }))); s.value = String(v[k]); s.addEventListener('change', () => keep(k, Number(s.value))); return s; };
+  const hours = Array.from({ length: 24 }, (_, i) => [i, hour12(i)]);
+  const sel = (k, opts, then) => { const s = h('select', null, opts.map(([a, b2]) => h('option', { value: String(a), text: b2 }))); s.value = String(v[k]); s.addEventListener('change', () => { keep(k, Number(s.value)); v[k] = Number(s.value); if (then) then(); }); return s; };
+  const untilRow = h('label', { class: 'gr' }, h('span', { text: 'Night until' }), sel('nt', hours.slice(1, 13)));
+  const showUntil = () => { untilRow.style.display = v.nf >= 0 ? '' : 'none'; };
+  showUntil();
   return h('div', { style: 'display:grid;gap:10px' },
     h('div', { class: 'group' },
       h('label', { class: 'gr' }, h('span', { text: 'Key-on screen' }), sel('sp', pages)),
       h('label', { class: 'gr' }, h('span', { text: 'Screen off after' }), sel('ss', [[30, '30 s'], [60, '1 min'], [120, '2 min'], [300, '5 min'], [900, '15 min'], [0, 'Never']])),
       h('label', { class: 'gr' }, h('span', { text: 'Brightness' }), sel('br', [[0, 'Low'], [1, 'Medium'], [2, 'High']])),
-      h('label', { class: 'gr' }, h('span', { text: 'Night from' }), sel('nf', hours)),
-      h('label', { class: 'gr' }, h('span', { text: 'Night until' }), sel('nt', hours.slice(1))),
+      h('label', { class: 'gr' }, h('span', { text: 'Night mode' }), sel('nf', [[-1, 'Off'], [-2, 'Sunset to sunrise (GPS)']].concat(hours.slice(12).map(([i, t]) => [i, 'From ' + t]), hours.slice(0, 12).map(([i, t]) => [i, 'From ' + t])), showUntil)),
+      untilRow,
       h('label', { class: 'gr' }, h('span', { text: 'Night brightness' }), sel('bn', [[0, 'Low'], [1, 'Medium'], [2, 'High']])),
       h('label', { class: 'gr' }, h('span', { text: 'Redraw every' }), sel('rf', [[100, '0.1 s'], [250, '0.25 s'], [500, '0.5 s'], [1000, '1 s']])),
       h('label', { class: 'gr' }, h('span', { text: 'Mounted' }), sel('rot', [[0, 'Normal'], [1, 'Upside down']]))),
-    h('div', { class: 'foot', text: 'Night uses the clock from the GPS (or the phone) and the time zone in T3 settings.' }),
+    h('div', { class: 'foot', text: 'Night dims the screen to Night brightness. Sunset to sunrise works out the times from where the GPS last was (7 PM to 7 AM until it has had a fix). Uses the T3’s clock and the time zone in T3 settings. The wheel menu can change these too.' }),
     h('button', { class: 'btn btn-glass glass btn-wide', onclick: () => t3SendSettings() }, icon('bt'), 'Send settings to the T3'));
 }
 
-if (typeof module !== 'undefined') module.exports = { FIELDS, DEFAULT_SCREENS, SCREEN_TEMPLATES, parseScreen, writeScreen, fnv1a, screensHash, parseBtnMap, fitLabel, parseWheelMap, writeWheelMap, WHEEL_DEFAULT };
+if (typeof module !== 'undefined') module.exports = { FIELDS, DEFAULT_SCREENS, SCREEN_TEMPLATES, parseScreen, writeScreen, fnv1a, screensHash, parseBtnMap, fitLabel, parseWheelMap, writeWheelMap, parseNanoCfg, writeNanoCfg, WHEEL_DEFAULT, KENWOOD_NAMES };

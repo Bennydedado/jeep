@@ -170,7 +170,7 @@ void tripStep() {
   }
   if (!tripActive()) {
     if (!quietSince) quietSince = now;
-    if (!trip.paused && (trip.km >= 0.2 || trip.gpsKm >= 0.2) && now - quietSince > (uint32_t)cfg.parkSecs * 1000) tripCommand("end", "parked");
+    if (!trip.paused && (trip.km >= 0.2 || trip.gpsKm >= 0.2) && now - quietSince > (uint32_t)cfg.parkSecs * 1000) { tripCommand("end", "parked"); parkedTripEnded(); }
   } else quietSince = 0;
   if (!trip.paused && tripActive()) {
     if (!trip.t0) trip.t0 = nowMs() ? nowMs() - (int64_t)(trip.s * 1000) : 0;

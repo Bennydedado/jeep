@@ -87,6 +87,7 @@ void onCommand(const String& j, int src) {
   else if (c == "update") { updateNow(); reply(updJson(), src); }   // Heep's "Update over Wi-Fi": progress follows as {"t":"upd"}
   else if (c == "watch") relayWatched();                              // Heep in Safari is showing Live: keep the numbers coming
   else if (c == "obdscan") obdScanStart(src);                         // Heep: Diagnostics > Scan the Jeep
+  else if (c == "kw") { bool ok = wheelTestCode(jStr(j, "x")); reply("{\"t\":\"kw\",\"x\":\"" + jsonEsc(jStr(j, "x")) + "\",\"ok\":" + String(ok ? "true" : "false") + ",\"nano\":\"" + String(wheelMapState()) + "\"}", src); }
   else if (c == "fuel") fuelSet(numFieldOr(j, "l", -1), numFieldOr(j, "e", 0), numFieldOr(j, "k", 1));   // Heep: the tank's level
   else if (c == "codes") obdCodesStart(jStr(j, "p"), numField(j, "clear") > 0, src);   // Heep: Diagnostics > Trouble codes
   else if (c == "wifi") { if (numField(j, "scan") > 0) wifiScanNow(); reply(wifiJson(), src); }   // the Wi-Fi page

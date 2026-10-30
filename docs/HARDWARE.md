@@ -200,6 +200,11 @@ Code: `firmware/T3/jlink.h` (T3 side), `nano/NanoT3Example/T3Link.h` (Nano side)
 
   Other actions: screen off/on, brightness, reset peak boost, send/sync now, nothing. Holding Next or Previous
   keeps scrolling. While the T3's screen is off, the first press only wakes it.
+- **Settings menu on the T3** (action "Settings menu", default hold button 2): top / bottom move, middle changes the
+  highlighted setting, hold middle closes (30 s on its own). Brightness, night, screen off, key-on screen, units,
+  upside down, Live over Wi-Fi, reset peak, send trips, end trip.
+- **Pedal, headlight mode and stereo codes** (Nano, `jeep_controller_v3`): set in Heep under Live → Screens → Nano. Find
+  unknown Kenwood codes there with "Find stereo codes" (or `nano/KenwoodCodeFinder` from a laptop).
 - **Right buttons** (stereo, on the Nano; needs the GPIO 25 → D8 wire and `jeep_controller_v3`): set in Heep (Live →
   Screens → Right wheel buttons), tap and hold for each. Default: volume +, answer / hang up, volume −. Choices:
   volume ±, mute, play/pause, next/previous track, source, Siri, answer, hang up, high beams, T3 button 1–3, nothing,

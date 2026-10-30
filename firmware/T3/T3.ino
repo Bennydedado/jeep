@@ -49,7 +49,7 @@ int64_t nowMs() { return timeSrc ? epochOffset + (int64_t)millis() : 0; }
 // a better (or equal) clock source replaces the old one; a worse one only fills in when there's none
 void setClock(int64_t epochMs, char src) {
   if (epochMs < 1600000000000LL) return;
-  const char rank[] = "ang";   // phone < internet < GPS
+  const char rank[] = "vang";   // GPS time before a fix < phone < internet < GPS
   if (timeSrc && strchr(rank, src) < strchr(rank, timeSrc)) return;
   epochOffset = epochMs - (int64_t)millis();
   timeSrc = src;
@@ -91,6 +91,8 @@ static void confirmUpdateStep() {
   esp_ota_mark_app_valid_cancel_rollback();
   updateConfirmed();
 }
+
+#include "sun.h"
 
 void setup() {
   Serial.begin(115200);

@@ -35,8 +35,8 @@ const uint8_t RIGHT_PIN = A7;
 const Window RIGHT_WINDOWS[] = { { 0, 90 }, { 150, 330 }, { 420, 620 } };   // top, middle, bottom (PROVISIONAL)
 AltSoftSerial fromT3;   // RX D8
 WMapRx mapRx;
-char mapText[WMAP_MAX + 1] = WMAP_DEFAULT;
-WAction rightMap[3][2];
+char mapText[WMAP_MAX + 1] = WCFG_DEFAULT;
+WConfig conf;   // right buttons, pedal, headlight options, answer / hang-up codes
 WButton rightBtn[3];
 void sendKenwood(uint8_t code) { (void)code; /* your stereo remote code here */ }
 void runAction(const WAction& a, bool isHold) {
@@ -48,20 +48,25 @@ void loadMap() {
   char s[WMAP_MAX + 1];
   for (int i = 0; i <= WMAP_MAX; i++) s[i] = EEPROM.read(1 + i);
   s[WMAP_MAX] = 0;
-  if (EEPROM.read(0) == 0xA7 && wmapParse(s, rightMap)) strcpy(mapText, s); else wmapParse(WMAP_DEFAULT, rightMap);
+  conf = wcfgDefault();
+  if (EEPROM.read(0) == 0xA7 && wcfgParse(s, conf)) strcpy(mapText, s);
   t3.mapHash(wmapHash(mapText));
 }
 void rightLoop() {
   char got[WMAP_MAX + 1];
-  for (int n = 0; n < 32 && fromT3.available(); n++)
-    if (mapRx.feed((char)fromT3.read(), got) && strcmp(got, mapText) && wmapParse(got, rightMap)) {
+  uint8_t code;
+  for (int n = 0; n < 32 && fromT3.available(); n++) {
+    char k = mapRx.feed((char)fromT3.read(), got, &code);
+    if (k == 'K') sendKenwood(code);   // Heep's "Test a code"
+    if (k == 'M' && strcmp(got, mapText) && wcfgParse(got, conf)) {
       strcpy(mapText, got);
       EEPROM.update(0, 0xA7);
       for (int i = 0; ; i++) { EEPROM.update(1 + i, got[i]); if (!got[i]) break; }
       t3.mapHash(wmapHash(mapText));
     }
+  }
   int v = analogRead(RIGHT_PIN);
-  for (int i = 0; i < 3; i++) wmapStep(rightBtn[i], rightMap[i][0], rightMap[i][1], v >= RIGHT_WINDOWS[i].lo && v <= RIGHT_WINDOWS[i].hi, millis(), runAction);
+  for (int i = 0; i < 3; i++) wmapStep(rightBtn[i], conf.right[i][0], conf.right[i][1], v >= RIGHT_WINDOWS[i].lo && v <= RIGHT_WINDOWS[i].hi, millis(), runAction);
 }
 
 void setup() {

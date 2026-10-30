@@ -43,6 +43,7 @@ async function onT3Line(line) {
   } else if (m.c === 'getscr') {
     const t = t3Parse(T3.screens);
     for (let i = 0; i < t.screens.length; i++) await notify({ t: 'scrd', i, n: t.screens.length, d: t.screens[i].s });
+  } else if (m.c === 'kw') { T3.kw = (T3.kw || []).concat(m.x); await notify({ t: 'kw', x: m.x, ok: true, nano: 'saved' });
   } else if (m.c === 'cfg') { T3.cfg = m; await notify({ t: 'cfg', ok: true }); await notify(hi()); }
 }
 
@@ -155,7 +156,7 @@ const srv = http.createServer((q, r) => {
   await page.locator(LIST + ' button', { hasText: 'Send settings to the T3' }).first().click(); await page.waitForTimeout(1500);
   check(T3.cfg && /^sleep,/.test(T3.cfg.bm), 'button 1 press = screen off/on reached the T3: ' + (T3.cfg && T3.cfg.bm));
   check(T3.cfg && Array.isArray(T3.cfg.wifi), 'over Bluetooth the Wi-Fi list is included');
-  check(T3.cfg && T3.cfg.wb === 'V+,V+;AN,HU;V-,V-', 'right buttons go too (default): ' + (T3.cfg && T3.cfg.wb));
+  check(T3.cfg && T3.cfg.wb === 'V+,V+;AN,HU;V-,V-|PP,NX,PV,SI|11|FFFF', 'Nano settings go too (default): ' + (T3.cfg && T3.cfg.wb));
 
   // right buttons (the Nano): top tap = play/pause, middle hold = a Kenwood code typed in
   const R = LIST + ' .group:has(b:text-is("Right top"))', M = LIST + ' .group:has(b:text-is("Right middle"))';
@@ -165,9 +166,45 @@ const srv = http.createServer((q, r) => {
   await page.locator(LIST + ' .group:has(b:text-is("Right bottom"))').scrollIntoViewIfNeeded();
   await page.screenshot({ path: shots + '/right-buttons.png' });
   await page.locator(LIST + ' button', { hasText: /^Send settings$/ }).click(); await page.waitForTimeout(1500);
-  check(T3.cfg && T3.cfg.wb === 'PP,V+;AN,K89;V-,V-', 'right-button map reached the T3: ' + (T3.cfg && T3.cfg.wb));
+  check(T3.cfg && T3.cfg.wb === 'PP,V+;AN,K89;V-,V-|PP,NX,PV,SI|11|FFFF', 'right-button map reached the T3: ' + (T3.cfg && T3.cfg.wb));
   await notify({ t: 'live', wbs: 'saved', nano: 'ok' }); await page.waitForTimeout(1200);
   check(/Saved on the Nano ✓/.test(await page.locator(LIST).innerText()), 'says when the Nano has it');
+
+  // the pedal, headlight mode without the left middle button, and the answer code
+  const P = LIST + ' .group:has(b:text-is("Pedal"))', HL = LIST + ' .group:has(b:text-is("Headlight mode: left middle button"))', C = LIST + ' .group:has(b:text-is("Stereo codes you’ve found"))';
+  await page.locator(P + ' label:has-text("1 click") select').selectOption('MU');
+  await page.locator(HL + ' label:has-text("Switches the beams") select').selectOption('0');
+  await page.locator(C + ' label:has-text("Hang up") input').fill('92');
+  // the code tester: ▶ sends the next code; "Use as Answer" keeps it
+  const codeBox = page.locator(LIST + ' input[aria-label="Code to test"]');
+  await codeBox.fill('88'); await codeBox.dispatchEvent('change');
+  await page.locator(LIST + ' button[aria-label="Next code"]').click(); await page.waitForTimeout(600);
+  check(T3.kw && T3.kw[T3.kw.length - 1] === '89', 'code tester sent the next code: ' + (T3.kw || []).join(','));
+  check(/Sent 89/.test(await page.locator(LIST).innerText()), 'says it was sent');
+  // finding codes: Nothing / Save step on to the next code not tried yet (skipping known ones like 0E)
+  await codeBox.fill('0D'); await codeBox.dispatchEvent('change');
+  await page.locator(LIST + ' button', { hasText: 'Nothing → next' }).click(); await page.waitForTimeout(500);
+  check(T3.kw[T3.kw.length - 1] === '0F', 'Nothing skips the known play/pause (0E) and sends 0F: ' + T3.kw.slice(-2).join(','));
+  await page.locator(LIST + ' input[aria-label="What the code did"]').fill('band');
+  await page.locator(LIST + ' button', { hasText: 'Save → next' }).click(); await page.waitForTimeout(500);
+  check(T3.kw[T3.kw.length - 1] === '10' && /0F\s+band/.test(await page.locator(LIST).innerText()), 'Save keeps the note and sends the next');
+  check(await page.evaluate(() => JSON.stringify(store.get('kwLog', {})) === '{"0D":"","0F":"band"}'), 'notes kept on the phone');
+  await page.locator(LIST + ' button', { hasText: 'Copy the list' }).scrollIntoViewIfNeeded();
+  await page.screenshot({ path: shots + '/code-finder.png' });
+  check((await page.locator(LIST).innerText()).match(/0F\s+band/g).length === 1, 'the found list is drawn once');
+  await codeBox.fill('89'); await codeBox.dispatchEvent('change');
+  await page.locator(LIST + ' button', { hasText: 'Use as Answer' }).click();
+  await page.locator(P).scrollIntoViewIfNeeded();
+  await page.screenshot({ path: shots + '/nano-card.png' });
+  await page.locator(LIST + ' button', { hasText: /^Send settings$/ }).click(); await page.waitForTimeout(1500);
+  check(T3.cfg && T3.cfg.wb === 'PP,V+;AN,K89;V-,V-|MU,NX,PV,SI|01|8992', 'whole Nano setup reached the T3: ' + (T3.cfg && T3.cfg.wb));
+  // T3 button map default has the wheel settings menu on button 2 hold
+  check(T3.cfg && T3.cfg.bm.split(';')[1] !== undefined, 'button map sent');
+
+  // a change made with the wheel menu on the T3 comes back into Heep
+  await page.evaluate(() => { const v = store.get('t3', {}); v.br = 2; store.set('t3', v); });
+  await notify(Object.assign(hi(), { br: 0, nf: -2, mc: 3 })); await page.waitForTimeout(400);
+  check(await page.evaluate(() => store.get('t3', {}).br === 0 && store.get('t3', {}).nf === -2), 'wheel-menu changes are taken into Heep');
 
   check(!errors.length, 'no errors in the page: ' + errors.join(' | '));
   console.log('editor.js: ' + checks + ' checks, ' + failed + ' failed');

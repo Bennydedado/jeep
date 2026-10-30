@@ -24,7 +24,7 @@ jobs:
           arduino-cli lib install "Adafruit SSD1306@2.5.17" "Adafruit GFX Library@1.13.0" "Adafruit BusIO@1.17.4" "PubSubClient@2.8" "NimBLE-Arduino@2.5.2" "OneWire@2.3.8"
       - name: Parser tests (run on the build machine, no hardware)
         run: |
-          for t in nmea jlink wheelmap screens otarx obdpid; do g++ -std=c++17 -Wall -O1 -o /tmp/t_$t tests/firmware/test_$t.cpp && /tmp/t_$t; done
+          for t in nmea jlink wheelmap sun screens otarx obdpid; do g++ -std=c++17 -Wall -O1 -o /tmp/t_$t tests/firmware/test_$t.cpp && /tmp/t_$t; done
           g++ -std=c++17 -Wall -O1 -I tests/firmware/mock -o /tmp/t_nano tests/firmware/test_nano_link.cpp && /tmp/t_nano
       - name: Build
         id: build

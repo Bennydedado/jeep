@@ -4,7 +4,7 @@
 set -e
 cd "$(dirname "$0")/.."
 T=$(mktemp -d)
-for t in nmea jlink wheelmap screens otarx obdpid; do g++ -std=c++17 -Wall -O1 -o $T/t_$t tests/firmware/test_$t.cpp && $T/t_$t; done
+for t in nmea jlink wheelmap sun screens otarx obdpid; do g++ -std=c++17 -Wall -O1 -o $T/t_$t tests/firmware/test_$t.cpp && $T/t_$t; done
 g++ -std=c++17 -Wall -O1 -I tests/firmware/mock -o $T/t_nano tests/firmware/test_nano_link.cpp && $T/t_nano
 for t in tests/app/test_*.js; do node $t; done
 g++ -std=c++17 -Wall -O1 -o $T/scrtool tests/firmware/scrtool.cpp

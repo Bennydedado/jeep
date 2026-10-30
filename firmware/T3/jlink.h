@@ -6,7 +6,8 @@
 //
 // And the other way (2.12+, T3 TX on NANO_TX_PIN -> Nano D8), only the right-button map, sent until the Nano's
 // heartbeat shows the same hash (the Nano keeps it in EEPROM and works the same with or without the T3):
-//   $N,M,<map>*HH                         e.g. $N,M,V+,V+;AN,HU;V-,V-*HH  (nano/NanoT3Example/WheelMap.h)
+//   $N,M,<settings>*HH                    e.g. $N,M,V+,V+;AN,HU;V-,V-|PP,NX,PV,SI|11|FFFF*HH  (nano/NanoT3Example/WheelMap.h)
+//   $N,K,<hh>*HH                          send this Kenwood code once (Heep's code tester; nothing is saved)
 //
 // HH is the XOR of every character between '$' and '*', in hex (same as NMEA). <seq> counts 0-255 and wraps.
 // The Nano sends every button message twice, 30 ms apart, with the same seq: the T3 keeps the first good copy
@@ -39,13 +40,19 @@ inline uint16_t jlinkMapHash(const char* s) {
   for (; *s; s++) { h ^= (uint8_t)*s; h *= 16777619u; }
   return (uint16_t)(h ^ (h >> 16));
 }
-// "$N,M,<map>*HH\n" into out; returns its length (0 if it doesn't fit)
-inline int jlinkMapLine(const char* map, char* out, int cap) {
-  int n = snprintf(out, cap, "$N,M,%s*", map);
+// "$N,<body>*HH\n" into out; returns its length (0 if it doesn't fit)
+inline int jlinkNLine(const char* body, char* out, int cap) {
+  int n = snprintf(out, cap, "$N,%s*", body);
   if (n < 0 || n + 4 > cap) return 0;
   uint8_t x = 0;
   for (int i = 1; i < n - 1; i++) x ^= (uint8_t)out[i];
   return n + snprintf(out + n, cap - n, "%02X\n", x);
+}
+// the Nano's settings ("$N,M,<settings>*HH") and a Kenwood code to send once ("$N,K,<hh>*HH")
+inline int jlinkMapLine(const char* map, char* out, int cap) {
+  char body[96];
+  if (snprintf(body, sizeof(body), "M,%s", map) >= (int)sizeof(body)) return 0;
+  return jlinkNLine(body, out, cap);
 }
 
 class JLinkParser {
