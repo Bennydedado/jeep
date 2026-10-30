@@ -171,7 +171,7 @@ const srv = http.createServer((q, r) => {
   check(/Saved on the Nano ✓/.test(await page.locator(LIST).innerText()), 'says when the Nano has it');
 
   // the pedal, headlight mode without the left middle button, and the answer code
-  const P = LIST + ' .group:has(b:text-is("Pedal"))', HL = LIST + ' .group:has(b:text-is("Headlight mode: left middle button"))', C = LIST + ' .group:has(b:text-is("Stereo codes you’ve found"))';
+  const P = LIST + ' .group:has(b:text-is("Pedal"))', HL = LIST + ' .group:has(b:text-is("Headlight mode: middle buttons"))', C = LIST + ' .group:has(b:text-is("Stereo codes you’ve found"))';
   await page.locator(P + ' label:has-text("1 click") select').selectOption('MU');
   await page.locator(HL + ' label:has-text("Left middle switches the beams") select').selectOption('0');
   await page.locator(C + ' label:has-text("Hang up") input').fill('92');
