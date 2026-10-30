@@ -502,8 +502,10 @@ function nanoCard() {
   // ---- finding codes: the Nano sends one code, you say what the stereo did (or nothing), on to the next.
   // Your notes are kept on this phone ('kwLog': code -> what it did, '' = nothing) and named in the pickers above.
   const log = store.get('kwLog', {});
+  const bad = store.get('kwBad', {});   // codes you marked bad (e.g. turned the stereo off): never sent again
+  const isBad = x => !!bad[x];
   const H = n => ((n % 256 + 256) % 256).toString(16).toUpperCase().padStart(2, '0');
-  const untried = from => { for (let k = 0; k < 256; k++) { const x = H(from + k); if (!(x in log) && !KENWOOD_NAMES[x]) return x; } return H(from); };
+  const untried = from => { for (let k = 0; k < 256; k++) { const x = H(from + k); if (!(x in log) && !KENWOOD_NAMES[x] && !bad[x]) return x; } return H(from); };
   let cur = hex2(store.get('kwTest', '')) || untried(0);
   const codeBox = h('input', { value: cur, maxlength: 2, style: 'width:4.5em;text-align:center', 'aria-label': 'Code to test' });
   const said = h('div', { class: 'foot' });
@@ -511,21 +513,34 @@ function nanoCard() {
   const tally = h('div', { class: 'foot' });
   const found = h('div', { class: 'card list' });
   const known = x => KENWOOD_NAMES[x] || log[x] || '';
+  const nextOk = (from, d) => { let n = from; for (let k = 0; k < 256; k++) { n += d; if (!isBad(H(n))) return H(n); } return H(from); };
   const paintLog = () => {
-    const did = Object.keys(log).filter(x => log[x]).sort();
+    const did = Object.keys(log).filter(x => log[x] || isBad(x)).sort();
     tally.textContent = 'Tried ' + Object.keys(log).length + ' of 256 codes, ' + did.length + ' did something.';
     found.textContent = '';
-    put(found, did.length ? did.map(x => h('div', { class: 'row' }, h('div', { class: 'main' }, h('b', { text: x + '  ' + log[x] })),
-      h('button', { class: 'btn btn-small btn-glass glass', onclick: () => { cur = x; show(); fire(); } }, 'Again'),
-      h('button', { class: 'btn btn-small btn-glass glass', 'aria-label': 'Forget ' + x, onclick: () => { delete log[x]; store.set('kwLog', log); paintLog(); } }, '✕'))) : h('div', { class: 'row' }, h('span', { text: 'Codes that did something show up here.' })));
+    put(found, did.length ? did.map(x => h('div', { class: 'row' }, h('div', { class: 'main' }, h('b', { text: x + '  ' + (log[x] || '') + (isBad(x) ? '  (bad: never sent)' : '') })),
+      isBad(x) ? null : h('button', { class: 'btn btn-small btn-glass glass', onclick: () => { cur = x; show(); fire(); } }, 'Again'),
+      h('button', { class: 'btn btn-small btn-glass glass', 'aria-label': 'Forget ' + x, onclick: () => { delete log[x]; delete bad[x]; store.set('kwLog', log); store.set('kwBad', bad); paintLog(); paintBad(); } }, '✕'))) : h('div', { class: 'row' }, h('span', { text: 'Codes that did something show up here.' })));
   };
   const show = () => { codeBox.value = cur; what.value = log[cur] || ''; said.textContent = 'Code ' + cur + (known(cur) ? ' (' + known(cur) + ')' : '') + (cur in log && !log[cur] ? ' (did nothing last time)' : '') + '.'; store.set('kwTest', cur); };
+  const sendRaw = async x => { LIVE.onKw = m => { if (m.x && m.x.toUpperCase() === x) said.textContent = m.ok ? 'Sent banned code ' + x + ' once.' : 'The T3 couldn’t pass it on.'; }; await t3Send({ c: 'kw', x }); };
+  // banned codes: only from this dropdown, on purpose, two taps
+  const badPick = h('select', { 'aria-label': 'Banned code to send' });
+  const badBtn = confirmButton('Send this banned code once', 'Tap again: sends it once (key off = stereo off)', () => { const x = badPick.value; if (x) sendRaw(x); });
+  const badBox = h('div', { class: 'group' }, h('label', { class: 'gr' }, h('span', { text: 'Banned code' }), badPick));
+  const paintBad = () => {
+    const xs = Object.keys(bad).sort();
+    badPick.textContent = ''; xs.forEach(x => badPick.append(h('option', { value: x, text: x + (log[x] && log[x] !== 'bad' ? ' (' + log[x] + ')' : '') })));
+    badBox.style.display = badBtn.style.display = xs.length ? '' : 'none';
+  };
   const fire = async () => {
     cur = hex2(codeBox.value) || cur; show();
+    if (isBad(cur)) { said.textContent = 'Code ' + cur + ' is marked bad, so it isn’t sent. Tap ✕ next to it in the list to allow it again.'; return; }
     LIVE.onKw = m => { if (m.x && m.x.toUpperCase() === cur) said.textContent = m.ok ? 'Sent ' + cur + (known(cur) ? ' (' + known(cur) + ')' : '') + '. Did the stereo do anything?' : 'The T3 couldn’t pass it on: ' + (m.nano === 'none' ? 'Nano not heard' : m.nano === 'old' ? 'the Nano needs jeep_controller_v3' : 'try again'); };
     await t3Send({ c: 'kw', x: cur });
   };
-  const step = d => { cur = H(parseInt(cur, 16) + d); show(); fire(); };
+  const step = d => { cur = nextOk(parseInt(cur, 16), d); show(); fire(); };
+  const markBad = () => { const t = what.value.trim(); bad[cur] = true; log[cur] = t || 'bad'; store.set('kwBad', bad); store.set('kwLog', log); paintLog(); paintBad(); cur = untried(parseInt(cur, 16) + 1); show(); fire(); };
   const answer = note => { log[cur] = note; store.set('kwLog', log); paintLog(); cur = untried(parseInt(cur, 16) + 1); show(); fire(); };
   const useAs = k => { c[k] = cur; keep(); log[cur] = log[cur] || (k === 'answer' ? 'answer call' : 'hang up'); store.set('kwLog', log); toast((k === 'answer' ? 'Answer' : 'Hang up') + ' = ' + cur, 'Tap Send settings to put it on the Nano'); root.replaceWith(nanoCard()); };
   const copyList = async () => {
@@ -533,7 +548,7 @@ function nanoCard() {
     try { await navigator.clipboard.writeText(txt); toast('Copied', 'Your list of codes', 'info'); } catch (e) { toast('Couldn’t copy', '', 'bad'); }
   };
   codeBox.addEventListener('change', () => { const x = hex2(codeBox.value); if (x) { cur = x; show(); } });
-  paintLog(); show();
+  paintLog(); paintBad(); show();
   show();
 
   const names = ['Right top', 'Right middle', 'Right bottom'];
@@ -565,11 +580,13 @@ function nanoCard() {
     h('div', { class: 'btn-row' },
       h('button', { class: 'btn btn-glass glass', onclick: () => answer('') }, 'Nothing → next'),
       h('button', { class: 'btn btn-primary', onclick: () => { const t = what.value.trim(); if (!t) { what.focus(); return; } answer(t); } }, 'Save → next')),
+    h('button', { class: 'btn btn-glass glass btn-wide', onclick: markBad }, 'Bad (turned it off etc.): never send again → next'),
     h('div', { class: 'group' }, h('label', { class: 'gr' }, what)),
     h('div', { class: 'btn-row' },
       h('button', { class: 'btn btn-glass glass', onclick: () => useAs('answer') }, 'Use as Answer'),
       h('button', { class: 'btn btn-glass glass', onclick: () => useAs('hangup') }, 'Use as Hang up')),
-    tally, found,
+    tally, found, badBox, badBtn,
+    h('div', { class: 'foot', text: 'A code is only ever sent once, so nothing keeps going. If a banned code leaves the stereo off or stuck, turning the key off (or the stereo\u2019s own power button) resets it.' }),
     h('button', { class: 'btn btn-glass glass btn-wide', onclick: copyList }, 'Copy the list'));
   return root;
 }

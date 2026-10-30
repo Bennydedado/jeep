@@ -1,5 +1,10 @@
 # Changes
 
+## 29 Oct 2026 — Heep 1.1.17: bad stereo codes stay off
+
+- Find stereo codes: "Bad: never send again" marks a code (one that turned the stereo off, say). Bad codes are skipped by
+  ◀ ▶ and Nothing / Save → next, and Send refuses them. ✕ in the list allows one again, and "Send this banned code once" (two taps) sends one on purpose.
+
 ## 29 Oct 2026 — T3 2.14, Heep 1.1.16: the wheel menu, the pedal and finding stereo codes
 
 - **T3 settings from the steering wheel:** the new "Settings menu" button action (default: hold left middle). Brightness,

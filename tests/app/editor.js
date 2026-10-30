@@ -189,6 +189,20 @@ const srv = http.createServer((q, r) => {
   await page.locator(LIST + ' button', { hasText: 'Save → next' }).click(); await page.waitForTimeout(500);
   check(T3.kw[T3.kw.length - 1] === '10' && /0F\s+band/.test(await page.locator(LIST).innerText()), 'Save keeps the note and sends the next');
   check(await page.evaluate(() => JSON.stringify(store.get('kwLog', {})) === '{"0D":"","0F":"band"}'), 'notes kept on the phone');
+  // a bad code is never sent again, not even with ◀ ▶ or Send
+  await page.locator(LIST + ' button', { hasText: 'Bad (turned' }).click(); await page.waitForTimeout(400);
+  const nBefore = T3.kw.length;
+  await codeBox.fill('10'); await codeBox.dispatchEvent('change');
+  await page.locator(LIST + ' button', { hasText: /^Send$/ }).click(); await page.waitForTimeout(400);
+  check(T3.kw.length === nBefore && /marked bad/.test(await page.locator(LIST).innerText()), 'a bad code is not sent');
+  await codeBox.fill('0F'); await codeBox.dispatchEvent('change');
+  await page.locator(LIST + ' button[aria-label="Next code"]').click(); await page.waitForTimeout(400);
+  check(T3.kw[T3.kw.length - 1] === '11', '▶ skips the bad code: ' + T3.kw.slice(-2).join(','));
+  // but it can be sent on purpose from the banned list (two taps)
+  const nB = T3.kw.length;
+  await page.locator(LIST + ' button', { hasText: 'Send this banned code once' }).click();
+  await page.locator(LIST + ' button', { hasText: 'Tap again' }).click(); await page.waitForTimeout(400);
+  check(T3.kw.length === nB + 1 && T3.kw[T3.kw.length - 1] === '10', 'banned code sent on purpose: ' + T3.kw.slice(-1));
   await page.locator(LIST + ' button', { hasText: 'Copy the list' }).scrollIntoViewIfNeeded();
   await page.screenshot({ path: shots + '/code-finder.png' });
   check((await page.locator(LIST).innerText()).match(/0F\s+band/g).length === 1, 'the found list is drawn once');
