@@ -47,5 +47,8 @@ ok(A.KENWOOD_NAMES['14'] === 'Volume +' && A.KENWOOD_NAMES['8B'] === 'Siri', 'kn
 // the preview cuts labels exactly like the T3 (see test_screens.cpp)
 ok(A.fitLabel('Peak boost', 40) === 'Peak' && A.fitLabel('Peak boost', 52) === 'Peak' && A.fitLabel('Peak boost', 80) === 'Peak boost', 'peak boost label fits');
 ok(A.fitLabel('Satellites', 30) === 'Sate' && A.fitLabel('RPM', 38) === 'RPM' && A.fitLabel('Coolant', 10) === '', 'labels cut like the T3');
+ok(JSON.stringify(A.parseBv('5,100,200')) === '[5,100,200]' && JSON.stringify(A.parseBv('5,900,1')) === '[1,70,255]', 'brightness levels read, bad ones fall back');
+const sti = fs.readFileSync(path.join(__dirname, '../../firmware/T3/settings.ino'), 'utf8');
+ok(sti.includes('p.getString("bv", "1,70,255")'), 'same default levels as the T3');
 console.log('test_screens.js: ' + n + ' checks, ' + fails + ' failed');
 process.exit(fails ? 1 : 0);

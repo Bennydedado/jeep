@@ -1,5 +1,10 @@
 # Changes
 
+## 30 Oct 2026 — T3 2.15, Heep 1.1.20: set your own brightness levels
+
+- Heep → Screens → Display → Brightness levels: tap Low, Medium or High and slide to set what it means (0-100%).
+  The T3 shows that level while you slide. Brightness, Night brightness and the wheel menu use your levels.
+
 ## 30 Oct 2026 — Heep 1.1.19: headlight mode with tap, hold
 
 - Heep → Nano → Headlight mode: "Turn it on / off with" Tap, tap, hold (as before) or Tap, hold. A plain hold is still

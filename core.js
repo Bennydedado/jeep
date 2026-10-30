@@ -1,7 +1,7 @@
 'use strict';
 // core.js - the Jeep log on this phone, syncing with the Google Sheet, and the numbers.
 
-const VERSION = '1.1.19';
+const VERSION = '1.1.20';
 const TANK_DEFAULT = 77.6; // 2006 Liberty CRD: 20.5 US gal
 const PERSONAL = 'Personal tank'; // the Station value for fill-ups from the tank at home
 

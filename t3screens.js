@@ -593,6 +593,30 @@ function nanoCard() {
   return root;
 }
 
+// ---------------------------------------------------------------- what Low, Medium and High mean (0-255 on the screen)
+function parseBv(s) { const a = String(s || '').split(',').map(Number); return a.length === 3 && a.every(x => x >= 0 && x <= 255) ? a : [1, 70, 255]; }
+function brightLevels(v, keep) {
+  const lv = parseBv(v.bv), names = ['Low', 'Medium', 'High'];
+  let open = -1, sendT = 0;
+  const pct = x => Math.round(x / 2.55) + '%';
+  const slot = h('div');
+  const btns = names.map((n, i) => h('button', { class: 'btn btn-small btn-glass glass', 'aria-label': 'Set ' + n, onclick: () => { open = open === i ? -1 : i; paint(); } }, n + ' ' + pct(lv[i])));
+  const send = i => { clearTimeout(sendT); sendT = setTimeout(() => { if (t3CanSend()) { LIVE.quietCfgUntil = Date.now() + 2000; t3Send({ c: 'cfg', bv: lv.join(','), bvp: i }); } }, 250); };
+  const paint = () => {
+    names.forEach((n, i) => { btns[i].textContent = n + ' ' + pct(lv[i]); btns[i].classList.toggle('btn-primary', i === open); });
+    slot.textContent = '';
+    if (open < 0) return;
+    const i = open;
+    const r = h('input', { type: 'range', min: 0, max: 255, value: lv[i], style: 'width:100%', 'aria-label': names[i] + ' brightness' });
+    const out = h('span', { text: pct(lv[i]) });
+    r.addEventListener('input', () => { lv[i] = Number(r.value); out.textContent = pct(lv[i]); btns[i].textContent = names[i] + ' ' + pct(lv[i]); keep('bv', lv.join(',')); send(i); });
+    put(slot, h('div', { class: 'gr', style: 'display:flex;gap:10px;align-items:center' }, r, out),
+      h('div', { class: 'foot', text: 'The T3 shows ' + names[i] + ' while you slide (connected). Most of the change is near the bottom; even 0 stays a little lit.' }));
+  };
+  paint();
+  return h('div', null, h('div', { class: 'gr' }, h('span', { text: 'Brightness levels' })), h('div', { class: 'btn-row', style: 'flex-wrap:wrap' }, btns), slot);
+}
+
 // ---------------------------------------------------------------- display settings (part of the T3 settings)
 const hour12 = i => (i % 12 === 0 ? 12 : i % 12) + ' ' + (i < 12 ? 'AM' : 'PM') + (i === 0 ? ' (midnight)' : i === 12 ? ' (noon)' : '');
 function displayCard() {
@@ -613,10 +637,11 @@ function displayCard() {
       h('label', { class: 'gr' }, h('span', { text: 'Night mode' }), sel('nf', [[-1, 'Off'], [-2, 'Sunset to sunrise (GPS)']].concat(hours.slice(12).map(([i, t]) => [i, 'From ' + t]), hours.slice(0, 12).map(([i, t]) => [i, 'From ' + t])), showUntil)),
       untilRow,
       h('label', { class: 'gr' }, h('span', { text: 'Night brightness' }), sel('bn', [[0, 'Low'], [1, 'Medium'], [2, 'High']])),
+      brightLevels(v, keep),
       h('label', { class: 'gr' }, h('span', { text: 'Redraw every' }), sel('rf', [[100, '0.1 s'], [250, '0.25 s'], [500, '0.5 s'], [1000, '1 s']])),
       h('label', { class: 'gr' }, h('span', { text: 'Mounted' }), sel('rot', [[0, 'Normal'], [1, 'Upside down']]))),
     h('div', { class: 'foot', text: 'Night dims the screen to Night brightness. Sunset to sunrise works out the times from where the GPS last was (7 PM to 7 AM until it has had a fix). Uses the T3’s clock and the time zone in T3 settings. The wheel menu can change these too.' }),
     h('button', { class: 'btn btn-glass glass btn-wide', onclick: () => t3SendSettings() }, icon('bt'), 'Send settings to the T3'));
 }
 
-if (typeof module !== 'undefined') module.exports = { FIELDS, DEFAULT_SCREENS, SCREEN_TEMPLATES, parseScreen, writeScreen, fnv1a, screensHash, parseBtnMap, fitLabel, parseWheelMap, writeWheelMap, parseNanoCfg, writeNanoCfg, WHEEL_DEFAULT, KENWOOD_NAMES };
+if (typeof module !== 'undefined') module.exports = { parseBv, FIELDS, DEFAULT_SCREENS, SCREEN_TEMPLATES, parseScreen, writeScreen, fnv1a, screensHash, parseBtnMap, fitLabel, parseWheelMap, writeWheelMap, parseNanoCfg, writeNanoCfg, WHEEL_DEFAULT, KENWOOD_NAMES };
