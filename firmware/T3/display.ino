@@ -109,11 +109,15 @@ bool isNight() {
   if (cfg.nightFrom < 0 || h < 0) return false;
   return cfg.nightFrom <= cfg.nightTo ? (h >= cfg.nightFrom && h < cfg.nightTo) : (h >= cfg.nightFrom || h < cfg.nightTo);
 }
+// Heep's brightness sliders: while one is being moved, that level is shown for 4 s whatever the time of day
+static int previewLv = -1;
+static uint32_t previewUntil = 0;
+void brightPreview(int lv) { previewLv = lv; previewUntil = millis() + 4000; screenWake(); }
 void applyBright() {
-  const uint8_t lv[] = { 1, 70, 255 };
   int b = isNight() ? cfg.brightNight : cfg.bright;
+  if (previewLv >= 0 && (int32_t)(millis() - previewUntil) < 0) b = previewLv;
   oled.ssd1306_command(SSD1306_SETCONTRAST);
-  oled.ssd1306_command(lv[constrain(b, 0, 2)]);
+  oled.ssd1306_command(cfg.brightLv[constrain(b, 0, 2)]);
 }
 
 void displayStep() {
@@ -126,7 +130,7 @@ void displayStep() {
   // sleep after "screenSecs" without a press (0 = never)
   if (cfg.screenSecs > 0 && screenOn && now - lastTouch > (uint32_t)cfg.screenSecs * 1000UL) screenToggle();
   static uint32_t lastBright = 0;
-  if (now - lastBright > 60000) { lastBright = now; applyBright(); }
+  if (now - lastBright > 60000 || (previewLv >= 0 && (int32_t)(now - previewUntil) >= 0)) { lastBright = now; if ((int32_t)(now - previewUntil) >= 0) previewLv = -1; applyBright(); }
   if (!screenOn || now - lastDraw < (uint32_t)cfg.refreshMs) return;
   lastDraw = now;
   oled.clearDisplay();

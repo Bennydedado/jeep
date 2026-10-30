@@ -43,6 +43,8 @@ void loadSettings() {
   cfg.sdMaxPct = p.getInt("sdm", 90);
   cfg.flip = p.getBool("rot", false);
   cfg.refreshMs = p.getInt("rf", 250);
+  { String bv = p.getString("bv", "1,70,255"); int a = 0, b = 0, c = 0;
+    if (sscanf(bv.c_str(), "%d,%d,%d", &a, &b, &c) == 3) { cfg.brightLv[0] = constrain(a, 0, 255); cfg.brightLv[1] = constrain(b, 0, 255); cfg.brightLv[2] = constrain(c, 0, 255); } }
   cfg.btnMap = p.getString("bm", "prev,home;mark,menu;next,end");
   cfg.wheelMap = p.getString("wb", "V+,V+;AN,HU;V-,V-|PP,NX,PV,SI|11|FFFF");
   cfg.io4 = p.getInt("io4", 0);
@@ -122,6 +124,8 @@ bool applySettings(const String& j, bool fromRelay) {
   if (has(j, "sdm")) p.putInt("sdm", constrain((int)numFieldOr(j, "sdm", 90), 50, 98));
   if (has(j, "rot")) p.putBool("rot", numFieldOr(j, "rot", 0) > 0);
   if (has(j, "rf")) p.putInt("rf", constrain((int)numFieldOr(j, "rf", 250), 100, 2000));
+  if (has(j, "bv")) { String bv = jStr(j, "bv"); int a, b, c; if (bv.length() < 16 && sscanf(bv.c_str(), "%d,%d,%d", &a, &b, &c) == 3) p.putString("bv", bv); }
+  if (has(j, "bvp")) brightPreview(numFieldOr(j, "bvp", -1));   // Heep's slider: show this level for a few seconds
   if (has(j, "bm")) { String bm = jStr(j, "bm"); if (bm.length() < 120) p.putString("bm", bm); }
   if (has(j, "wb")) { String wb = jStr(j, "wb"); if (wheelMapOk(wb)) p.putString("wb", wb); }
   if (has(j, "io4")) p.putInt("io4", constrain((int)numFieldOr(j, "io4", 0), 0, 1));
@@ -140,7 +144,7 @@ bool applySettings(const String& j, bool fromRelay) {
 void resetSettings() {
   Preferences p;
   p.begin("t3", false);
-  const char* keys[] = { "ss", "pk", "br", "bn", "nf", "nt", "tz", "sp", "spd", "hm", "h16", "hh", "tf", "to", "gb", "li", "lis", "lfl", "sdm", "rot", "rf", "bm", "wb", "io4", "opr", "etf" };
+  const char* keys[] = { "ss", "pk", "br", "bn", "nf", "nt", "tz", "sp", "spd", "hm", "h16", "hh", "tf", "to", "gb", "li", "lis", "lfl", "sdm", "rot", "rf", "bv", "bm", "wb", "io4", "opr", "etf" };
   for (auto k : keys) p.remove(k);
   p.end();
   loadSettings();
@@ -160,7 +164,7 @@ String settingsJson() {
          ",\"tf\":" + String(cfg.tempF ? 1 : 0) + ",\"etf\":" + String(cfg.engF ? 1 : 0) + ",\"to\":" + String(cfg.tempOff, 1) + ",\"gb\":" + String(cfg.gpsBaud) +
          ",\"li\":" + String(cfg.logSec) + ",\"lis\":" + String(cfg.logIdleSec) + ",\"lfl\":" + String(cfg.flushSec) +
          ",\"sdm\":" + String(cfg.sdMaxPct) + ",\"rot\":" + String(cfg.flip ? 1 : 0) + ",\"rf\":" + String(cfg.refreshMs) +
-         ",\"mc\":" + String(menuChanges) + ",\"bm\":\"" + jsonEsc(cfg.btnMap) + "\",\"wb\":\"" + jsonEsc(cfg.wheelMap) + "\",\"wbs\":\"" + wheelMapState() + "\",\"io4\":" + String(cfg.io4) + ",\"opr\":" + String(cfg.obdProto) + ",\"obdName\":\"" + jsonEsc(cfg.obdName) +
+         ",\"bv\":\"" + String(cfg.brightLv[0]) + "," + String(cfg.brightLv[1]) + "," + String(cfg.brightLv[2]) + "\",\"mc\":" + String(menuChanges) + ",\"bm\":\"" + jsonEsc(cfg.btnMap) + "\",\"wb\":\"" + jsonEsc(cfg.wheelMap) + "\",\"wbs\":\"" + wheelMapState() + "\",\"io4\":" + String(cfg.io4) + ",\"opr\":" + String(cfg.obdProto) + ",\"obdName\":\"" + jsonEsc(cfg.obdName) +
          "\",\"ssids\":" + ss + ",\"nets\":" + String(cfg.netCount) + ",\"sheet\":" + String(cfg.sheetUrl.length() ? "true" : "false") +
          ",\"trkSet\":" + String(cfg.trkUrl.length() ? "true" : "false");
 }

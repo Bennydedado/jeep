@@ -44,7 +44,7 @@ async function onT3Line(line) {
     const t = t3Parse(T3.screens);
     for (let i = 0; i < t.screens.length; i++) await notify({ t: 'scrd', i, n: t.screens.length, d: t.screens[i].s });
   } else if (m.c === 'kw') { T3.kw = (T3.kw || []).concat(m.x); await notify({ t: 'kw', x: m.x, ok: true, nano: 'saved' });
-  } else if (m.c === 'cfg') { T3.cfg = m; await notify({ t: 'cfg', ok: true }); await notify(hi()); }
+  } else if (m.c === 'cfg') { T3.cfgs = (T3.cfgs || []).concat(m); if (m.bvp != null && Object.keys(m).length <= 3) return; T3.cfg = m; await notify({ t: 'cfg', ok: true }); await notify(hi()); }
 }
 
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.woff': 'font/woff' };
@@ -215,6 +215,10 @@ const srv = http.createServer((q, r) => {
   // T3 button map default has the wheel settings menu on button 2 hold
   check(T3.cfg && T3.cfg.bm.split(';')[1] !== undefined, 'button map sent');
 
+  // brightness levels: tap Low, slide, the T3 gets the levels and shows Low meanwhile
+  await page.locator(LIST + ' button[aria-label="Set Low"]').click();
+  await page.locator(LIST + ' input[aria-label="Low brightness"]').fill('40'); await page.waitForTimeout(800);
+  check(T3.cfgs.some(m => m.bv === '40,70,255' && m.bvp === 0), 'slider sends the levels and a preview: ' + JSON.stringify(T3.cfgs.slice(-1)));
   // a change made with the wheel menu on the T3 comes back into Heep
   await page.evaluate(() => { const v = store.get('t3', {}); v.br = 2; store.set('t3', v); });
   await notify(Object.assign(hi(), { br: 0, nf: -2, mc: 3 })); await page.waitForTimeout(400);

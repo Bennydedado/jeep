@@ -76,6 +76,7 @@ struct Settings {
   int logSec = 1, logIdleSec = 10, flushSec = 5, sdMaxPct = 90;
   bool flip = false;                        // screen upside down (mounted the other way)
   int refreshMs = 250;
+  uint8_t brightLv[3] = { 1, 70, 255 };              // what Low, Medium and High mean (screen contrast 0-255)
   String btnMap = "prev,home;mark,menu;next,end";   // button 1;2;3 as short,long
   String wheelMap = "V+,V+;AN,HU;V-,V-|PP,NX,PV,SI|11|FFFF";   // the Nano's settings (nano/NanoT3Example/WheelMap.h)
   int io4 = 0;                              // GPIO 4: 0 = DS18B20 probe, 1 = old push button
