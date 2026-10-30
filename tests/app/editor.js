@@ -173,7 +173,7 @@ const srv = http.createServer((q, r) => {
   // the pedal, headlight mode without the left middle button, and the answer code
   const P = LIST + ' .group:has(b:text-is("Pedal"))', HL = LIST + ' .group:has(b:text-is("Headlight mode: left middle button"))', C = LIST + ' .group:has(b:text-is("Stereo codes you’ve found"))';
   await page.locator(P + ' label:has-text("1 click") select').selectOption('MU');
-  await page.locator(HL + ' label:has-text("Switches the beams") select').selectOption('0');
+  await page.locator(HL + ' label:has-text("Left middle switches the beams") select').selectOption('0');
   await page.locator(C + ' label:has-text("Hang up") input').fill('92');
   // the code tester: ▶ sends the next code; "Use as Answer" keeps it
   const codeBox = page.locator(LIST + ' input[aria-label="Code to test"]');

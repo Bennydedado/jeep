@@ -1,9 +1,10 @@
 # Changes
 
-## 29 Oct 2026 — Heep 1.1.17: bad stereo codes stay off
+## 29 Oct 2026 — Heep 1.1.18: bad stereo codes stay off; right middle in headlight mode
 
 - Find stereo codes: "Bad: never send again" marks a code (one that turned the stereo off, say). Bad codes are skipped by
   ◀ ▶ and Nothing / Save → next, and Send refuses them. ✕ in the list allows one again, and "Send this banned code once" (two taps) sends one on purpose.
+- Headlight mode: the right middle wheel button can switch the beams too (Heep: Nano, Headlight mode: middle buttons). Needs the updated jeep_controller_v3.
 
 ## 29 Oct 2026 — T3 2.14, Heep 1.1.16: the wheel menu, the pedal and finding stereo codes
 

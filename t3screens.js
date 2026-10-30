@@ -451,19 +451,19 @@ const KENWOOD_NAMES = { '00': '0', '01': '1', '02': '2', '03': '3', '04': '4', '
 const wheelTokenOk = t => WHEEL_ACTIONS.some(([v]) => v === t && v !== 'K') || /^K[0-9A-F]{2}$/.test(t);
 const hex2 = v => /^[0-9A-F]{2}$/.test(String(v || '').toUpperCase()) ? String(v).toUpperCase() : null;
 function parseNanoCfg(s) {
-  const d = { right: [['V+', 'V+'], ['AN', 'HU'], ['V-', 'V-']], pedal: ['PP', 'NX', 'PV', 'SI'], lmidBeams: true, lmidMode: true, answer: 'FF', hangup: 'FF' };
+  const d = { right: [['V+', 'V+'], ['AN', 'HU'], ['V-', 'V-']], pedal: ['PP', 'NX', 'PV', 'SI'], lmidBeams: true, lmidMode: true, rmidBeams: false, answer: 'FF', hangup: 'FF' };
   const parts = String(s || '').split('|');
   const right = (parts[0] || '').split(';').map(p => p.split(','));
   if (right.length === 3 && right.every(p => p.length === 2 && p.every(wheelTokenOk))) d.right = right;
   if (parts.length === 4) {
     const ped = parts[1].split(',');
     if (ped.length === 4 && ped.every(wheelTokenOk)) d.pedal = ped;
-    if (/^[01]{2}$/.test(parts[2])) { d.lmidBeams = parts[2][0] === '1'; d.lmidMode = parts[2][1] === '1'; }
+    if (/^[01]{2,3}$/.test(parts[2])) { d.lmidBeams = parts[2][0] === '1'; d.lmidMode = parts[2][1] === '1'; d.rmidBeams = parts[2][2] === '1'; }
     if (/^[0-9A-F]{4}$/.test(parts[3])) { d.answer = parts[3].slice(0, 2); d.hangup = parts[3].slice(2); }
   }
   return d;
 }
-const writeNanoCfg = c => c.right.map(p => p.join(',')).join(';') + '|' + c.pedal.join(',') + '|' + (c.lmidBeams ? '1' : '0') + (c.lmidMode ? '1' : '0') + '|' + c.answer + c.hangup;
+const writeNanoCfg = c => c.right.map(p => p.join(',')).join(';') + '|' + c.pedal.join(',') + '|' + (c.lmidBeams ? '1' : '0') + (c.lmidMode ? '1' : '0') + (c.rmidBeams ? '1' : '') + '|' + c.answer + c.hangup;
 // (older names, kept for the tests and 1.1.13 settings)
 const parseWheelMap = s => parseNanoCfg(s).right;
 const writeWheelMap = m => m.map(p => p.join(',')).join(';');
@@ -559,9 +559,10 @@ function nanoCard() {
     h('div', { class: 'group' }, h('div', { class: 'gr' }, h('b', { text: 'Pedal' })),
       ['1 click', '2 clicks', '3 clicks', 'Hold 1 s'].map((l, k) => row(l, pick(() => c.pedal[k], t => { c.pedal[k] = t; })))),
     h('div', { class: 'foot', text: 'Click, click, hold the pedal = headlight mode on / off (always). In headlight mode each pedal press switches high / low.' }),
-    h('div', { class: 'group' }, h('div', { class: 'gr' }, h('b', { text: 'Headlight mode: left middle button' })),
-      row('Switches the beams', yesNo(() => c.lmidBeams, v => { c.lmidBeams = v; })),
-      row('Click-click-hold turns it on / off', yesNo(() => c.lmidMode, v => { c.lmidMode = v; }))),
+    h('div', { class: 'group' }, h('div', { class: 'gr' }, h('b', { text: 'Headlight mode: middle buttons' })),
+      row('Left middle switches the beams', yesNo(() => c.lmidBeams, v => { c.lmidBeams = v; })),
+      row('Left middle: click-click-hold turns it on / off', yesNo(() => c.lmidMode, v => { c.lmidMode = v; })),
+      row('Right middle switches the beams', (() => { const s2 = h('select', null, h('option', { value: '0', text: 'No (keeps its own job)' }), h('option', { value: '1', text: 'Yes (instead of its job)' })); s2.value = c.rmidBeams ? '1' : '0'; s2.addEventListener('change', () => { c.rmidBeams = s2.value === '1'; keep(); }); return s2; })())),
     h('div', { class: 'group' }, h('div', { class: 'gr' }, h('b', { text: 'Stereo codes you’ve found' })),
       row('Answer call', codeIn('answer')), row('Hang up', codeIn('hangup'))),
     h('div', { class: 'foot' }, state),
