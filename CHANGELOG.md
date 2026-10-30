@@ -1,6 +1,6 @@
 # Changes
 
-## 29 Oct 2026 — T3 2.14, Heep 1.1.15: the wheel menu, the pedal and finding stereo codes
+## 29 Oct 2026 — T3 2.14, Heep 1.1.16: the wheel menu, the pedal and finding stereo codes
 
 - **T3 settings from the steering wheel:** the new "Settings menu" button action (default: hold left middle). Brightness,
   night brightness, night mode, screen-off time, key-on screen, °C/°F, upside down, Live over Wi-Fi, reset peak, send
@@ -17,6 +17,7 @@
   if your Wi-Fi was there the T3 restarts and sends it ("Sending trips"). Or use the menu's "Send trips".
 - The clock comes from the GPS as soon as it knows the time, before it has a position, so trips aren't "time approximate".
 - Nano sketch `jeep_controller_v3` updated (same file name): it reads all of the above.
+- Diagnostics → Steering wheel shows whether the Nano has your settings. Wiring drawings in `docs/wiring/`.
 
 ## 29 Oct 2026 — Heep 1.1.14: Fuel left screen
 
