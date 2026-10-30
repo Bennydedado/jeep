@@ -9,6 +9,7 @@ static bool screenOn = true;
 static String msg;
 
 void displayBegin() {
+  sunPlaceLoad();
   displaySettingsChanged();
   page = cfg.startPage;
   if (page >= screenCount || !screens[page].on) page = 0, pageStep(0);
@@ -90,8 +91,21 @@ int localHour() {
   int64_t s = t / 1000 + (int64_t)cfg.tzMin * 60;
   return (int)((s / 3600) % 24 + 24) % 24;
 }
+// where the Jeep last had a GPS fix, for sunset / sunrise (kept so it works before the GPS has a fix)
+float sunLat = NAN, sunLon = NAN;
+void sunPlaceLoad() { Preferences p; p.begin("t3", true); sunLat = p.getFloat("slat", NAN); sunLon = p.getFloat("slon", NAN); p.end(); }
+void sunPlaceSeen(double lat, double lon) {   // gps.ino, on a good fix: saved when it moved ~20 km or more
+  if (!isnan(sunLat) && fabs(lat - sunLat) < 0.2 && fabs(lon - sunLon) < 0.3) return;
+  sunLat = lat; sunLon = lon;
+  Preferences p; p.begin("t3", false); p.putFloat("slat", sunLat); p.putFloat("slon", sunLon); p.end();
+}
+// night: -1 never, -2 sunset to sunrise (7 PM to 7 AM until the GPS has ever had a fix), else nightFrom..nightTo
 bool isNight() {
   int h = localHour();
+  if (cfg.nightFrom == -2 && h >= 0) {
+    if (!isnan(sunLat)) return sunIsDown(nowMs(), sunLat, sunLon);
+    return h >= 19 || h < 7;
+  }
   if (cfg.nightFrom < 0 || h < 0) return false;
   return cfg.nightFrom <= cfg.nightTo ? (h >= cfg.nightFrom && h < cfg.nightTo) : (h >= cfg.nightFrom || h < cfg.nightTo);
 }
@@ -118,7 +132,8 @@ void displayStep() {
   oled.clearDisplay();
   oled.setTextColor(SSD1306_WHITE);
   oled.setTextWrap(false);
-  if (screenCount && page < screenCount) for (int i = 0; i < screens[page].n; i++) drawWidget(screens[page].w[i]);
+  if (menuOpen()) menuDraw();
+  else if (screenCount && page < screenCount) for (int i = 0; i < screens[page].n; i++) drawWidget(screens[page].w[i]);
   if (updating) { msg = otaMode ? "BT update " + String(otaPercent()) + "%" : String("Updating T3..."); msgUntil = now + 500; }
   if (now < msgUntil) {
     oled.setFont(); oled.setTextSize(1);

@@ -43,10 +43,11 @@ void loadSettings() {
   cfg.sdMaxPct = p.getInt("sdm", 90);
   cfg.flip = p.getBool("rot", false);
   cfg.refreshMs = p.getInt("rf", 250);
-  cfg.btnMap = p.getString("bm", "prev,home;mark,pause;next,end");
-  cfg.wheelMap = p.getString("wb", "V+,V+;AN,HU;V-,V-");
+  cfg.btnMap = p.getString("bm", "prev,home;mark,menu;next,end");
+  cfg.wheelMap = p.getString("wb", "V+,V+;AN,HU;V-,V-|PP,NX,PV,SI|11|FFFF");
   cfg.io4 = p.getInt("io4", 0);
   cfg.obdProto = constrain(p.getInt("opr", 0), 0, 9);
+  menuChanges = p.getInt("mc", 0);
   p.end();
   // the first start of a new version: "Live over Wi-Fi" goes back on. Heep switches it off while it sends an update
   // over Bluetooth (to free memory), and before 2.7 that stuck if Heep wasn't there to switch it back on afterwards.
@@ -99,7 +100,7 @@ bool applySettings(const String& j, bool fromRelay) {
   if (has(j, "pk")) p.putInt("pk", constrain((int)numFieldOr(j, "pk", 90), 30, 1800));
   if (has(j, "br")) p.putInt("br", constrain((int)numFieldOr(j, "br", 2), 0, 2));
   if (has(j, "bn")) p.putInt("bn", constrain((int)numFieldOr(j, "bn", 0), 0, 2));
-  if (has(j, "nf")) p.putInt("nf", constrain((int)numFieldOr(j, "nf", -1), -1, 23));
+  if (has(j, "nf")) p.putInt("nf", constrain((int)numFieldOr(j, "nf", -1), -2, 23));
   if (has(j, "nt")) p.putInt("nt", constrain((int)numFieldOr(j, "nt", 7), 0, 23));
   if (has(j, "tz")) p.putInt("tz", constrain((int)numFieldOr(j, "tz", -420), -720, 840));
   if (has(j, "lw")) {   // "lwu":1 = only until the next restart (Heep making room for an update)
@@ -159,7 +160,7 @@ String settingsJson() {
          ",\"tf\":" + String(cfg.tempF ? 1 : 0) + ",\"etf\":" + String(cfg.engF ? 1 : 0) + ",\"to\":" + String(cfg.tempOff, 1) + ",\"gb\":" + String(cfg.gpsBaud) +
          ",\"li\":" + String(cfg.logSec) + ",\"lis\":" + String(cfg.logIdleSec) + ",\"lfl\":" + String(cfg.flushSec) +
          ",\"sdm\":" + String(cfg.sdMaxPct) + ",\"rot\":" + String(cfg.flip ? 1 : 0) + ",\"rf\":" + String(cfg.refreshMs) +
-         ",\"bm\":\"" + jsonEsc(cfg.btnMap) + "\",\"wb\":\"" + jsonEsc(cfg.wheelMap) + "\",\"wbs\":\"" + wheelMapState() + "\",\"io4\":" + String(cfg.io4) + ",\"opr\":" + String(cfg.obdProto) + ",\"obdName\":\"" + jsonEsc(cfg.obdName) +
+         ",\"mc\":" + String(menuChanges) + ",\"bm\":\"" + jsonEsc(cfg.btnMap) + "\",\"wb\":\"" + jsonEsc(cfg.wheelMap) + "\",\"wbs\":\"" + wheelMapState() + "\",\"io4\":" + String(cfg.io4) + ",\"opr\":" + String(cfg.obdProto) + ",\"obdName\":\"" + jsonEsc(cfg.obdName) +
          "\",\"ssids\":" + ss + ",\"nets\":" + String(cfg.netCount) + ",\"sheet\":" + String(cfg.sheetUrl.length() ? "true" : "false") +
          ",\"trkSet\":" + String(cfg.trkUrl.length() ? "true" : "false");
 }

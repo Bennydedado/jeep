@@ -35,7 +35,7 @@ class T3Link {
     }
     if (now - lastBeat >= 1000) {
       lastBeat = now;
-      char body[32];
+      char body[40];
       if (hasMap) snprintf(body, sizeof(body), "J,%u,H,%lu,2,%X", seq, now / 1000UL, map);
       else snprintf(body, sizeof(body), "J,%u,H,%lu,%d", seq, now / 1000UL, T3LINK_PROTO);
       seq++;

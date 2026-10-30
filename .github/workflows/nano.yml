@@ -22,4 +22,4 @@ jobs:
           g++ -std=c++17 -Wall -O1 -o /tmp/t_wmap tests/firmware/test_wheelmap.cpp && /tmp/t_wmap
       - name: Compile
         run: |
-          for s in nano/NanoT3Example nano/WheelCalibrate; do arduino-cli compile --fqbn arduino:avr:nano:cpu=atmega328 --warnings all "$s"; done
+          for s in nano/NanoT3Example nano/WheelCalibrate nano/KenwoodCodeFinder; do arduino-cli compile --fqbn arduino:avr:nano:cpu=atmega328 --warnings all "$s"; done

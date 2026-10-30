@@ -1,5 +1,23 @@
 # Changes
 
+## 29 Oct 2026 — T3 2.14, Heep 1.1.15: the wheel menu, the pedal and finding stereo codes
+
+- **T3 settings from the steering wheel:** the new "Settings menu" button action (default: hold left middle). Brightness,
+  night brightness, night mode, screen-off time, key-on screen, °C/°F, upside down, Live over Wi-Fi, reset peak, send
+  trips, end trip. Top / bottom move, middle changes, hold middle to close. Heep picks the changes up when it connects.
+- **Night mode, sunset to sunrise:** works out the times from where the GPS last was. Night hours in Heep are now
+  shown as 7 PM / 7 AM.
+- **The Nano's pedal is set in Heep** (1, 2, 3 clicks and hold), and **headlight mode can be pedal-only**: the left
+  middle button can be left out of switching the beams and of turning the mode on/off.
+- **Find stereo codes in Heep:** the Nano sends one Kenwood code; tap Nothing or write what it did, and it sends the next
+  code you haven't tried. Your notes are kept and named in the pickers; "Use as Answer / Hang up" puts a code to work.
+  Answer and hang-up codes are entered in Heep instead of the sketch. `nano/KenwoodCodeFinder` does the same from a
+  laptop.
+- **Trips reach the sheet at the end of a drive at home:** parked with the key on, the trip ends after the park time;
+  if your Wi-Fi was there the T3 restarts and sends it ("Sending trips"). Or use the menu's "Send trips".
+- The clock comes from the GPS as soon as it knows the time, before it has a position, so trips aren't "time approximate".
+- Nano sketch `jeep_controller_v3` updated (same file name): it reads all of the above.
+
 ## 29 Oct 2026 — Heep 1.1.14: Fuel left screen
 
 - New screen to add in Heep (Screens → Add a screen → Fuel left): litres left big, a tank bar (0–78 L) and the

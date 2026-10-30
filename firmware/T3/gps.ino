@@ -57,6 +57,13 @@ void gpsStep() {
   } else {
     gps.kmh = -1; gps.course = -1;
   }
+  static bool placeSaved = false;
+  if (gps.valid && !placeSaved && gps.state == G_3D) { placeSaved = true; sunPlaceSeen(gps.lat, gps.lon); }
+  // before a fix, most GPS modules already know the time from the first satellite: good enough until there's better
+  if (!timeSrc && !f.rmcValid && f.dateOk && f.timeOk && f.year <= 2040) {
+    int64_t t = fixEpochMs(f);
+    if (t) setClock(t + (int64_t)(now - f.timeAt), 'v');
+  }
   // UTC from the satellites sets the clock (once a minute is plenty)
   if (f.rmcValid && f.dateOk && f.timeOk && (!gpsClockAt || now - gpsClockAt > 60000 || timeSrc != 'g')) {
     int64_t t = fixEpochMs(f);

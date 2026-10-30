@@ -48,6 +48,32 @@ int main() {
   ok = false; for (int i = 0; i < n; i++) ok |= rx.feed(line[i], got);
   CHECK(!ok);
 
+  // the whole settings line: right | pedal | options | codes
+  WConfig c = wcfgDefault();
+  CHECK(c.pedal[0].code == 0x0E && c.pedal[1].code == 0x0B && c.pedal[2].code == 0x0A && c.pedal[3].code == 0x8B);
+  CHECK(c.lmidBeams && c.lmidMode && c.answer == 0xFF && c.hangup == 0xFF);
+  CHECK(wcfgParse("PP,--;AN,HU;V-,V-|SI,MU,SR,HB|01|8992", c));
+  CHECK(!c.lmidBeams && c.lmidMode && c.answer == 0x89 && c.hangup == 0x92 && c.pedal[3].kind == WA_BEAMS && c.right[0][0].code == 0x0E);
+  CHECK(wcfgParse("V+,V+;AN,HU;V-,V-", c) && c.answer == 0x89 && !c.lmidBeams);   // right buttons only: the rest stays
+  const char* badc[] = { "V+,V+;AN,HU;V-,V-|PP,NX,PV|11|FFFF", "V+,V+;AN,HU;V-,V-|PP,NX,PV,SI|12|FFFF", "V+,V+;AN,HU;V-,V-|PP,NX,PV,SI|11|FFF",
+                         "V+,V+;AN,HU;V-,V-|PP,NX,PV,SI|11", "V+,V+;AN,HU;V-,V-|PP,NX,PV,SI|11|FFFF|", "V+,V+;AN,HU;V-,V-|PP,NX,PV,SI,|11|FFFF",
+                         "V+,V+;AN,HU;V-,V-|PP,NX,PV,SI|11|FFFG" };
+  for (auto s2 : badc) { WConfig k = c; CHECK(!wcfgParse(s2, k)); CHECK(k.answer == 0x89); }
+  CHECK(strlen("K8A,K8B;K8C,K8D;K8E,K8F|K90,K91,K92,K93|11|FFFF") <= WMAP_MAX);
+  CHECK(wmapHash(WCFG_DEFAULT) == jlinkMapHash(WCFG_DEFAULT));
+  { // the T3's lines for both
+    WMapRx r2; char o[WMAP_MAX + 1] = ""; uint8_t code = 0; char got2 = 0;
+    char l2[96]; int k2 = jlinkMapLine(WCFG_DEFAULT, l2, sizeof(l2));
+    for (int i = 0; i < k2; i++) got2 |= r2.feed(l2[i], o, &code);
+    CHECK(got2 == 'M' && std::string(o) == WCFG_DEFAULT);
+    got2 = 0; k2 = jlinkNLine("K,8A", l2, sizeof(l2));
+    for (int i = 0; i < k2; i++) got2 |= r2.feed(l2[i], o, &code);
+    CHECK(got2 == 'K' && code == 0x8A && std::string(o) == WCFG_DEFAULT);
+    got2 = 0; k2 = jlinkNLine("K,8", l2, sizeof(l2));
+    for (int i = 0; i < k2; i++) got2 |= r2.feed(l2[i], o, &code);
+    CHECK(got2 == 0);
+  }
+
   // volume (tap = hold): once on press, then repeats after 0.5 s every ~0.18 s
   WButton b;
   wmapParse(WMAP_DEFAULT, m);

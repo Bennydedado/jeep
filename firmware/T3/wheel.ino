@@ -8,7 +8,7 @@
 //
 // What each button does is set in Heep (T3 screens & buttons > Buttons) and stored as cfg.btnMap:
 //   "short,long;short,long;short,long" for buttons 1, 2, 3, e.g. "prev,home;mark,pause;next,end"
-// Actions: none next prev home mark pause end sleep bright peak send
+// Actions: none next prev home mark pause end sleep bright peak send menu (the wheel settings menu, menu.ino)
 
 #define nanoSerial Serial2   // UART2: receive on NANO_RX_PIN, send the button map on NANO_TX_PIN
 static const long NANO_BAUDS[] = { 9600, 19200, 38400, 57600, 115200 };
@@ -52,11 +52,22 @@ void wheelStep() {
   wheelMapStep(now);
 }
 
+// Heep's "Test a code": the Nano sends this Kenwood code once (2 hex digits). False if it can't go now.
+bool wheelTestCode(String x) {
+  x.toUpperCase();
+  if (x.length() != 2 || !isxdigit(x[0]) || !isxdigit(x[1]) || strcmp(wheelMapState(), "none") == 0) return false;
+  char line[24];
+  int n = jlinkNLine(("K," + x).c_str(), line, sizeof(line));
+  if (!n || nanoSerial.availableForWrite() < n) return false;
+  nanoSerial.write((const uint8_t*)line, n);
+  return true;
+}
+
 // the right-button map is only for a Nano that says protocol 2 with a hash; the bare minimum is checked here (the
 // Nano checks every token and ignores a map it doesn't understand)
 bool wheelMapOk(const String& m) {
-  if (m.length() < 17 || m.length() > 40) return false;
-  for (unsigned i = 0; i < m.length(); i++) if (!strchr("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789+-,;", m[i])) return false;
+  if (m.length() < 17 || m.length() > 64) return false;
+  for (unsigned i = 0; i < m.length(); i++) if (!strchr("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789+-,;|", m[i])) return false;
   return true;
 }
 // "saved" (the Nano has it), "sending", "old" (the Nano's sketch can't take one), "none" (no Nano heard)
@@ -68,7 +79,7 @@ const char* wheelMapState() {
 // every 2 s until the Nano's heartbeat shows the same map; never waits for room
 void wheelMapStep(uint32_t now) {
   if (strcmp(wheelMapState(), "sending") || now - wheel.mapSentAt < 2000) return;
-  char line[64];
+  char line[96];
   int n = jlinkMapLine(cfg.wheelMap.c_str(), line, sizeof(line));
   if (n && nanoSerial.availableForWrite() >= n) { nanoSerial.write((const uint8_t*)line, n); wheel.mapSent++; }
   wheel.mapSentAt = now;
@@ -102,6 +113,7 @@ void onWheelButton(int button, char press, const char* from) {
   wheel.lastAt = millis();
   wheel.presses++;
   if (screenWakeOnly()) return;   // the first press while the screen is off only wakes it
+  if (menuOpen()) { menuButton(button, press); return; }
   String a = actionFor(button, press);
   doAction(a, from);
 }
@@ -118,6 +130,7 @@ void doAction(const String& a, const char* from) {
   else if (a == "bright") { cfg.bright = (cfg.bright + 1) % 3; applyBright(); flash(cfg.bright == 2 ? "Bright" : cfg.bright == 1 ? "Medium" : "Dim"); }
   else if (a == "peak") { trip.boostMax = 0; flash("Peak reset"); }
   else if (a == "send") { wifiNudge(); flash("Sending..."); }
+  else if (a == "menu") menuStart();
 }
 
 // GPIO 4 push button to GND: tap = next screen, hold 1.5 s = button 2's long action

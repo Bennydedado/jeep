@@ -30,8 +30,40 @@ void updateNow() {
   if (!cfg.netCount) { updStatus.set("no Wi-Fi saved: add one in T3 settings"); updPhase = UP_FAIL; return; }
   bootUpdateSoon(true);
 }
+// ---------------------------------------------------------------- sending trips with a fresh start
+// With Bluetooth running, the T3 often can't get the memory for the secure connection to Google, so trips are sent
+// at start-up (bootSend below). To get a drive's trip on the sheet without waiting for the next key-on:
+//   - parked at home: the trip ends by itself after "parkSecs" with the engine off, then if your Wi-Fi was there in
+//     the last 3 minutes and the trip still hasn't gone 20 s later, the T3 restarts and sends it (screen: "Sending trips")
+//   - or now: the wheel menu's "Send trips" (ends the trip, restarts, sends)
+static uint32_t sendRestartAt = 0, parkSendAt = 0;
+void restartToSend(const char* why) {
+  flash("Sending trips...");
+  sdEvent(String("restarting to send trips (") + why + ")");
+  flushReq = true;
+  sendRestartAt = millis() + 1500;
+}
+void sendTripsNow(const char* from) {
+  if (trip.km >= 0.2 || trip.gpsKm >= 0.2) tripCommand("end", from);
+  if (!cfg.sheetUrl.length()) { flash("No sheet set up"); return; }
+  if (queued <= 0) { flash("No trips waiting"); return; }
+  restartToSend(from);
+}
+void parkedTripEnded() { parkSendAt = millis() + 20000; }   // trip.ino: the trip ended because the Jeep was parked
+static void sendStep() {
+  uint32_t now = millis();
+  if (parkSendAt && (int32_t)(now - parkSendAt) >= 0) {
+    if (uploading && now - parkSendAt < 60000) return;   // give a send that's under way a chance
+    parkSendAt = 0;
+    bool home = wifiLastOn && now - wifiLastOn < 180000;
+    if (queued > 0 && cfg.sheetUrl.length() && home && !tripActive()) restartToSend("parked");
+  }
+  if (sendRestartAt && (int32_t)(now - sendRestartAt) >= 0 && !flushReq && !uploading) { delay(200); ESP.restart(); }
+}
+
 // loop(): once the trip is saved and any upload has finished (10 s at most), restart into the update
 void bootUpdateStep() {
+  sendStep();
   if (!bootUpdAt || (int32_t)(millis() - bootUpdAt) < 0 || flushReq) return;
   if (uploading && millis() - bootUpdAt < 10000) return;
   sdEvent("restarting to update over Wi-Fi");

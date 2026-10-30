@@ -76,14 +76,15 @@ struct Settings {
   int logSec = 1, logIdleSec = 10, flushSec = 5, sdMaxPct = 90;
   bool flip = false;                        // screen upside down (mounted the other way)
   int refreshMs = 250;
-  String btnMap = "prev,home;mark,pause;next,end";   // button 1;2;3 as short,long
-  String wheelMap = "V+,V+;AN,HU;V-,V-";               // the Nano's right buttons (nano/NanoT3Example/WheelMap.h)
+  String btnMap = "prev,home;mark,menu;next,end";   // button 1;2;3 as short,long
+  String wheelMap = "V+,V+;AN,HU;V-,V-|PP,NX,PV,SI|11|FFFF";   // the Nano's settings (nano/NanoT3Example/WheelMap.h)
   int io4 = 0;                              // GPIO 4: 0 = DS18B20 probe, 1 = old push button
   int obdProto = 0;                         // OBD protocol for the iCar: 0 auto, 1-9 the ELM327 numbers (Heep: Scan the Jeep)
 };
 extern Settings cfg;
 extern String liveTopic, cmdTopic;   // relay channels (settings.ino)
 extern String bootUpdNote;           // how an update at start-up went (update.ino)
+extern int menuChanges;              // settings changed from the wheel menu (menu.ino)
 extern String bootNote;              // how sending trips at start-up went (update.ino)
 
 // ---------------------------------------------------------------- the clock
