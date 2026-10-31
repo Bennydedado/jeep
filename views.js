@@ -36,7 +36,7 @@ function renderHome(v) {
   if (!st.n && !e.v) {
     v.append(card(h('div', { class: 'empty' },
       h('div', { class: 'ico' }, icon('pump')), h('h3', { text: 'Log your first fill-up' }),
-      h('p', { text: 'Tap + at the pump: the odometer, the litres and what it cost. Fuel economy shows up after two full tanks.' }),
+      h('p', { text: 'Tap + at the pump to log fill-ups. If your T3 has logged at least 5 km of driving, Heep can estimate economy before a full-tank interval is complete.' }),
       h('button', { class: 'btn btn-primary', onclick: () => fillSheet() }, icon('plus'), 'Add a fill-up'))));
     homeService(v, st);
     return;
@@ -47,7 +47,7 @@ function renderHome(v) {
   hero.append(h('div', null,
     h('div', { class: 'big', text: e.v ? fmt1(e.v) : '—' }),
     h('div', { class: 'unit', text: ({ tank: 'L/100 km · your last ' + tanksWord, mix: 'L/100 km · last ' + tanksWord + ' + the T3 since',
-      t3: 'L/100 km · the T3 so far (' + fmt0(e.all.km) + ' km)' })[e.src] || 'L/100 km after two full tanks' })));
+      t3: 'Estimated L/100 km · T3 (' + fmt0(e.all.km) + ' km)' })[e.src] || 'Estimate appears after 5 km of T3 data' })));
   if (st.fuelPct != null) {
     const stale = !st.odoT || Date.now() - st.odoT > 3 * 864e5;
     hero.append(h('button', { class: 'gauge-btn', 'aria-label': 'Distance to empty', onclick: () => dteSheet() },
@@ -60,7 +60,7 @@ function renderHome(v) {
       'Last tank ' + fmt1(st.last) + (st.avg != null ? ' · ' + econWord(st.last, st.avg).replace(' than average', '') : '')));
   }
   if (e.src === 'mix' && e.since.v != null) chips.append(h('span', { class: 'chip', text: 'Since your fill-up ' + fmt1(e.since.v) }));
-  if (e.src === 't3') chips.append(h('span', { class: 'chip', text: 'Estimate: exact after two full tanks' }));
+  if (e.src === 't3') chips.append(h('span', { class: 'chip', text: 'T3 estimate · pump-based figure after two full fill-ups' }));
   if (st.best != null && st.tanks.length > 1) chips.append(h('span', { class: 'chip', text: 'Best ' + fmt1(st.best) }));
   if (st.avg != null && st.tanks.length > e.tanks) chips.append(h('span', { class: 'chip', text: 'All tanks ' + fmt1(st.avg) }));
   if (st.tanks.length) chips.append(h('span', { class: 'chip', text: st.tanks.length + (st.tanks.length > 1 ? ' tanks' : ' tank') }));
@@ -275,10 +275,87 @@ function servBody(s, o, compact) {
       h('button', { class: 'btn btn-small btn-glass glass', onclick: () => servSheet(s) }, 'Edit'),
       every ? h('span', { class: 'foot', style: 'margin-left:auto;align-self:center', text: 'every ' + every }) : null));
 }
+const JEEP_COST_CATEGORIES = ['Insurance', 'Parts', 'Repairs', 'Maintenance', 'Registration', 'Towing', 'Other'];
+function jeepCostCategory(l) {
+  const sid = String(l && l.sid || '');
+  return sid.indexOf('expense:') === 0 ? sid.slice(8) : '';
+}
+function isJeepCost(l) { return !!jeepCostCategory(l); }
+
+function renderJeepCosts(v) {
+  const expenses = S.data.log.filter(isJeepCost).slice().sort((a, b) => (num(b.t) || 0) - (num(a.t) || 0));
+  const year = new Date().getFullYear();
+  const total = expenses.reduce((s, x) => s + (num(x.cost) || 0), 0);
+  const thisYear = expenses.filter(x => num(x.t) && new Date(num(x.t)).getFullYear() === year)
+    .reduce((s, x) => s + (num(x.cost) || 0), 0);
+  v.append(h('div', { class: 'tiles' },
+    tile('All time', 'dollar', money(total, 0), null, expenses.length + (expenses.length === 1 ? ' expense' : ' expenses')),
+    tile('This year', 'calendar', money(thisYear, 0), null, String(year))));
+  v.append(h('button', { class: 'btn btn-primary btn-wide', onclick: () => expenseSheet() }, icon('plus'), 'Add an expense'));
+  if (!expenses.length) {
+    v.append(card(h('div', { class: 'empty' },
+      h('div', { class: 'ico' }, icon('dollar')), h('h3', { text: 'No Jeep costs yet' }),
+      h('p', { text: 'Track insurance, parts, repairs and other expenses here.' }))));
+    return;
+  }
+  v.append(h('div', { class: 'month' }, h('b', { text: 'Expenses' }),
+    h('span', { text: expenses.length + (expenses.length === 1 ? ' entry' : ' entries') })));
+  v.append(h('div', { class: 'card list' }, expenses.map(l => {
+    const category = jeepCostCategory(l);
+    const meta = [category, num(l.t) ? fmtDate(num(l.t)) : 'Date unknown', num(l.odo) > 0 ? fmt0(num(l.odo)) + ' km' : ''].filter(Boolean).join(' · ');
+    return h('button', { class: 'row', onclick: () => expenseSheet(l) },
+      h('div', { class: 'main' }, h('b', { text: l.name || category }), h('span', { text: meta }), l.note ? h('span', { text: l.note }) : null),
+      h('div', { class: 'end' }, h('span', { text: money(num(l.cost) || 0) })), icon('chev', 'chev'));
+  })));
+}
+
+function expenseSheet(l) {
+  const editing = !!l;
+  openSheet({
+    title: editing ? 'Jeep expense' : 'Add Jeep expense',
+    build(b, sheet) {
+      const category = h('select', { class: 'pick' }, JEEP_COST_CATEGORIES.map(x => h('option', { value: x, text: x })));
+      category.value = editing ? (jeepCostCategory(l) || 'Other') : 'Other';
+      const item = textRow('Item', { placeholder: 'Insurance premium, brake pads…', value: l ? l.name || '' : '' });
+      const cost = bigField({ id: 'jeep-cost', label: 'Amount', pre: '$', value: l && num(l.cost) > 0 ? fmt2(num(l.cost)) : '', placeholder: '0.00', last: true });
+      const when = h('input', { type: 'date', value: l && num(l.t) ? toLocalInput(num(l.t), true) : toLocalInput(Date.now(), true) });
+      const odo = bigField({ id: 'jeep-cost-odo', label: 'Odometer (optional)', unit: 'km', mode: 'numeric', value: l && num(l.odo) > 0 ? String(num(l.odo)) : '', placeholder: 'optional' });
+      const note = textRow('Note', { placeholder: 'Optional', value: l ? l.note || '' : '' });
+      const err = h('div', { class: 'err' });
+      put(b,
+        h('div', { class: 'group' }, h('label', { class: 'gr' }, h('span', { text: 'Category' }), category), item.row),
+        cost.wrap, odo.wrap,
+        h('div', { class: 'group' }, h('label', { class: 'gr' }, h('span', { text: 'Date' }), when), note.row),
+        err,
+        h('button', { class: 'btn btn-primary btn-wide', onclick: () => save() }, icon('check'), editing ? 'Save changes' : 'Save expense'),
+        editing ? confirmButton('Delete this expense', 'Tap again to delete it', () => {
+          commit({ op: 'del', tab: 'log', id: l.id }); sheet.close(); toast('Expense deleted', l.name || jeepCostCategory(l), 'info');
+        }) : null);
+      function save() {
+        const name = item.input.value.trim(), amount = cost.get(), t = fromLocalInput(when.value);
+        if (!name) { err.textContent = 'Name the expense, like Insurance or Brake pads.'; item.input.focus(); return; }
+        if (!(amount > 0)) { err.textContent = 'Type an amount greater than zero.'; cost.input.focus(); return; }
+        if (!t) { err.textContent = 'Choose the date.'; when.focus(); return; }
+        const km = odo.get();
+        commit({ op: 'put', tab: 'log', row: {
+          id: l ? l.id : newId('l'), sid: 'expense:' + category.value, name, t,
+          odo: km == null ? '' : Math.round(km), cost: Math.round(amount * 100) / 100, note: note.input.value.trim(),
+        } });
+        sheet.close();
+        toast(editing ? 'Expense updated' : 'Expense saved', category.value + ' · ' + money(amount));
+      }
+    },
+  });
+}
+
 function renderService(v) {
   const st = STATS;
-  v.append(titleRow('Service', st.odo ? 'Odometer ' + fmt0(st.odo) + ' km' : 'Reminders by distance or time'));
+  const mode = store.get('serviceMode', 'reminders') === 'costs' ? 'costs' : 'reminders';
+  v.append(titleRow(mode === 'costs' ? 'Jeep costs' : 'Service',
+    mode === 'costs' ? 'Insurance, parts and other expenses' : (st.odo ? 'Odometer ' + fmt0(st.odo) + ' km' : 'Reminders by distance or time')));
   topBanners(v);
+  v.append(seg([['reminders', 'Service'], ['costs', 'Jeep costs']], mode, next => { store.set('serviceMode', next); render(); }));
+  if (mode === 'costs') { renderJeepCosts(v); return; }
   const list = servSorted(S.data, st.odo || 0);
   if (!list.length) {
     v.append(card(h('div', { class: 'empty' }, h('div', { class: 'ico' }, icon('wrench')), h('h3', { text: 'No reminders yet' }),
@@ -286,8 +363,8 @@ function renderService(v) {
   }
   for (const { s, o } of list) v.append(card(servBody(s, o)));
   v.append(h('button', { class: 'btn btn-glass glass btn-wide', onclick: () => servSheet() }, icon('plus'), 'Add a reminder'));
-  if (S.data.log.length) {
-    const logs = S.data.log.slice().sort((a, b) => (num(b.t) || 0) - (num(a.t) || 0));
+  const logs = S.data.log.filter(l => !isJeepCost(l)).slice().sort((a, b) => (num(b.t) || 0) - (num(a.t) || 0));
+  if (logs.length) {
     v.append(h('div', { class: 'month' }, h('b', { text: 'History' }), h('span', { text: money(logs.reduce((s, l) => s + (num(l.cost) || 0), 0), 0) + ' spent' })));
     v.append(h('div', { class: 'card list' }, logs.map(l => h('button', { class: 'row', onclick: () => logSheet(l) },
       h('div', { class: 'main' }, h('b', { text: l.name || 'Service' }), h('span', { text: (l.t ? fmtDate(l.t) : '') + (l.odo ? ' · ' + fmt0(l.odo) + ' km' : '') + (l.note ? ' · ' + l.note : '') })),
@@ -584,7 +661,7 @@ function settingsSheet() {
       if (!S.sample) {
         rows.push(h('button', { class: 'row', onclick: () => { sync('tap'); sheet.close(); } }, h('div', { class: 'main' }, h('b', { text: 'Sync now', style: 'color:var(--fuel)' })), icon('sync', 'chev')));
         if (S.conn && S.conn.s) rows.push(h('a', { class: 'row', href: 'https://docs.google.com/spreadsheets/d/' + S.conn.s + '/edit', target: '_blank', rel: 'noopener', style: 'color:inherit;text-decoration:none' },
-          h('div', { class: 'main' }, h('b', { text: 'Open the sheet' }), h('span', { text: 'Fill-ups, service and trips in Google Sheets' })), icon('sheet', 'chev')));
+          h('div', { class: 'main' }, h('b', { text: 'Open the sheet' }), h('span', { text: 'Fill-ups, service, trips and Jeep costs in Google Sheets' })), icon('sheet', 'chev')));
       }
       rows.push(h('button', { class: 'row', onclick: () => connectSheet() }, h('div', { class: 'main' }, h('b', { text: S.sample ? 'Connect your Jeep log' : 'Connection' }), h('span', { text: S.sample ? 'Paste your setup link' : 'Change the link to your Jeep log' })), icon('chev', 'chev')));
       // the Jeep
