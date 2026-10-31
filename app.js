@@ -7,7 +7,7 @@ const TAB_DEFS = [
   ['fills', 'Fill-ups', 'pump', renderFills],
   ['service', 'Service', 'wrench', renderService],
   ['live', 'Live', 'live', renderLive],
-  ['map', 'Map', 'map', renderMap],
+  ['map', 'Trips', 'map', renderMap],
 ];
 
 let TB = null; // the tab bar
@@ -61,6 +61,8 @@ function boot() {
   let rt = 0;
   addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(render, 250); });
   render();
+  const requestedTrip = new URLSearchParams(location.search).get('trip');
+  if (requestedTrip && /^[A-Za-z0-9._-]{1,120}$/.test(requestedTrip)) { go('map'); openTrip(requestedTrip); }
   if (fresh) toast('Connected to your Jeep log', 'Getting your fill-ups…', 'info');
   sync('start');
   document.addEventListener('visibilitychange', () => { if (!document.hidden) sync('back'); });

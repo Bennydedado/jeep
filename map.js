@@ -120,7 +120,7 @@ function mapBox() {
 function renderMap(v) {
   const conf = trkConf(), idx = store.get('trkIndex', null);
   const list = tripList();
-  v.append(titleRow('Map', MAP.sel ? 'Trip on the map' : conf ? list.length + ' trips recorded' : 'Sample trips until track storage is set up'));
+  v.append(titleRow(MAP.sel ? 'Trip' : 'Trips', MAP.sel ? 'Trip on the map' : conf ? list.length + ' trips recorded' : 'Sample trips until track storage is set up'));
   topBanners(v);
   if (!conf) v.append(banner('map', 'Set up track storage', 'So the T3’s trips show here. These are made-up sample trips.', trackStoreSheet));
   else if (idx && idx.err) v.append(banner('warn', 'Couldn’t reach your track store', idx.err + ' · showing what this phone has', () => trkRefresh(true)));
@@ -181,6 +181,7 @@ function renderTripList(v, list) {
   shown.sort(by[sSel.value] || by.new);
   v.append(h('div', { class: 'month' }, h('b', { text: 'Trips' }), h('span', { text: fmt1(shown.reduce((s, t) => s + tripKm(t), 0)) + ' km' })));
   v.append(h('div', { class: 'map-filters' }, mSel, sSel, trkConf() ? h('button', { class: 'circle glass', 'aria-label': 'Refresh', onclick: () => trkRefresh(true) }, icon('sync', trkBusy ? 'spin' : null)) : null));
+  if (shown.length) v.append(h('div', { class: 'foot', text: 'Tap a trip to open its map, replay and drive details.' }));
   if (!shown.length) {
     v.append(card(h('div', { class: 'empty', style: 'padding:14px 6px' }, h('div', { class: 'ico' }, icon('map')), h('h3', { text: list.length ? 'No trips here' : 'No trips yet' }),
       h('p', { text: list.length ? 'Try another month.' : 'Finished trips appear here after the T3 uploads them (home Wi-Fi or your hotspot).' }))));
@@ -200,9 +201,10 @@ function renderTripList(v, list) {
 
 // ---------------------------------------------------------------- one trip
 async function openTrip(id) {
-  MAP.sel = id; MAP.rows = null; MAP.stats = null; MAP.pick = -1; stopPlay();
+  MAP.sel = id; MAP.rows = null; MAP.stats = null; MAP.pick = -1; MAP.err = ''; stopPlay();
   window.scrollTo(0, 0);
   render();
+  if (!trkConf() && !id.startsWith('sample-')) { MAP.err = 'Connect track storage in Heep on this browser to open this trip map.'; render(); return; }
   try {
     const csv = await trackCsv(id);
     if (MAP.sel !== id) return;
