@@ -288,18 +288,18 @@ function renderJeepCosts(v) {
   const total = expenses.reduce((s, x) => s + (num(x.cost) || 0), 0);
   const thisYear = expenses.filter(x => num(x.t) && new Date(num(x.t)).getFullYear() === year)
     .reduce((s, x) => s + (num(x.cost) || 0), 0);
+  v.append(h('div', { class: 'month' }, h('b', { text: 'Jeep expense log' }), h('span', { text: expenses.length + (expenses.length === 1 ? ' entry' : ' entries') })));
+  v.append(h('div', { class: 'foot', text: 'Parts, insurance, repairs and other Jeep costs.' }));
   v.append(h('div', { class: 'tiles' },
     tile('All time', 'dollar', money(total, 0), null, expenses.length + (expenses.length === 1 ? ' expense' : ' expenses')),
     tile('This year', 'calendar', money(thisYear, 0), null, String(year))));
   v.append(h('button', { class: 'btn btn-primary btn-wide', onclick: () => expenseSheet() }, icon('plus'), 'Add an expense'));
   if (!expenses.length) {
     v.append(card(h('div', { class: 'empty' },
-      h('div', { class: 'ico' }, icon('dollar')), h('h3', { text: 'No Jeep costs yet' }),
-      h('p', { text: 'Track insurance, parts, repairs and other expenses here.' }))));
+      h('div', { class: 'ico' }, icon('dollar')), h('h3', { text: 'No expenses yet' }),
+      h('p', { text: 'Log parts, insurance, repairs and other Jeep costs here.' }))));
     return;
   }
-  v.append(h('div', { class: 'month' }, h('b', { text: 'Expenses' }),
-    h('span', { text: expenses.length + (expenses.length === 1 ? ' entry' : ' entries') })));
   v.append(h('div', { class: 'card list' }, expenses.map(l => {
     const category = jeepCostCategory(l);
     const meta = [category, num(l.t) ? fmtDate(num(l.t)) : 'Date unknown', num(l.odo) > 0 ? fmt0(num(l.odo)) + ' km' : ''].filter(Boolean).join(' · ');
@@ -315,7 +315,7 @@ function expenseSheet(l) {
     title: editing ? 'Jeep expense' : 'Add Jeep expense',
     build(b, sheet) {
       const category = h('select', { class: 'pick' }, JEEP_COST_CATEGORIES.map(x => h('option', { value: x, text: x })));
-      category.value = editing ? (jeepCostCategory(l) || 'Other') : 'Other';
+      category.value = editing ? (jeepCostCategory(l) || 'Parts') : 'Parts';
       const item = textRow('Item', { placeholder: 'Insurance premium, brake pads…', value: l ? l.name || '' : '' });
       const cost = bigField({ id: 'jeep-cost', label: 'Amount', pre: '$', value: l && num(l.cost) > 0 ? fmt2(num(l.cost)) : '', placeholder: '0.00', last: true });
       const when = h('input', { type: 'date', value: l && num(l.t) ? toLocalInput(num(l.t), true) : toLocalInput(Date.now(), true) });
@@ -350,12 +350,8 @@ function expenseSheet(l) {
 
 function renderService(v) {
   const st = STATS;
-  const mode = store.get('serviceMode', 'reminders') === 'costs' ? 'costs' : 'reminders';
-  v.append(titleRow(mode === 'costs' ? 'Jeep costs' : 'Service',
-    mode === 'costs' ? 'Insurance, parts and other expenses' : (st.odo ? 'Odometer ' + fmt0(st.odo) + ' km' : 'Reminders by distance or time')));
+  v.append(titleRow('Service', st.odo ? 'Odometer ' + fmt0(st.odo) + ' km' : 'Reminders by distance or time'));
   topBanners(v);
-  v.append(seg([['reminders', 'Service'], ['costs', 'Jeep costs']], mode, next => { store.set('serviceMode', next); render(); }));
-  if (mode === 'costs') { renderJeepCosts(v); return; }
   const list = servSorted(S.data, st.odo || 0);
   if (!list.length) {
     v.append(card(h('div', { class: 'empty' }, h('div', { class: 'ico' }, icon('wrench')), h('h3', { text: 'No reminders yet' }),
@@ -363,6 +359,7 @@ function renderService(v) {
   }
   for (const { s, o } of list) v.append(card(servBody(s, o)));
   v.append(h('button', { class: 'btn btn-glass glass btn-wide', onclick: () => servSheet() }, icon('plus'), 'Add a reminder'));
+  renderJeepCosts(v);
   const logs = S.data.log.filter(l => !isJeepCost(l)).slice().sort((a, b) => (num(b.t) || 0) - (num(a.t) || 0));
   if (logs.length) {
     v.append(h('div', { class: 'month' }, h('b', { text: 'History' }), h('span', { text: money(logs.reduce((s, l) => s + (num(l.cost) || 0), 0), 0) + ' spent' })));
