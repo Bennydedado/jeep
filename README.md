@@ -2,7 +2,7 @@
 
 **Heep**, a Home Screen web app for a 2006 Jeep Liberty CRD: log fill-ups at the pump, see fuel economy, costs and
 service reminders, watch live engine, GPS and outside-temperature data from the T3, design the T3's screens, and
-look back at every drive on the **Map & Trip History** page.
+look back at every drive on the **Trips** tab (Map & Trip History).
 
 It saves to a Google Sheet through an Apps Script web app, keeps working with no signal, and syncs when it can.
 Nothing personal lives in this repository; the app is connected to a sheet with a private setup link.

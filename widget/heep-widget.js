@@ -69,6 +69,7 @@ function loadLib(sources) {
 // ---------------------------------------------------------------- what the widget shows: the numbers, from the log
 function model(j, L, now) {
   const d = L.normalize(j);
+  // The widget's fuel numbers use fill-ups and T3 trips. Service and Jeep expenses stay in d.log.
   const st = L.calc(d);
   const e = st.econ || L.blendEcon(st, d.trip);
   const wk = L.tripTotals(d.trip, 'w', 8, now), month = L.tripTotals(d.trip, 'm', 1, now)[0];
