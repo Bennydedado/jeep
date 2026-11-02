@@ -1,4 +1,3 @@
-Warning: fs was declared with const; use let for reassignable variables.
 // smoke.js - opens Heep in a headless browser (iPhone-sized), goes through every tab and the new sheets,
 // and fails on any JavaScript error. Screenshots go to $SHOTS (default /tmp/heep-shots).
 // Run from the repo root:  node tests/app/smoke.js   (needs Playwright + Chromium)
