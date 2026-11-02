@@ -296,4 +296,3 @@ String fieldText(int f) {
   if (!strcmp(id, "btn")) return wheel.last;
   return "?";
 }
-

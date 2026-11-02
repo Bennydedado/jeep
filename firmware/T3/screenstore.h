@@ -2,7 +2,7 @@
 #include <memory>
 #include <new>
 
-// Screen sets are prepared on the heap: all twelve screens take over 5 KB.
+// Screen sets are prepared on the heap: all twelve screens take about 5 KB.
 // Keeping that array on the 8 KB loop stack can restart the T3 during a Wi-Fi send.
 struct PreparedScreens {
   std::unique_ptr<Screen[]> items{new (std::nothrow) Screen[MAX_SCREENS]};
@@ -78,5 +78,3 @@ bool saveScreens(const String& all) {
   if (page >= screenCount || !screens[page].on) { page = 0; pageStep(0); }
   return true;
 }
-
-

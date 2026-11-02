@@ -207,4 +207,3 @@ String diagJson() {
   m += ",\"up\":{\"sheet\":\"" + jsonEsc(lastUpload) + "\",\"tracks\":\"" + jsonEsc(trkStatus) + "\",\"queued\":" + String(queued) + ",\"fw\":\"" + jsonEsc(updStatus) + "\"}}";
   return m;
 }
-

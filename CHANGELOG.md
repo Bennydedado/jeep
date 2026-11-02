@@ -271,4 +271,3 @@ Compiled and tested on a PC with simulated data only; not yet run on the Jeep's 
 
 ## Earlier
 See git history (T3 1.0–1.5: iCar trip computer, sheet uploads, OTA, live over Wi-Fi; Heep 1.0.x).
-

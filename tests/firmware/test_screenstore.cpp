@@ -112,4 +112,3 @@ int main() {
   CHECK(files["/screens.txt"] == original);
   DONE();
 }
-

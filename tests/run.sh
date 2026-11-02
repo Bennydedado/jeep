@@ -24,4 +24,3 @@ if node -e "require('playwright')" 2>/dev/null; then
   SHOTS=$T/shots node tests/app/overview.js            # Overview economy from the T3 + tanks, Distance to empty, the tank level sent to the T3
 else echo "smoke.js, editor.js and wifi_ota.js skipped (no Playwright)"; fi
 echo "ALL PASSED"
-

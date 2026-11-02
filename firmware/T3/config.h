@@ -52,4 +52,3 @@
 #define MAX_WIDGETS 10           // widgets on one screen
 #define SCREEN_W 128
 #define SCREEN_H 64
-

@@ -82,4 +82,3 @@ in sw.js, add a row to `TAB_DEFS` in app.js (5 tabs is the most that fits; add a
   Headless check: `node tests/app/smoke.js` (Playwright + Chromium).
 - T3: see `firmware/README.md`. Nano: Arduino IDE, board Arduino Nano.
 - Simulated data: Live → Demo; the Trips tab shows sample trips until track storage is set up; `trips.js` `sampleTrack()`.
-
