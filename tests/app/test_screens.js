@@ -12,6 +12,11 @@ fw.forEach((s, i) => ok(s === A.DEFAULT_SCREENS[i], 'default screen ' + i + ' id
 const fh = fs.readFileSync(path.join(__dirname, '../../firmware/T3/fields.h'), 'utf8');
 const fwIds = [...fh.matchAll(/\{ "([a-z0-9]+)", "/g)].map(m => m[1]);
 ok(JSON.stringify(fwIds) === JSON.stringify(A.FIELDS.map(f => f.id)), 'same field ids in the same order');
+const statusScreen = A.DEFAULT_SCREENS.find(s => s.startsWith('Trip status|'));
+ok(!!statusScreen && statusScreen.includes('|r,wifi,') && statusScreen.includes('|r,upstat,'), 'default trip status screen shows Wi-Fi and upload state');
+const worstScreen = A.writeScreen({ name: 'Transfer test', on: true, w: Array.from({ length: 10 }, (_, i) => ({ type: 'r', field: 'upstat', x: 0, y: i * 6, w: 128, h: 8, size: 1, align: 'l', label: true, unit: false, frame: false, invert: false, mn: 0, mx: 100, text: '"status"\\' })) });
+const transferSize = A.screenWireSizes(11, 12, worstScreen);
+ok(transferSize.bluetooth <= 1490 && transferSize.relay <= 2048, 'a full 10-widget screen fits Bluetooth and signed relay message buffers');
 // parse -> write round trip is exact for every default
 for (const s of A.DEFAULT_SCREENS) { const once = A.writeScreen(A.parseScreen(s)); ok(A.writeScreen(A.parseScreen(once)) === once, 'round trip: ' + s.slice(0, 20)); }
 // fingerprint matches the T3's FNV-1a (test_screens.cpp checks "abc" = 1a47e90b too)

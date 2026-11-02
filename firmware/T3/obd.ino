@@ -1,5 +1,7 @@
 // obd.ino - the Vgate iCar Pro (Bluetooth LE OBD adapter, ELM327 commands): the T3 is its client.
 // It scans for the adapter, connects without stopping the loop, then asks for one engine value at a time.
+#include "obdmatch.h"
+#include <esp_heap_caps.h>
 
 static NimBLEAddress obdAddr;
 static bool obdFound = false;
@@ -10,25 +12,51 @@ static bool obdWriteResp = false;
 static QueueHandle_t obdQueue;   // bytes the iCar sent
 static uint32_t lastScan = 0, connectAt = 0;
 static bool connecting = false;
+static uint32_t obdScans = 0, obdAttempts = 0, obdBleStartFree = 0, obdBleStartLargest = 0, obdAttemptFree = 0, obdAttemptLargest = 0;
+static uint32_t obdFoundAt = 0;
+static int obdConnectCode = 0;
+static bool obdAttachFailed = false, obdConnectTimedOut = false;
+static bool noMatchNoted = false;
+static char obdLast[64] = "waiting for scan", obdFoundName[33] = "";
+static portMUX_TYPE obdDiagMux = portMUX_INITIALIZER_UNLOCKED;
+static void obdDiagSet(const char* value) {
+  portENTER_CRITICAL(&obdDiagMux); strlcpy(obdLast, value, sizeof(obdLast)); portEXIT_CRITICAL(&obdDiagMux);
+}
+static void obdDiagCopy(char* out, size_t cap) {
+  portENTER_CRITICAL(&obdDiagMux); strlcpy(out, obdLast, cap); portEXIT_CRITICAL(&obdDiagMux);
+}
 
 bool looksLikeObd(const NimBLEAdvertisedDevice* d) {
   String n = String(d->getName().c_str());
-  n.toLowerCase();
-  if (n.length() == 0 || n.startsWith("jeep")) return false;
-  if (cfg.obdName.length()) { String want = cfg.obdName; want.toLowerCase(); return n.indexOf(want) >= 0; }
-  const char* names[] = { "vlink", "v-link", "icar", "vgate", "obd", "elm", "vlinker", "ios-vlink" };
-  for (auto k : names) if (n.indexOf(k) >= 0) return true;
-  return false;
+  if (n.length() == 0 || obdNameStartsWith(n.c_str(), "jeep")) return false;
+  return obdNameMatches(n.c_str(), cfg.obdName.c_str());
 }
 class ScanCB : public NimBLEScanCallbacks {
   void onResult(const NimBLEAdvertisedDevice* d) override {
-    if (!obdFound && looksLikeObd(d)) { obdAddr = d->getAddress(); obdFound = true; NimBLEDevice::getScan()->stop(); }
+    if (!obdFound && looksLikeObd(d)) {
+      obdAddr = d->getAddress(); obdFound = true;
+      String n = String(d->getName().c_str()); char text[64];
+      portENTER_CRITICAL(&obdDiagMux);
+      obdFoundAt = millis(); strlcpy(obdFoundName, n.c_str(), sizeof(obdFoundName));
+      snprintf(text, sizeof(text), "found: %.32s", obdFoundName); strlcpy(obdLast, text, sizeof(obdLast));
+      portEXIT_CRITICAL(&obdDiagMux);
+      NimBLEDevice::getScan()->stop();
+    }
   }
 };
 class ObdClientCB : public NimBLEClientCallbacks {
-  void onConnect(NimBLEClient*) override { obdConnected = true; }
-  void onConnectFail(NimBLEClient*, int) override { obdConnected = false; connecting = false; }
-  void onDisconnect(NimBLEClient*, int) override { obdConnected = false; obdLinked = false; connecting = false; }
+  void onConnect(NimBLEClient*) override { obdConnected = true; obdDiagSet("connected; checking service"); }
+  void onConnectFail(NimBLEClient*, int reason) override {
+    obdConnected = false; connecting = false;
+    portENTER_CRITICAL(&obdDiagMux); obdConnectCode = reason; portEXIT_CRITICAL(&obdDiagMux);
+    char text[64]; snprintf(text, sizeof(text), "connect failed (%d)", reason); obdDiagSet(text);
+  }
+  void onDisconnect(NimBLEClient*, int reason) override {
+    obdConnected = false; obdLinked = false; connecting = false;
+    if (obdAttachFailed) { obdAttachFailed = false; obdDiagSet("OBD service/notify missing"); }
+    else if (obdConnectTimedOut) { obdConnectTimedOut = false; obdDiagSet("connect timed out"); }
+    else { char text[64]; snprintf(text, sizeof(text), "disconnected (%d)", reason); obdDiagSet(text); }
+  }
 };
 static ScanCB scanCB;
 static ObdClientCB obdCB;
@@ -64,6 +92,9 @@ bool obdAttach() {
 
 void obdBegin() {
   obdQueue = xQueueCreate(512, 1);
+  obdBleStartFree = ESP.getFreeHeap();
+  obdBleStartLargest = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
+  obdDiagSet("BLE ready; waiting for scan");
   NimBLEScan* sc = NimBLEDevice::getScan();
   sc->setScanCallbacks(&scanCB, false);
   sc->setActiveScan(true);
@@ -76,25 +107,37 @@ void obdConnectStep() {
   if (connecting) {
     if (obdConnected) {
       connecting = false;
-      if (obdAttach()) { obdLinked = true; sdEvent("iCar connected"); }
-      else obdClient->disconnect();
-    } else if (now - connectAt > 8000) { connecting = false; if (obdClient) obdClient->disconnect(); }
+      if (obdAttach()) { obdLinked = true; obdDiagSet("linked; engine setup"); sdEvent("iCar connected"); }
+      else { obdAttachFailed = true; obdClient->disconnect(); }
+    } else if (now - connectAt > 8000) { connecting = false; obdConnectTimedOut = true; if (obdClient) obdClient->disconnect(); }
     return;
   }
   if (!obdFound) {
-    if (NimBLEDevice::getScan()->isScanning() || now - lastScan < 8000) return;
+    NimBLEScan* scan = NimBLEDevice::getScan();
+    if (!scan->isScanning() && lastScan && now - lastScan >= 2500 && !noMatchNoted) { noMatchNoted = true; obdDiagSet("no matching adapter seen"); }
+    if (scan->isScanning() || now - lastScan < 8000) return;
     // the ESP32 has one radio: a Bluetooth scan while Wi-Fi is looking or joining can make it miss the
     // network's answers (handshake timeouts), so the iCar search waits until Wi-Fi is done
-    if (wifiState == W_SCAN || wifiState == W_JOIN || otaMode) return;
+    if (wifiState == W_SCAN || wifiState == W_JOIN || otaMode) { obdDiagSet(otaMode ? "paused for Bluetooth update" : "paused for Wi-Fi scan/join"); return; }
     lastScan = now;
-    NimBLEDevice::getScan()->start(2000, false);   // runs by itself for 2 s; stops early when the iCar shows up
+    obdScans++; noMatchNoted = false; obdDiagSet("searching");
+    scan->start(2000, false);   // runs by itself for 2 s; stops early when the iCar shows up
     return;
   }
-  if (!obdClient) { obdClient = NimBLEDevice::createClient(); obdClient->setClientCallbacks(&obdCB, false); obdClient->setConnectTimeout(6000); }
+  if (!obdClient) {
+    obdClient = NimBLEDevice::createClient();
+    if (!obdClient) { obdDiagSet("could not allocate BLE client"); return; }
+    obdClient->setClientCallbacks(&obdCB, false); obdClient->setConnectTimeout(6000);
+  }
   obdFound = false;
   obdConnected = false;
+  obdAttachFailed = false; obdConnectTimedOut = false;
+  obdAttempts++;
+  portENTER_CRITICAL(&obdDiagMux); obdConnectCode = 0; portEXIT_CRITICAL(&obdDiagMux);
+  obdAttemptFree = ESP.getFreeHeap(); obdAttemptLargest = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
+  obdDiagSet("connecting");
   connecting = true; connectAt = now;
-  if (!obdClient->connect(obdAddr, true, true)) connecting = false;   // async: onConnect tells us
+  if (!obdClient->connect(obdAddr, true, true)) { connecting = false; obdDiagSet("connect start failed"); }   // async: onConnect tells us
 }
 
 // ---------------------------------------------------------------- ELM327 commands, one at a time
@@ -137,7 +180,21 @@ String obdDiagJson() {
   for (int p = 1; p < 0xA0; p++) if (pidMissing(p)) { char b[4]; snprintf(b, sizeof(b), "%02X", p); miss += (miss.length() ? " " : "") + String(b); }
   int bp = boostPid();
   char bps[4]; snprintf(bps, sizeof(bps), "%02X", bp < 0 ? 0 : bp);
+  char last[64]; obdDiagCopy(last, sizeof(last));
+  char found[sizeof(obdFoundName)]; int connectCode = 0; uint32_t foundAt = 0;
+  portENTER_CRITICAL(&obdDiagMux);
+  strlcpy(found, obdFoundName, sizeof(found)); foundAt = obdFoundAt; connectCode = obdConnectCode;
+  portEXIT_CRITICAL(&obdDiagMux);
+  String target = cfg.obdName.length() ? cfg.obdName : String("common OBD adapter names");
+  String paused = otaMode ? "Bluetooth update" : (wifiState == W_SCAN || wifiState == W_JOIN ? "Wi-Fi scan/join" : "");
+  uint32_t freeNow = ESP.getFreeHeap(), largestNow = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
   return "\"obd\":{\"proto\":\"" + jsonEsc(obdProto) + "\",\"known\":" + String(obdSup.known ? 1 : 0) +
+         ",\"search\":\"" + jsonEsc(target) + "\",\"found\":\"" + jsonEsc(found) + "\",\"foundAgo\":" + String(foundAt ? (long)(millis() - foundAt) / 1000 : -1) +
+         ",\"scans\":" + String(obdScans) + ",\"attempts\":" + String(obdAttempts) + ",\"last\":\"" + jsonEsc(last) + "\",\"code\":" + String(connectCode) +
+         ",\"searching\":" + String(NimBLEDevice::getScan() && NimBLEDevice::getScan()->isScanning() ? 1 : 0) + ",\"paused\":\"" + jsonEsc(paused) +
+         "\",\"free\":" + String(freeNow) + ",\"largest\":" + String(largestNow) + ",\"bleStartFree\":" + String(obdBleStartFree) +
+         ",\"bleStartLargest\":" + String(obdBleStartLargest) + ",\"attemptFree\":" + String(obdAttemptFree) +
+         ",\"attemptLargest\":" + String(obdAttemptLargest) +
          ",\"raw\":{\"0100\":\"" + jsonEsc(raw0100) + "\",\"0C\":\"" + jsonEsc(raw0C) + "\",\"0B\":\"" + jsonEsc(raw0B) + "\"}" +
          ",\"data\":" + String(car.at && millis() - car.at < 5000 ? 1 : 0) + ",\"sup\":\"" + String(sup) + "\",\"boost\":\"" +
          (bp < 0 ? String("-") : String(bps)) + "\",\"map\":" + num(car.mapKpa >= 0 ? car.mapKpa : NAN, 1) + ",\"baro\":" + num(baroNow(), 1) +

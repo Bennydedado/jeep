@@ -1,5 +1,15 @@
 # Changes
 
+## 2 Nov 2026 — T3 2.16, Heep 1.1.22: trip upload status and Jeep expense log
+
+- Trip sending no longer takes over the display with a repeated “Sending trips” screen. A dedicated status screen
+  shows only Wi-Fi connected/not connected and trips uploaded/not uploaded. The same screen is available from Heep →
+  Live → Screens & buttons → Add a screen.
+- Heep’s Service tab has a separate Jeep expense log with category totals and filtering, brand/part and installed-km
+  details, an optional explicitly selected Maintenance reminder, and CSV export. Existing log columns are reused.
+- Map & Trip History is named Trips throughout the app and project docs.
+- No new T3 wire message was added; the screen status fields use the existing screen format.
+
 ## 30 Oct 2026 — T3 2.15, Heep 1.1.20: set your own brightness levels
 
 - Heep → Screens → Display → Brightness levels: tap Low, Medium or High and slide to set what it means (0-100%).

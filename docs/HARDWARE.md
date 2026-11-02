@@ -49,7 +49,7 @@ the code was compiled and tested on a PC with simulated data (see section 17). E
 - **The Nano keeps its own jobs.** The wire to the T3 only goes Nano → T3, so the T3 can be unplugged, off,
   rebooting or broken and the stereo and headlights work exactly the same.
 - **Heep is where you set things up and look back.** T3 settings, screens and buttons, diagnostics, live numbers,
-  and the Map & Trip History page.
+  and the Trips tab (Map & Trip History).
 
 ## 2. Boards and modules
 
@@ -258,24 +258,26 @@ GPIO 4 = probe or push button · fuel correction % · distance correction % · t
 log a row every (driving / parked) · write to card every · make room when over % · time zone · GPS baud · iCar name ·
 Send settings · Try Wi-Fi and update now · Put T3 settings back to new.
 
-**Live → Screens:** up to 12 screens, each on/off, in any order; per screen up to 10 widgets:
+**Live → Screens:** up to 12 screens, each on/off, in any order; per screen up to 10 widgets. The built-in Trip status
+screen shows Wi-Fi connected/not connected and trips uploaded/not uploaded; add it to existing custom screens from
+Add a screen. During a key-on upload, the T3 briefly shows the same status instead of an upload prompt.
 value (label + number in size 1–4, auto-shrinks), row (label left, value right), bar (from/to), text, line;
-position and size in T3 pixels; label/unit/box/inverted; any of 46 values (`firmware/T3/fields.h`).
+position and size in T3 pixels; label/unit/box/inverted; any value in `firmware/T3/fields.h`.
 Templates: blank, boost gauge, temperature & direction, one big number, two big numbers, list of six.
 Preview with live numbers when connected. Send to T3 (it confirms with a fingerprint), Load from T3,
 default screens. **Buttons:** press and hold action for each wheel button.
 **Display:** key-on screen, screen off after, brightness, night hours and night brightness, redraw rate, upside-down mounting.
 
-**Map:** track storage setup, named places (Home, the shop...).
+**Trips tab:** track storage setup, named places (Home, the shop...).
 
 Settings are kept in the T3's flash and survive restarts and updates. Anything out of range is put back to a
 safe value; a broken or missing screen file falls back to the built-in screens.
 
-## 11. Map & Trip History (Heep only)
+## 11. Trips tab (Heep only)
 
 - **Where tracks come from:** the T3 uploads each finished trip's CSV to your **track store**, a small Apps
   Script in your own Google Drive (`tracks/TrackStore.gs`), separate from the Jeep log sheet's script.
-  Set it up once: Map → Set up track storage (Heep puts a fresh key into the script for you), then
+  Set it up once: Trips → Set up track storage (Heep puts a fresh key into the script for you), then
   T3 settings → Send settings over Bluetooth. Tracks go up 100 rows per request; a trip only counts as uploaded
   when the store confirms every row. Files: Drive folder "Jeep tracks", one CSV per trip + `index.json`.
 - **What the page shows:** trip list (month filter, newest/oldest/longest/coldest), start → end (named places or
@@ -332,7 +334,7 @@ Note: the T3 never installs an *older* version by itself, so after a manual down
 
 1. Key on. T3 shows its key-on screen within ~2 s.
 2. Bluefy → Heep → Live → Connect → Jeep T3. Chips at the top show Bluetooth, GPS, temp probe, wheel link, SD, iCar.
-3. T3 settings → add Wi-Fi → Send settings. Map → Set up track storage → T3 settings → Send settings again.
+3. T3 settings → add Wi-Fi → Send settings. Trips → Set up track storage → T3 settings → Send settings again.
 4. Live → Diagnostics: every part with its state and counters (updates every 2 s; says when it's stale).
 5. Numbers older than 3 s are greyed out with "No new numbers for N s".
 
@@ -351,8 +353,10 @@ Note: the T3 never installs an *older* version by itself, so after a manual down
 | SD "No card" | FAT32? Card fully inserted? Try another card. "write failed": card worn or removed. |
 | Wi-Fi "none of yours in range" | Hotspot off, 5 GHz only (turn on Maximize Compatibility), name typed differently. |
 | Wi-Fi "couldn't join" | Password. |
+| iCar not connected | Live → Diagnostics → OBD shows the name searched, whether an adapter was seen, scan and connection counts, the last BLE step, and free memory now, when BLE started, and at the last connection try. If it says it paused for Wi-Fi, wait for Wi-Fi to finish; if it never sees the adapter, check the saved iCar name and that the adapter is powered. |
+| iCar found but will not connect | Check the last BLE step and error code in Diagnostics. “OBD service/notify missing” means the adapter's Bluetooth service does not match the supported profiles; include the adapter name and Diagnostics screen when reporting it. |
 | Trips "sheet key wrong" | Re-send T3 settings from the phone connected to the right Jeep log. |
-| Tracks "track store key wrong" | Re-do Map → Track storage, then Send settings over Bluetooth. |
+| Tracks "track store key wrong" | Re-do Trips → Track storage, then Send settings over Bluetooth. |
 | Program "update failed" / "failed before" | The next GitHub build will be fetched when it's newer; USB install always works. |
 | Free memory under ~30 KB | Report it (Diagnostics screenshot): the upload is the hungriest part. |
 
@@ -360,7 +364,7 @@ Note: the T3 never installs an *older* version by itself, so after a manual down
 
 - Repository: https://github.com/Bennydedado/jeep — app at the root, `firmware/T3/` (T3), `nano/` (Nano add-on),
   `tracks/TrackStore.gs` (track store), `tests/` (PC tests), `docs/` (this guide), `AGENTS.md` (how the code is laid out for anyone, or any AI, changing it).
-- Versions: T3 firmware **2.0** (protocol 2), Heep **1.1.0**, Nano link protocol **1**.
+- Versions: T3 firmware **2.16** (protocol 2), Heep **1.1.22**, Nano link protocol **1**.
 - Test status (27 Oct 2026): T3 compiles (ESP32 core 3.3.12, 1,534,984 bytes = 78% of the app slot; 1.5 was 98%);
   Nano example compiles (4.4 KB); PC tests pass for GPS parsing, Nano link (incl. a simulated ladder through
   to the T3 parser), screen format (app and T3 agree byte for byte), trip statistics, track store, relay crypto,
@@ -394,4 +398,4 @@ Note: the T3 never installs an *older* version by itself, so after a manual down
 - [ ] Heading shows live above 5 km/h, brackets when stopped
 - [ ] Speed matches the speedometer (or GPS); distance roughly matches the odometer
 - [ ] Mark a spot with button 2; end the trip with a long press on button 3
-- [ ] At home/hotspot: trip arrives in the Jeep log; track appears on the Map page with the mark
+- [ ] At home/hotspot: trip arrives in the Jeep log; track appears on the Trips tab with the mark

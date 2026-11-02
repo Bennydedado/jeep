@@ -48,6 +48,8 @@ function blendEcon(st, trips, live) {
   if (tKm > 0 && since.km >= ECON.minT3Km) { e.v = (tLit + since.lit) / (tKm + since.km) * 100; e.src = 'mix'; }
   else if (tKm > 0) { e.v = tLit / tKm * 100; e.src = 'tank'; }
   else if (all.v != null) { e.v = all.v; e.src = 't3'; }
+  // Fuel cost per km only: general Jeep expenses and service costs are in the log tab, not the fill-ups.
+  // Keep insurance, parts and repairs out of the diesel figure shown on Overview and in the widget.
   // cost per km: from the tanks when there are any, else the economy at the last pump price
   const price = st.lastPpl || st.ppl || null;
   if (st.perKm && e.src !== 't3') { e.perKm = st.perKm; e.perKmEst = false; }

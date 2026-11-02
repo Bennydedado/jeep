@@ -21,8 +21,8 @@ const FIELDS = [
   ['dte', 'To empty', 'km', 0, 'Trip'], ['fuel', 'Fuel left', 'L', 0, 'Trip'],
   ['gfix', 'GPS', '', -1, 'GPS'], ['sats', 'Sats', '', -1, 'GPS'], ['hdop', 'HDOP', '', 1, 'GPS'], ['alt', 'Altitude', 'm', 0, 'GPS'],
   ['lat', 'Lat', '', 5, 'GPS'], ['lon', 'Lon', '', 5, 'GPS'],
-  ['obd', 'iCar', '', -1, 'Status'], ['ble', 'Phone', '', -1, 'Status'], ['wifi', 'Wi-Fi', '', -1, 'Status'], ['nano', 'Wheel', '', -1, 'Status'],
-  ['sd', 'SD', '', -1, 'Status'], ['sdfree', 'SD free', 'MB', 0, 'Status'], ['logn', 'Logged', '', 0, 'Status'], ['queue', 'Waiting', '', 0, 'Status'],
+  ['obd', 'iCar', '', -1, 'Status'], ['ble', 'Phone', '', -1, 'Status'], ['wifi', 'Wi-Fi', '', -1, 'Status'], ['upstat', 'Trips', '', -1, 'Status'],
+  ['nano', 'Wheel', '', -1, 'Status'], ['sd', 'SD', '', -1, 'Status'], ['sdfree', 'SD free', 'MB', 0, 'Status'], ['logn', 'Logged', '', 0, 'Status'], ['queue', 'Waiting', '', 0, 'Status'],
   ['fw', 'T3', '', -1, 'Status'], ['up', 'Up', '', -1, 'Status'], ['heap', 'Memory', 'KB', 0, 'Status'], ['btn', 'Button', '', -1, 'Status'],
 ].map(([id, label, unit, dp, group]) => ({ id, label, unit, dp, group }));
 const FIELD = Object.fromEntries(FIELDS.map(f => [f.id, f]));
@@ -31,7 +31,7 @@ const FIELD = Object.fromEntries(FIELDS.map(f => [f.id, f]));
 const SAMPLE = { kmh: 87, kmhg: 86, kmho: 87, hdg: 'NE', hdgd: '047°', otemp: -12.5, clock: '18:42', date: '2026-10-27', rpm: 1850, boost: 14.2, bmax: 21.6,
   ect: 86, iat: 8, volt: 14.1, load: 52, lph: 7.4, econ: 8.5, maf: 38.5, rail: 850, tstate: 'RUNNING', tkm: 42.7, ttime: '0:38', tl: 3.94, tavg: 9.2, tavgs: 67, tvmax: 104,
   tidle: '0:03', totkm: 15204, totl: 1421, totavg: 9.3, dte: 512, fuel: 61, gfix: '3D FIX', sats: '9/14', hdop: 0.9, alt: 702, lat: 56.24650, lon: -120.84760,
-  obd: 'reading', ble: 'Heep on', wifi: 'Ben iPhone', nano: 'ok', sd: 'logging', sdfree: 29811, logn: 2311, queue: 0, fw: '2.0', up: '0:41', heap: 92, btn: '3S' };
+  obd: 'reading', ble: 'Heep on', wifi: 'connected', upstat: 'uploaded', nano: 'ok', sd: 'logging', sdfree: 29811, logn: 2311, queue: 0, fw: '2.0', up: '0:41', heap: 92, btn: '3S' };
 
 // same screens a new T3 starts with: keep in step with DEFAULT_SCREENS in firmware/T3/screens.h
 const DEFAULT_SCREENS = [
@@ -45,11 +45,13 @@ const DEFAULT_SCREENS = [
   'Connections|1|r,obd,0,0,128,8,1,l,l,0,0,|r,ble,0,10,128,8,1,l,l,0,0,|r,wifi,0,20,128,8,1,l,l,0,0,|r,nano,0,30,128,8,1,l,l,0,0,|r,queue,0,40,128,8,1,l,l,0,0,|r,clock,0,50,128,8,1,l,l,0,0,',
   'Logging|1|r,sd,0,0,128,8,1,l,l,0,0,|r,sdfree,0,10,128,8,1,l,lu,0,0,|r,logn,0,20,128,8,1,l,l,0,0,|r,queue,0,30,128,8,1,l,l,0,0,|r,tstate,0,40,128,8,1,l,l,0,0,',
   'System|1|r,fw,0,0,128,8,1,l,l,0,0,|r,up,0,10,128,8,1,l,l,0,0,|r,heap,0,20,128,8,1,l,lu,0,0,|r,btn,0,30,128,8,1,l,l,0,0,|r,date,0,40,128,8,1,l,l,0,0,|r,totkm,0,50,128,8,1,l,lu,0,0,',
+  'Trip status|1|r,wifi,0,20,128,12,1,l,l,0,0,|r,upstat,0,40,128,12,1,l,l,0,0,',
 ];
 
 // ready-made screens to start from in "Add a screen"
 const SCREEN_TEMPLATES = [
   ['Blank', 'New screen|1'],
+  ['Wi-Fi and trip upload', 'Trip status|1|r,wifi,0,20,128,12,1,l,l,0,0,|r,upstat,0,40,128,12,1,l,l,0,0,'],
   ['Boost gauge', 'Boost|1|v,boost,0,0,128,40,4,c,lu,0,0,|b,boost,0,42,128,12,1,l,,0,30,|r,bmax,0,56,64,8,1,l,l,0,0,|r,rpm,66,56,62,8,1,r,l,0,0,'],
   ['Temperature & direction', DEFAULT_SCREENS[0].replace('Temp & dir', 'Temp & dir 2')],
   ['One big number', 'Big|1|v,kmh,0,0,128,64,4,c,lu,0,0,'],
@@ -221,27 +223,52 @@ function scrStatus(st) {
   return ['soon', 'Saved on this phone, not sent to the T3 yet'];
 }
 
+// The T3's Bluetooth line buffer holds 1500 bytes and PubSubClient's MQTT buffer is 2048.
+// Screens travel one command at a time; include the relay's signed JSON wrapper and packet/topic overhead.
+function screenWireSizes(i, n, d) {
+  const command = JSON.stringify({ c: 'scr', i, n, d });
+  const relay = JSON.stringify({ n: 9999999999999, m: command, h: '0'.repeat(64) });
+  return { bluetooth: new TextEncoder().encode(command).length, relay: new TextEncoder().encode(relay).length + 128 };
+}
+
 // send the whole set; resolves true when the T3 says it has them
 async function sendScreens(st) {
+  const list = st.list.slice(0, MAX_SCREENS);
+  for (let i = 0; i < list.length; i++) {
+    const size = screenWireSizes(i, list.length, list[i]);
+    if (size.bluetooth > 1490 || size.relay > 2048) {
+      toast('A screen is too large to send', 'Screen ' + (i + 1) + ' uses ' + size.bluetooth + ' Bluetooth bytes / ' + size.relay + ' relay bytes. Shorten its text or remove a widget.', 'bad');
+      return false;
+    }
+  }
   if (!(await t3Ready())) { if (!t3CanSend()) toast('Not connected to the T3', 'Connect over Bluetooth, or have the T3 on your hotspot', 'bad'); return false; }
   return new Promise(resolve => {
-    const list = st.list.slice(0, MAX_SCREENS);
     const hash = screensHash(list);
     st.sentHash = hash; scrSave(st);
     let done = false, timer = null;
-    const giveUp = () => { if (done) return; done = true; LIVE.onScr = null; toast('The T3 didn\'t confirm', 'Check it\'s on and connected, then send again', 'bad'); resolve(false); };
+    const finish = ok => { if (done) return; done = true; clearTimeout(timer); LIVE.onScr = null; LIVE.onCmdRefused = null; resolve(ok); };
+    const giveUp = () => { if (done) return; LIVE.onScr = null; LIVE.onCmdRefused = null; done = true; toast('The T3 didn\'t confirm', 'Check its Wi-Fi or Bluetooth connection, then send again', 'bad'); resolve(false); };
     LIVE.onScr = m => {
       if (done) return;
-      done = true; clearTimeout(timer); LIVE.onScr = null;
-      if (m.ok && m.h === hash) { st.ackHash = hash; st.ackAt = Date.now(); scrSave(st); if (LIVE.t3) LIVE.t3.scrh = hash; toast('Screens are on the T3', list.length + ' screens'); resolve(true); }
-      else { toast('The T3 refused the screens', m.why || 'fingerprint different', 'bad'); resolve(false); }
+      if (m.ok && m.h === hash) { st.ackHash = hash; st.ackAt = Date.now(); scrSave(st); if (LIVE.t3) LIVE.t3.scrh = hash; toast('Screens are on the T3', list.length + ' screens'); finish(true); }
+      else { toast('The T3 refused the screens', m.why || 'fingerprint different', 'bad'); finish(false); }
     };
+    LIVE.onCmdRefused = m => { if (!done && m.c === 'scr') { toast('The T3 refused the screen transfer', m.why || 'Command was not accepted', 'bad'); finish(false); } };
     toast('Sending ' + list.length + ' screens…', 'Keep Heep open until the T3 confirms', 'info');
+    timer = setTimeout(giveUp, 15000);
     (async () => {
-      for (let i = 0; i < list.length; i++) await t3Send({ c: 'scr', i, n: list.length, d: list[i] });
-      await t3Send({ c: 'scrok', n: list.length, h: hash });
-      // a big set takes a few seconds over Bluetooth: the wait for the answer starts once it's all sent
-      if (!done) timer = setTimeout(giveUp, 15000);
+      try {
+        for (let i = 0; i < list.length && !done; i++) {
+          if (!await t3Send({ c: 'scr', i, n: list.length, d: list[i] })) {
+            toast('Couldn’t send a screen', 'Connection stopped at screen ' + (i + 1) + ' of ' + list.length + '. Try again when the T3 is connected.', 'bad'); finish(false); return;
+          }
+        }
+        if (!done && !await t3Send({ c: 'scrok', n: list.length, h: hash })) {
+          toast('Couldn’t finish the screen transfer', 'Try again when the T3 is connected.', 'bad'); finish(false);
+        }
+      } catch (e) {
+        toast('Couldn’t send the screens', String(e && e.message || e).slice(0, 100), 'bad'); finish(false);
+      }
     })();
   });
 }
@@ -644,4 +671,4 @@ function displayCard() {
     h('button', { class: 'btn btn-glass glass btn-wide', onclick: () => t3SendSettings() }, icon('bt'), 'Send settings to the T3'));
 }
 
-if (typeof module !== 'undefined') module.exports = { parseBv, FIELDS, DEFAULT_SCREENS, SCREEN_TEMPLATES, parseScreen, writeScreen, fnv1a, screensHash, parseBtnMap, fitLabel, parseWheelMap, writeWheelMap, parseNanoCfg, writeNanoCfg, WHEEL_DEFAULT, KENWOOD_NAMES };
+if (typeof module !== 'undefined') module.exports = { parseBv, FIELDS, DEFAULT_SCREENS, SCREEN_TEMPLATES, screenWireSizes, parseScreen, writeScreen, fnv1a, screensHash, parseBtnMap, fitLabel, parseWheelMap, writeWheelMap, parseNanoCfg, writeNanoCfg, WHEEL_DEFAULT, KENWOOD_NAMES };

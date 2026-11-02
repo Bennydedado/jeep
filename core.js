@@ -1,7 +1,7 @@
 'use strict';
 // core.js - the Jeep log on this phone, syncing with the Google Sheet, and the numbers.
 
-const VERSION = '1.1.21';
+const VERSION = '1.1.22';
 const TANK_DEFAULT = 77.6; // 2006 Liberty CRD: 20.5 US gal
 const PERSONAL = 'Personal tank'; // the Station value for fill-ups from the tank at home
 
@@ -43,6 +43,7 @@ function applyLocal(d, op) {
   if (op.op === 'info') { Object.assign(d.info, op.set); return; }
   const arr = d[op.tab];
   if (!arr) return;
+  if (op.tab === 'log') { JeepExpenses.applyLogOperation(arr, op); return; }
   const i = arr.findIndex(x => x.id === (op.op === 'del' ? op.id : op.row.id));
   if (op.op === 'put') {
     if (i >= 0) arr[i] = Object.assign({}, arr[i], op.row); else arr.push(Object.assign({}, op.row));
@@ -226,6 +227,7 @@ function addMonths(t, n) {
 
 // fuel economy works on full tanks: every litre bought since the last full tank, over the distance since it
 function calc(d) {
+  // Fuel economy and diesel cost use fill-ups and T3 trips only. Service and expense rows stay in d.log.
   // a fill-up from the personal tank can be just the odometer: the tank is full, the litres aren't known
   const f = d.fill.filter(x => num(x.odo) > 0 && (num(x.lit) > 0 || x.full !== false))
     .map(x => { const lit = num(x.lit) || 0; return Object.assign({}, x, { odo: num(x.odo), lit, cost: num(x.cost) || 0, full: x.full !== false, unknown: !(lit > 0) }); })

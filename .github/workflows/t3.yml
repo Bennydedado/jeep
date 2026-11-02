@@ -1,9 +1,9 @@
-# Builds the T3 program whenever its code changes and puts it on the website:
-# the T3 fetches firmware/T3.bin over Wi-Fi by itself, and firmware/ has the one-time USB install.
+# Builds the T3 program whenever its code changes. Only main publishes firmware files to the website.
+# The T3 fetches firmware/T3.bin over Wi-Fi, and firmware/ has the one-time USB install.
 name: Build the T3
 on:
   push:
-    paths: ['firmware/T3/**', '.github/workflows/t3.yml']
+    paths: ['firmware/T3/**', 'tests/**', '*.js', '*.html', '*.css', '.github/workflows/t3.yml']
   workflow_dispatch:
 permissions:
   contents: write
@@ -22,10 +22,15 @@ jobs:
           # pinned, so a library's new major version can't break the build by surprise (firmware/README.md)
           arduino-cli core install esp32:esp32@3.3.12
           arduino-cli lib install "Adafruit SSD1306@2.5.17" "Adafruit GFX Library@1.13.0" "Adafruit BusIO@1.17.4" "PubSubClient@2.8" "NimBLE-Arduino@2.5.2" "OneWire@2.3.8"
-      - name: Parser tests (run on the build machine, no hardware)
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install browser test tools
         run: |
-          for t in nmea jlink wheelmap sun screens otarx obdpid; do g++ -std=c++17 -Wall -O1 -o /tmp/t_$t tests/firmware/test_$t.cpp && /tmp/t_$t; done
-          g++ -std=c++17 -Wall -O1 -I tests/firmware/mock -o /tmp/t_nano tests/firmware/test_nano_link.cpp && /tmp/t_nano
+          npm install --no-save playwright
+          npx playwright install --with-deps chromium
+      - name: Run all repository tests
+        run: bash tests/run.sh
       - name: Build
         id: build
         continue-on-error: true
@@ -33,6 +38,7 @@ jobs:
           set -o pipefail
           arduino-cli compile --fqbn "esp32:esp32:esp32:PartitionScheme=min_spiffs" --export-binaries --output-dir out firmware/T3 2>&1 | tee build.log
       - name: Publish
+        if: github.ref == 'refs/heads/main'
         run: |
           cp build.log firmware/build.log
           ls out >> firmware/build.log 2>/dev/null || true
@@ -57,3 +63,6 @@ jobs:
           git add firmware
           git commit -m "T3 build: ${{ steps.build.outcome }}" || exit 0
           git push
+      - name: Fail if firmware build failed
+        if: steps.build.outcome != 'success'
+        run: exit 1

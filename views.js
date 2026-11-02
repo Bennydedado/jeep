@@ -275,24 +275,42 @@ function servBody(s, o, compact) {
       h('button', { class: 'btn btn-small btn-glass glass', onclick: () => servSheet(s) }, 'Edit'),
       every ? h('span', { class: 'foot', style: 'margin-left:auto;align-self:center', text: 'every ' + every }) : null));
 }
-const JEEP_COST_CATEGORIES = ['Insurance', 'Parts', 'Repairs', 'Maintenance', 'Registration', 'Towing', 'Other'];
-function jeepCostCategory(l) {
-  const sid = String(l && l.sid || '');
-  return sid.indexOf('expense:') === 0 ? sid.slice(8) : '';
+const JEEP_COST_CATEGORIES = JeepExpenses.CATEGORIES;
+const jeepCostCategory = JeepExpenses.category;
+const isJeepCost = JeepExpenses.isExpense;
+
+function expenseAmountText(value) {
+  const amount = value === '' || value == null ? NaN : Number(value);
+  return Number.isFinite(amount) ? money(amount) : '--';
 }
-function isJeepCost(l) { return !!jeepCostCategory(l); }
+function downloadExpenseCsv(rows) {
+  const data = [['Date', 'Category', 'Item', 'Amount', 'Installed at km', 'Brand', 'Part number', 'Note', 'Service reminder marked done']];
+  for (const l of rows) {
+    const extra = JeepExpenses.unpackNote(l.note);
+    const t = num(l.t);
+    data.push([
+      t ? new Date(t).toISOString().slice(0, 10) : '', jeepCostCategory(l), l.name || '',
+      l.cost === '' || l.cost == null ? '' : l.cost, num(l.odo) > 0 ? Math.round(num(l.odo)) : '',
+      extra.brand, extra.part, extra.note, extra.reminderName,
+    ]);
+  }
+  const csv = '\uFEFF' + JeepExpenses.toCsv(data);
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  const link = h('a', { href: url, download: 'heep-expenses-' + new Date().toISOString().slice(0, 10) + '.csv' });
+  document.body.append(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 
 function renderJeepCosts(v) {
-  const expenses = S.data.log.filter(isJeepCost).slice().sort((a, b) => (num(b.t) || 0) - (num(a.t) || 0));
+  const expenses = JeepExpenses.expensesFrom(S.data.log).slice().sort((a, b) => (num(b.t) || 0) - (num(a.t) || 0));
   const year = new Date().getFullYear();
-  const total = expenses.reduce((s, x) => s + (num(x.cost) || 0), 0);
-  const thisYear = expenses.filter(x => num(x.t) && new Date(num(x.t)).getFullYear() === year)
-    .reduce((s, x) => s + (num(x.cost) || 0), 0);
+  const total = JeepExpenses.amountTotal(expenses);
+  const yearExpenses = expenses.filter(x => num(x.t) && new Date(num(x.t)).getFullYear() === year);
+  const thisYear = JeepExpenses.amountTotal(yearExpenses);
   v.append(h('div', { class: 'month' }, h('b', { text: 'Jeep expense log' }), h('span', { text: expenses.length + (expenses.length === 1 ? ' entry' : ' entries') })));
   v.append(h('div', { class: 'foot', text: 'Parts, insurance, repairs and other Jeep costs.' }));
   v.append(h('div', { class: 'tiles' },
-    tile('All time', 'dollar', money(total, 0), null, expenses.length + (expenses.length === 1 ? ' expense' : ' expenses')),
-    tile('This year', 'calendar', money(thisYear, 0), null, String(year))));
+    tile('All time', 'dollar', total == null ? '--' : money(total, 0), null, expenses.length + (expenses.length === 1 ? ' expense' : ' expenses')),
+    tile('This year', 'calendar', thisYear == null ? '--' : money(thisYear, 0), null, String(year))));
   v.append(h('button', { class: 'btn btn-primary btn-wide', onclick: () => expenseSheet() }, icon('plus'), 'Add an expense'));
   if (!expenses.length) {
     v.append(card(h('div', { class: 'empty' },
@@ -300,49 +318,100 @@ function renderJeepCosts(v) {
       h('p', { text: 'Log parts, insurance, repairs and other Jeep costs here.' }))));
     return;
   }
-  v.append(h('div', { class: 'card list' }, expenses.map(l => {
+  const categoryTotals = JeepExpenses.totalsByCategory(expenses);
+  if (categoryTotals.length) {
+    v.append(h('div', { class: 'month' }, h('b', { text: 'By category' })));
+    v.append(h('div', { class: 'card list' }, categoryTotals.map(x =>
+      h('div', { class: 'row' },
+        h('div', { class: 'main' }, h('b', { text: x.category }), h('span', { text: x.count + (x.count === 1 ? ' expense' : ' expenses') })),
+        h('div', { class: 'end' }, h('span', { text: x.total == null ? '--' : money(x.total) }))
+      ))));
+  }
+  const filter = h('select', { class: 'pick', 'aria-label': 'Filter expenses by category' },
+    h('option', { value: '', text: 'All categories' }), JEEP_COST_CATEGORIES.map(x => h('option', { value: x, text: x })));
+  const list = h('div');
+  const exportButton = h('button', { class: 'btn btn-glass glass btn-wide', onclick: () => downloadExpenseCsv(expenses) }, 'Export all expenses (CSV)');
+  const paint = () => {
+    const shown = JeepExpenses.expensesFrom(expenses, filter.value).slice().sort((a, b) => (num(b.t) || 0) - (num(a.t) || 0));
+    list.textContent = '';
+    for (const l of shown) {
     const category = jeepCostCategory(l);
-    const meta = [category, num(l.t) ? fmtDate(num(l.t)) : 'Date unknown', num(l.odo) > 0 ? fmt0(num(l.odo)) + ' km' : ''].filter(Boolean).join(' · ');
-    return h('button', { class: 'row', onclick: () => expenseSheet(l) },
-      h('div', { class: 'main' }, h('b', { text: l.name || category }), h('span', { text: meta }), l.note ? h('span', { text: l.note }) : null),
-      h('div', { class: 'end' }, h('span', { text: money(num(l.cost) || 0) })), icon('chev', 'chev'));
-  })));
+      const extra = JeepExpenses.unpackNote(l.note);
+      const meta = [category, num(l.t) ? fmtDate(num(l.t)) : '--', num(l.odo) > 0 ? fmt0(num(l.odo)) + ' km' : '-- km'].join(' · ');
+      const detail = [extra.brand && 'Brand ' + extra.brand, extra.part && 'Part ' + extra.part, extra.reminderName && 'Marked done: ' + extra.reminderName, extra.note].filter(Boolean).join(' · ');
+      list.append(h('button', { class: 'row', onclick: () => expenseSheet(l) },
+        h('div', { class: 'main' }, h('b', { text: l.name || category }), h('span', { text: meta }), detail ? h('span', { text: detail }) : null),
+        h('div', { class: 'end' }, h('span', { text: expenseAmountText(l.cost) })), icon('chev', 'chev')));
+    }
+  };
+  filter.addEventListener('change', paint);
+  v.append(h('label', { class: 'gr', style: 'margin:12px 0' }, h('span', { text: 'Filter expenses' }), filter), exportButton, list);
+  paint();
 }
 
 function expenseSheet(l) {
   const editing = !!l;
+  const savedDetails = JeepExpenses.unpackNote(l && l.note);
   openSheet({
     title: editing ? 'Jeep expense' : 'Add Jeep expense',
     build(b, sheet) {
-      const category = h('select', { class: 'pick' }, JEEP_COST_CATEGORIES.map(x => h('option', { value: x, text: x })));
-      category.value = editing ? (jeepCostCategory(l) || 'Parts') : 'Parts';
+      const categoryName = editing ? (jeepCostCategory(l) || 'Parts') : 'Parts';
+      const categoryOptions = JEEP_COST_CATEGORIES.slice();
+      if (!categoryOptions.includes(categoryName)) categoryOptions.push(categoryName);
+      const category = h('select', { class: 'pick' }, categoryOptions.map(x => h('option', { value: x, text: x })));
+      category.value = categoryName;
       const item = textRow('Item', { placeholder: 'Insurance premium, brake pads…', value: l ? l.name || '' : '' });
-      const cost = bigField({ id: 'jeep-cost', label: 'Amount', pre: '$', value: l && num(l.cost) > 0 ? fmt2(num(l.cost)) : '', placeholder: '0.00', last: true });
-      const when = h('input', { type: 'date', value: l && num(l.t) ? toLocalInput(num(l.t), true) : toLocalInput(Date.now(), true) });
-      const odo = bigField({ id: 'jeep-cost-odo', label: 'Odometer (optional)', unit: 'km', mode: 'numeric', value: l && num(l.odo) > 0 ? String(num(l.odo)) : '', placeholder: 'optional' });
-      const note = textRow('Note', { placeholder: 'Optional', value: l ? l.note || '' : '' });
+      const cost = bigField({ id: 'jeep-cost', label: 'Amount', pre: '$', value: l && l.cost != null && l.cost !== '' ? fmt2(num(l.cost) || 0) : '', placeholder: '0.00', last: true });
+      const when = h('input', { type: 'date', value: l ? (num(l.t) ? toLocalInput(num(l.t), true) : '') : toLocalInput(Date.now(), true) });
+      const odo = bigField({ id: 'jeep-cost-odo', label: 'Installed at km (optional)', unit: 'km', mode: 'numeric', value: l && num(l.odo) > 0 ? String(num(l.odo)) : '', placeholder: 'optional' });
+      const brand = textRow('Brand (optional)', { placeholder: 'e.g. Bosch', value: savedDetails.brand });
+      const part = textRow('Part number (optional)', { placeholder: 'e.g. 0986AF', value: savedDetails.part });
+      const note = textRow('Note', { placeholder: 'Optional', value: savedDetails.note });
+      const reminders = S.data.serv.filter(s => s && s.id);
+      const reminder = h('select', { class: 'pick', 'aria-label': 'Mark a matching service reminder done' },
+        h('option', { value: '', text: 'Leave reminders unchanged' }),
+        reminders.map(s => h('option', { value: s.id, text: s.name || 'Service' })));
+      reminder.value = savedDetails.reminderId;
+      const reminderRow = h('label', { class: 'gr' }, h('span', { text: 'Mark a matching service reminder done (optional)' }), reminder);
+      const showReminder = () => { reminderRow.hidden = category.value !== 'Maintenance'; };
+      category.addEventListener('change', showReminder);
       const err = h('div', { class: 'err' });
       put(b,
         h('div', { class: 'group' }, h('label', { class: 'gr' }, h('span', { text: 'Category' }), category), item.row),
-        cost.wrap, odo.wrap,
+        cost.wrap, odo.wrap, brand.row, part.row,
         h('div', { class: 'group' }, h('label', { class: 'gr' }, h('span', { text: 'Date' }), when), note.row),
+        reminderRow,
+        category.value === 'Maintenance' ? h('div', { class: 'foot', text: 'Only the reminder you choose here will be marked done.' }) : null,
         err,
         h('button', { class: 'btn btn-primary btn-wide', onclick: () => save() }, icon('check'), editing ? 'Save changes' : 'Save expense'),
         editing ? confirmButton('Delete this expense', 'Tap again to delete it', () => {
           commit({ op: 'del', tab: 'log', id: l.id }); sheet.close(); toast('Expense deleted', l.name || jeepCostCategory(l), 'info');
         }) : null);
+      showReminder();
       function save() {
-        const name = item.input.value.trim(), amount = cost.get(), t = fromLocalInput(when.value);
-        if (!name) { err.textContent = 'Name the expense, like Insurance or Brake pads.'; item.input.focus(); return; }
-        if (!(amount > 0)) { err.textContent = 'Type an amount greater than zero.'; cost.input.focus(); return; }
-        if (!t) { err.textContent = 'Choose the date.'; when.focus(); return; }
+        const t = fromLocalInput(when.value);
+        const valid = JeepExpenses.validateExpense({ name: item.input.value, amount: cost.input.value, date: t });
+        if (!valid.ok) {
+          err.textContent = valid.message;
+          if (valid.field === 'name') item.input.focus();
+          else if (valid.field === 'amount') cost.input.focus();
+          else when.focus();
+          return;
+        }
         const km = odo.get();
-        commit({ op: 'put', tab: 'log', row: {
-          id: l ? l.id : newId('l'), sid: 'expense:' + category.value, name, t,
-          odo: km == null ? '' : Math.round(km), cost: Math.round(amount * 100) / 100, note: note.input.value.trim(),
-        } });
+        if (odo.input.value.trim() && !(km > 0)) { err.textContent = 'Type a positive odometer, or leave it empty.'; odo.input.focus(); return; }
+        const selected = category.value === 'Maintenance' ? reminders.find(s => s.id === reminder.value) : null;
+        const expenseNote = JeepExpenses.packNote({ brand: brand.input.value, part: part.input.value,
+          reminderId: selected && selected.id, reminderName: selected && selected.name, note: note.input.value });
+        const ops = [{ op: 'put', tab: 'log', row: {
+          id: l ? l.id : newId('l'), sid: 'expense:' + category.value, name: valid.name, t,
+          odo: km == null ? '' : Math.round(km), cost: valid.amount, note: expenseNote,
+        } }];
+        const doneRow = JeepExpenses.reminderDoneRow(selected, t, km);
+        if (doneRow) ops.push({ op: 'put', tab: 'serv', row: doneRow });
+        commit(...ops);
         sheet.close();
-        toast(editing ? 'Expense updated' : 'Expense saved', category.value + ' · ' + money(amount));
+        toast(editing ? 'Expense updated' : 'Expense saved', category.value + ' · ' + money(valid.amount));
       }
     },
   });
@@ -360,12 +429,13 @@ function renderService(v) {
   for (const { s, o } of list) v.append(card(servBody(s, o)));
   v.append(h('button', { class: 'btn btn-glass glass btn-wide', onclick: () => servSheet() }, icon('plus'), 'Add a reminder'));
   renderJeepCosts(v);
-  const logs = S.data.log.filter(l => !isJeepCost(l)).slice().sort((a, b) => (num(b.t) || 0) - (num(a.t) || 0));
+  const logs = JeepExpenses.serviceHistoryFrom(S.data.log).slice().sort((a, b) => (num(b.t) || 0) - (num(a.t) || 0));
   if (logs.length) {
-    v.append(h('div', { class: 'month' }, h('b', { text: 'History' }), h('span', { text: money(logs.reduce((s, l) => s + (num(l.cost) || 0), 0), 0) + ' spent' })));
+    const historyTotal = JeepExpenses.amountTotal(logs);
+    v.append(h('div', { class: 'month' }, h('b', { text: 'History' }), h('span', { text: (historyTotal == null ? '--' : money(historyTotal, 0)) + ' spent' })));
     v.append(h('div', { class: 'card list' }, logs.map(l => h('button', { class: 'row', onclick: () => logSheet(l) },
       h('div', { class: 'main' }, h('b', { text: l.name || 'Service' }), h('span', { text: (l.t ? fmtDate(l.t) : '') + (l.odo ? ' · ' + fmt0(l.odo) + ' km' : '') + (l.note ? ' · ' + l.note : '') })),
-      h('div', { class: 'end' }, h('span', { text: num(l.cost) ? money(num(l.cost)) : '' })), icon('chev', 'chev')))));
+      h('div', { class: 'end' }, h('span', { text: expenseAmountText(l.cost) })), icon('chev', 'chev')))));
   }
 }
 

@@ -3,6 +3,10 @@
 #include "check.h"
 
 int main() {
+  CHECK(fieldIndex("wifi") >= 0 && fieldIndex("upstat") >= 0);
+  bool hasTripStatus = false;
+  for (int i = 0; i < DEFAULT_SCREEN_COUNT; i++) if (strstr(DEFAULT_SCREENS[i], "Trip status|") && strstr(DEFAULT_SCREENS[i], ",wifi,") && strstr(DEFAULT_SCREENS[i], ",upstat,")) hasTripStatus = true;
+  CHECK(hasTripStatus);
   // every default screen parses, has widgets, and only uses fields that exist
   for (int i = 0; i < DEFAULT_SCREEN_COUNT; i++) {
     Screen sc;

@@ -1,6 +1,6 @@
 'use strict';
 // app.js - start-up, the tab bar, theme and the scroll title.
-// Tabs: Overview, Fill-ups, Service (views.js), Live (live.js + t3.js + t3screens.js), Map (map.js + trips.js).
+// Tabs: Overview, Fill-ups, Service (views.js), Live (live.js + t3.js + t3screens.js), Trips (map.js + trips.js).
 
 const TAB_DEFS = [
   ['home', 'Overview', 'gauge', renderHome],

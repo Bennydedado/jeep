@@ -43,12 +43,22 @@ String defaultScreensText() {
   for (int i = 0; i < DEFAULT_SCREEN_COUNT; i++) all += (i ? "\n" : "") + String(DEFAULT_SCREENS[i]);
   return all;
 }
+static String previousDefaultScreensText() {
+  String all;
+  for (int i = 0; i < DEFAULT_SCREEN_COUNT - 1; i++) all += (i ? "\n" : "") + String(DEFAULT_SCREENS[i]);
+  return all;
+}
 void loadScreens() {
   xSemaphoreTake(fsLock, portMAX_DELAY);
   File f = LittleFS.open("/screens.txt", "r");
   String all = f ? f.readString() : "";
   if (f) f.close();
   xSemaphoreGive(fsLock);
+  // Add the new status page to the untouched factory set; leave user-edited screen sets alone.
+  if (all == previousDefaultScreensText()) {
+    String latest = defaultScreensText();
+    if (saveScreens(latest)) return;
+  }
   if (!all.length() || !loadScreensText(all)) loadScreensText(defaultScreensText());
 }
 // "" = back to the defaults. Written to a new file first, so a power cut can't leave half a file.
@@ -330,7 +340,8 @@ String fieldText(int f) {
   }
   if (!strcmp(id, "obd")) return obdLinked ? (millis() - car.at < 5000 ? "reading" : "connected") : "looking";
   if (!strcmp(id, "ble")) return phoneOn ? "Heep on" : "-";
-  if (!strcmp(id, "wifi")) return wifiState == W_ON ? wifiName.substring(0, 12) : wifiState == W_IDLE ? String(cfg.netCount) + " saved" : String("joining");
+  if (!strcmp(id, "wifi")) return wifiState == W_ON ? "connected" : "not connected";
+  if (!strcmp(id, "upstat")) return queued > 0 ? "not uploaded" : "uploaded";
   if (!strcmp(id, "nano")) return wheelState();
   if (!strcmp(id, "sd")) return sd.ok ? "logging" : !sd.err.empty() ? String(sd.err).substring(0, 12) : String("no card");
   if (!strcmp(id, "fw")) return FW;

@@ -23,7 +23,16 @@ const srv = http.createServer((q, r) => {
   await page.goto('http://localhost:' + port + '/index.html');
   await page.waitForTimeout(800);
   await page.screenshot({ path: shots + '/1-overview.png' });
-  const tab = async id => { await page.click('.tab[data-tab="' + id + '"]'); await page.waitForTimeout(700); };
+  const tab = async id => {
+    const selector = '.tab[data-tab="' + id + '"]';
+    try { await page.waitForSelector(selector, { state: 'attached', timeout: 10000 }); await page.click(selector); }
+    catch (e) {
+      console.log('tab missing:', id, JSON.stringify({ url: page.url(), title: await page.title(), tabs: await page.locator('.tab').count(),
+        body: (await page.locator('body').innerText()).slice(0, 500), errors }));
+      throw e;
+    }
+    await page.waitForTimeout(700);
+  };
   await tab('live');
   await page.screenshot({ path: shots + '/2-live.png' });
   await page.evaluate(() => demoStart());

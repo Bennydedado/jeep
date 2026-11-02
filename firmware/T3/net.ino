@@ -314,24 +314,28 @@ void wifiOff(uint32_t retryIn) {
 }
 
 // ---------------------------------------------------------------- Heep's commands over the relay: only if signed with your sheet key
-static void refused(const char* why) { relayRefused++; relayRefusedWhy.set(why); }
+static void refused(const char* why, const String& command = "") {
+  relayRefused++; relayRefusedWhy.set(why);
+  // Screen sends wait for a confirmation; return a useful refusal reason through the encrypted live topic.
+  if (jStr(command, "c") == "scr") reply("{\"t\":\"cmdrefused\",\"c\":\"scr\",\"why\":\"" + jsonEsc(why) + "\"}", 1);
+}
 void onRelay(char* topic, byte* payload, unsigned int len) {
   String j; j.reserve(len + 1);
   for (unsigned int i = 0; i < len; i++) j += (char)payload[i];
   int64_t n = llField(j, "n");
   String m = jStr(j, "m"), h = jStr(j, "h");
-  if (!m.length() || h.length() != 64) { refused("not a command"); return; }
-  if (n <= lastNonce) { refused("already seen (replay)"); return; }
+  if (!m.length() || h.length() != 64) { refused("not a command", m); return; }
+  if (n <= lastNonce) { refused("already seen (replay)", m); return; }
   // with a clock: within 10 minutes of it, else it's a recording. Without one yet (no GPS, no internet time) the
   // signature and the nonce still have to be right, and the command's own time sets the clock
-  if (timeSrc && llabs(n - nowMs()) > 10LL * 60 * 1000) { refused("time off by more than 10 min"); return; }
+  if (timeSrc && llabs(n - nowMs()) > 10LL * 60 * 1000) { refused("time off by more than 10 min", m); return; }
   String msg = ll(n) + "|" + m;
   unsigned char mac[32];
   mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), (const unsigned char*)cfg.sheetKey.c_str(), cfg.sheetKey.length(),
                   (const unsigned char*)msg.c_str(), msg.length(), mac);
   char hex[65];
   for (int i = 0; i < 32; i++) sprintf(hex + 2 * i, "%02x", mac[i]);
-  if (h != String(hex)) { refused("bad signature (different sheet key?)"); return; }
+  if (h != String(hex)) { refused("bad signature (different sheet key?)", m); return; }
   if (!timeSrc) setClock(n, 'a');
   lastNonce = n; relayCmds++;
   // kept in flash at most every 5 minutes (Heep's "watching" note comes every 30 s); older replays fail the time check anyway

@@ -8,6 +8,7 @@ comments in plain English, explain changes in plain words, and never leave him w
 | Path | What | Runs on |
 |---|---|---|
 | `index.html`, `app.js`, `core.js`, `ui.js`, `views.js`, `app.css` | **Heep**, the Home Screen web app: fill-ups, economy, service, trips (Overview, Fill-ups, Service tabs) | iPhone (Safari / Bluefy), GitHub Pages |
+| `expenses.js` | Plain expense-log rules shared by Heep and its Node tests | browser / Node |
 | `live.js` | Live tab: Bluetooth, the relay, the demo, the live dashboard | browser |
 | `t3.js` | Sending commands to the T3 (Bluetooth or signed over the relay), T3 settings sheet, Diagnostics | browser |
 | `t3screens.js` | T3 screen format, preview, screen/button editor | browser |
@@ -16,7 +17,7 @@ comments in plain English, explain changes in plain words, and never leave him w
 | `widget/heep-widget.js`, `widget/Heep.js` | iPhone widget for the free Scriptable app: Heep.js is pasted into Scriptable once and downloads heep-widget.js, which runs Heep's own core.js/econ.js/trips.js on the Jeep log (tested in Node: tests/app/test_widget.js) | iPhone (Scriptable) |
 | `econ.js` | Fuel economy from full tanks and the T3's trips together (the T3 corrected by the tanks), the tank's level and distance to empty; plain functions tested in Node | browser |
 | `codes.js` | Live > Trouble codes: read and clear the Jeep's codes through the T3 (pairs with the `codes` command in `firmware/T3/obd.ino`); the decoding is plain functions tested in Node | browser |
-| `map.js`, `trips.js` | Map & Trip History tab (Leaflet), and the track maths (pure functions, tested in Node) | browser |
+| `map.js`, `trips.js` | Trips tab (Map & Trip History in Leaflet), and the track maths (pure functions, tested in Node) | browser |
 | `vendor/leaflet/` | Leaflet 1.9.4 (don't edit) | browser |
 | `listen/` | A separate app (listening stats). Leave it alone unless asked. | browser |
 | `sw.js`, `manifest.webmanifest` | Offline copy of the app | browser |
@@ -79,4 +80,4 @@ in sw.js, add a row to `TAB_DEFS` in app.js (5 tabs is the most that fits; add a
 - App: static files, no build step. Test locally with `python3 -m http.server` in the repo root, open http://localhost:8000.
   Headless check: `node tests/app/smoke.js` (Playwright + Chromium).
 - T3: see `firmware/README.md`. Nano: Arduino IDE, board Arduino Nano.
-- Simulated data: Live → Demo; the Map shows sample trips until track storage is set up; `trips.js` `sampleTrack()`.
+- Simulated data: Live → Demo; the Trips tab shows sample trips until track storage is set up; `trips.js` `sampleTrack()`.
