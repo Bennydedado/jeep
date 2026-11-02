@@ -27,6 +27,7 @@ static Txt relayRefusedWhy;
 static int64_t lastNonce = 0;
 static volatile bool relayBusy = false;       // a relay connection attempt is running in its own task (loop() keeps its hands off mqtt)
 static uint32_t watchedAt = 0, nonceSavedAt = 0;
+static String relayPending;         // run accepted commands after MQTT's receive callback returns
 // "Update over Wi-Fi" progress for Heep: written by the upload task, reported by loop() over Bluetooth and the relay
 enum UpdPhase { UP_NONE, UP_WAIT, UP_CHECK, UP_DOWNLOAD, UP_DONE, UP_FAIL, UP_CURRENT, UP_RESTART };
 static volatile int updPhase = UP_NONE, updPct = -1;
@@ -340,7 +341,7 @@ void onRelay(char* topic, byte* payload, unsigned int len) {
   lastNonce = n; relayCmds++;
   // kept in flash at most every 5 minutes (Heep's "watching" note comes every 30 s); older replays fail the time check anyway
   if (!nonceSavedAt || millis() - nonceSavedAt > 300000) { nonceSavedAt = millis(); Preferences p; p.begin("t3", false); p.putLong64("nonce", n); p.end(); }
-  onCommand(m, 1);
+  relayPending = m;
 }
 
 // things the upload task asked loop() to do
@@ -411,6 +412,12 @@ static void relayKeep(uint32_t now) {
     return;
   }
   mqtt.loop();
+  if (relayPending.length()) {
+    String command = relayPending;
+    relayPending = "";
+    // Screen parsing and flash writes need room on the loop stack, and replies reuse MQTT's packet buffer.
+    onCommand(command, 1);
+  }
   if (now - lastPub >= 1000 && livePublish()) { lastPub = now; relaySend(liveJson()); }
 }
 

@@ -22,6 +22,7 @@ comments in plain English, explain changes in plain words, and never leave him w
 | `listen/` | A separate app (listening stats). Leave it alone unless asked. | browser |
 | `sw.js`, `manifest.webmanifest` | Offline copy of the app | browser |
 | `firmware/T3/` | The T3 program (ESP32). `T3.ino` + tabs; `t3.h` explains them; pins in `config.h` | LilyGo T3 |
+| `firmware/T3/screenstore.h` | Screen preparation and durable flash saving, shared with the PC storage tests; keep temporary screen sets off the loop stack | T3 / PC tests |
 | `firmware/T3.bin` etc. | **Built by GitHub Actions. Never edit or commit these by hand.** | |
 | `nano/` | Nano add-on (`T3Link.h`, `WheelButtons.h`, `WheelMap.h` right-button map) and the button calibration sketch | Arduino Nano |
 | `tracks/TrackStore.gs` | Ben's track store (Apps Script in his Drive) | Google |

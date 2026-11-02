@@ -112,13 +112,13 @@ void onCommand(const String& j, int src) {
     // the set is complete: check the fingerprint, then keep it
     int n = (int)numField(j, "n");
     String why = "";
-    if (n != pendingScrN) why = "count";
+    if (n < 1 || n > MAX_SCREENS || n != pendingScrN) why = "count";
     for (int k = 0; k < n && !why.length(); k++) if (!pendingScr[k].length()) why = "missing " + String(k);
     String all;
     for (int k = 0; k < n && !why.length(); k++) all += (k ? "\n" : "") + pendingScr[k];
     uint32_t h = fnv1a(all.c_str());
     if (!why.length() && String(h, HEX) != jStr(j, "h")) why = "fingerprint";
-    if (!why.length() && !saveScreens(all)) why = "won't parse";
+    if (!why.length() && !saveScreens(all)) why = "couldn't save screens";
     reply(why.length() ? "{\"t\":\"scr\",\"ok\":false,\"why\":\"" + why + "\"}" : "{\"t\":\"scr\",\"ok\":true,\"h\":\"" + String(screensHash, HEX) + "\",\"n\":" + String(screenCount) + "}", src);
     if (!why.length()) flash("Screens updated");
   }

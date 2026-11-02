@@ -191,5 +191,7 @@ extern int page;
 extern Screen screens[MAX_SCREENS];
 extern int screenCount;
 extern uint32_t screensHash;
+void loadScreens();
+bool saveScreens(const String& all);
 extern SemaphoreHandle_t fsLock;
 extern SemaphoreHandle_t cfgLock;   // held while settings are (re)loaded, and while the upload task copies them

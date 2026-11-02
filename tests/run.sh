@@ -5,6 +5,10 @@ set -e
 cd "$(dirname "$0")/.."
 T=$(mktemp -d)
 for t in nmea jlink wheelmap sun screens otarx obdpid obdmatch; do g++ -std=c++17 -Wall -O1 -o $T/t_$t tests/firmware/test_$t.cpp && $T/t_$t; done
+# The storage routines run on the T3's 8 KB loop stack, including when called over Wi-Fi.
+# Catch the old 5 KB temporary array as a compile failure, not just a hardware restart.
+g++ -std=c++17 -Wall -O1 -Werror=frame-larger-than=2048 -o $T/t_screenstore tests/firmware/test_screenstore.cpp
+$T/t_screenstore
 g++ -std=c++17 -Wall -O1 -I tests/firmware/mock -o $T/t_nano tests/firmware/test_nano_link.cpp && $T/t_nano
 for t in tests/app/test_*.js; do node $t; done
 g++ -std=c++17 -Wall -O1 -o $T/scrtool tests/firmware/scrtool.cpp
