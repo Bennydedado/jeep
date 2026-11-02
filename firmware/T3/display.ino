@@ -21,60 +21,7 @@ void displaySettingsChanged() {
 }
 
 // ---------------------------------------------------------------- screens kept in flash
-bool loadScreensText(const String& all) {
-  Screen tmp[MAX_SCREENS];
-  int n = 0, from = 0;
-  while (from <= (int)all.length() && n < MAX_SCREENS) {
-    int e = all.indexOf('\n', from);
-    if (e < 0) e = all.length();
-    String line = all.substring(from, e);
-    from = e + 1;
-    line.trim();
-    if (line.length() && parseScreen(line.c_str(), tmp[n])) n++;
-  }
-  if (n == 0) return false;
-  for (int i = 0; i < n; i++) screens[i] = tmp[i];
-  screenCount = n;
-  screensHash = fnv1a(all.c_str());
-  return true;
-}
-String defaultScreensText() {
-  String all;
-  for (int i = 0; i < DEFAULT_SCREEN_COUNT; i++) all += (i ? "\n" : "") + String(DEFAULT_SCREENS[i]);
-  return all;
-}
-static String previousDefaultScreensText() {
-  String all;
-  for (int i = 0; i < DEFAULT_SCREEN_COUNT - 1; i++) all += (i ? "\n" : "") + String(DEFAULT_SCREENS[i]);
-  return all;
-}
-void loadScreens() {
-  xSemaphoreTake(fsLock, portMAX_DELAY);
-  File f = LittleFS.open("/screens.txt", "r");
-  String all = f ? f.readString() : "";
-  if (f) f.close();
-  xSemaphoreGive(fsLock);
-  // Add the new status page to the untouched factory set; leave user-edited screen sets alone.
-  if (all == previousDefaultScreensText()) {
-    String latest = defaultScreensText();
-    if (saveScreens(latest)) return;
-  }
-  if (!all.length() || !loadScreensText(all)) loadScreensText(defaultScreensText());
-}
-// "" = back to the defaults. Written to a new file first, so a power cut can't leave half a file.
-bool saveScreens(const String& all) {
-  String text = all.length() ? all : defaultScreensText();
-  if (!loadScreensText(text)) { loadScreens(); return false; }
-  xSemaphoreTake(fsLock, portMAX_DELAY);
-  if (!all.length()) LittleFS.remove("/screens.txt");
-  else {
-    File f = LittleFS.open("/screens.new", "w");
-    if (f) { f.print(text); f.close(); LittleFS.remove("/screens.txt"); LittleFS.rename("/screens.new", "/screens.txt"); }
-  }
-  xSemaphoreGive(fsLock);
-  if (page >= screenCount || !screens[page].on) { page = 0; pageStep(0); }
-  return true;
-}
+#include "screenstore.h"
 
 // ---------------------------------------------------------------- pages, sleep, brightness
 void pageStep(int dir) {
@@ -349,3 +296,4 @@ String fieldText(int f) {
   if (!strcmp(id, "btn")) return wheel.last;
   return "?";
 }
+

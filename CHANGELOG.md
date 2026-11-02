@@ -1,5 +1,12 @@
 # Changes
 
+## 2 Nov 2026 — T3 2.18: keep screen transfers from restarting the T3
+
+- Prepare new screens on the heap instead of putting the entire twelve-screen set on the small loop stack.
+- Handle signed Wi-Fi commands after the MQTT receive callback returns, leaving more stack space for parsing and flash writes.
+- Confirm screens only after the complete file is written and renamed successfully. A failed write preserves the previous screens.
+- Test the firmware's actual storage code with full screen sets, malformed input, failed writes, and failed renames.
+
 ## 2 Nov 2026 — T3 2.17, Heep 1.1.23: reliable screen sending in Safari
 
 - Live → Screens & buttons sends screen layouts through the Wi-Fi relay from Safari when the T3 is online; Bluefy is not required.
@@ -264,3 +271,4 @@ Compiled and tested on a PC with simulated data only; not yet run on the Jeep's 
 
 ## Earlier
 See git history (T3 1.0–1.5: iCar trip computer, sheet uploads, OTA, live over Wi-Fi; Heep 1.0.x).
+
