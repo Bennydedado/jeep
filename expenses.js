@@ -1,7 +1,7 @@
 'use strict';
 // Small, plain functions for the Jeep expense log. These run in the app and in Node tests.
 
-const JEEP_COST_CATEGORIES = ['Insurance', 'Parts', 'Repairs', 'Maintenance', 'Registration', 'Towing', 'Other'];
+const EXPENSE_CATEGORIES = ['Insurance', 'Parts', 'Repairs', 'Maintenance', 'Registration', 'Towing', 'Other'];
 const EXPENSE_NOTE_PREFIX = '[[heep-expense:v1:';
 
 function category(row) {
@@ -105,6 +105,6 @@ function csvCell(value) {
 }
 function toCsv(rows) { return (rows || []).map(row => row.map(csvCell).join(',')).join('\r\n'); }
 
-const JeepExpenses = { CATEGORIES: JEEP_COST_CATEGORIES, category, isExpense, expensesFrom, serviceHistoryFrom,
+const JeepExpenses = { CATEGORIES: EXPENSE_CATEGORIES, category, isExpense, expensesFrom, serviceHistoryFrom,
   applyLogOperation, reminderDoneRow, parseAmount, validateExpense, amountTotal, totalsByCategory, packNote, unpackNote, toCsv };
 if (typeof module !== 'undefined') module.exports = JeepExpenses;
