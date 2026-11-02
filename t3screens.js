@@ -231,7 +231,7 @@ function screenWireSizes(i, n, d) {
   return { bluetooth: new TextEncoder().encode(command).length, relay: new TextEncoder().encode(relay).length + 128 };
 }
 
-// send the whole set; resolves true when the T3 says it has them
+// send the whole set; T3 2.17+ acknowledges each screen, so Safari can retry a lost relay packet.
 async function sendScreens(st) {
   const list = st.list.slice(0, MAX_SCREENS);
   for (let i = 0; i < list.length; i++) {
@@ -241,30 +241,109 @@ async function sendScreens(st) {
       return false;
     }
   }
-  if (!(await t3Ready())) { if (!t3CanSend()) toast('Not connected to the T3', 'Connect over Bluetooth, or have the T3 on your hotspot', 'bad'); return false; }
+  if (!(await t3Ready())) { if (!t3CanSend()) toast('Not connected to the T3', 'Connect to the T3 Wi-Fi relay, then try again', 'bad'); return false; }
   return new Promise(resolve => {
     const hash = screensHash(list);
+    const fw = String(LIVE.fw || (LIVE.t3 && LIVE.t3.fw) || '0');
+    const partAcks = verAtLeast(fw, '2.17');
     st.sentHash = hash; scrSave(st);
-    let done = false, timer = null;
-    const finish = ok => { if (done) return; done = true; clearTimeout(timer); LIVE.onScr = null; LIVE.onCmdRefused = null; resolve(ok); };
-    const giveUp = () => { if (done) return; LIVE.onScr = null; LIVE.onCmdRefused = null; done = true; toast('The T3 didn\'t confirm', 'Check its Wi-Fi or Bluetooth connection, then send again', 'bad'); resolve(false); };
-    LIVE.onScr = m => {
+    let done = false, timer = null, partWait = null, finalWait = null;
+    const clearWait = pending => { if (!pending) return; clearTimeout(pending.timer); pending.resolve(null); };
+    const finish = ok => {
       if (done) return;
-      if (m.ok && m.h === hash) { st.ackHash = hash; st.ackAt = Date.now(); scrSave(st); if (LIVE.t3) LIVE.t3.scrh = hash; toast('Screens are on the T3', list.length + ' screens'); finish(true); }
-      else { toast('The T3 refused the screens', m.why || 'fingerprint different', 'bad'); finish(false); }
+      done = true; clearTimeout(timer);
+      const part = partWait, final = finalWait; partWait = null; finalWait = null;
+      clearWait(part); clearWait(final);
+      LIVE.onScr = null; LIVE.onScrPart = null; LIVE.onCmdRefused = null;
+      if (!ok) { st.sentHash = null; scrSave(st); }
+      resolve(ok);
+    };
+    const giveUp = () => { if (!done) { toast('The T3 didn\'t confirm', 'Check the Wi-Fi relay in Live > Diagnostics, then try sending again', 'bad'); finish(false); } };
+    const waitFor = (slot, key, value, ms) => {
+      let settle;
+      const promise = new Promise(r => { settle = r; });
+      const pending = { [key]: value, resolve: settle, timer: null };
+      pending.timer = setTimeout(() => {
+        if (slot === 'part' && partWait === pending) partWait = null;
+        if (slot === 'final' && finalWait === pending) finalWait = null;
+        pending.resolve(null);
+      }, ms);
+      if (slot === 'part') partWait = pending; else finalWait = pending;
+      return { promise, cancel: () => {
+        if (slot === 'part' && partWait === pending) partWait = null;
+        if (slot === 'final' && finalWait === pending) finalWait = null;
+        clearTimeout(pending.timer); pending.resolve(null);
+      } };
+    };
+    LIVE.onScrPart = m => {
+      if (done || !partWait || Number(m.i) !== partWait.i) return;
+      const pending = partWait; partWait = null; clearTimeout(pending.timer); pending.resolve(m);
+    };
+    LIVE.onScr = m => {
+      if (done || !finalWait) return;
+      const pending = finalWait; finalWait = null; clearTimeout(pending.timer); pending.resolve(m);
     };
     LIVE.onCmdRefused = m => { if (!done && m.c === 'scr') { toast('The T3 refused the screen transfer', m.why || 'Command was not accepted', 'bad'); finish(false); } };
-    toast('Sending ' + list.length + ' screens…', 'Keep Heep open until the T3 confirms', 'info');
-    timer = setTimeout(giveUp, 15000);
+    toast('Sending ' + list.length + ' screens…', 'Waiting for the T3 to confirm the set', 'info');
+    timer = setTimeout(giveUp, Math.max(20000, list.length * 3500));
     (async () => {
       try {
         for (let i = 0; i < list.length && !done; i++) {
-          if (!await t3Send({ c: 'scr', i, n: list.length, d: list[i] })) {
-            toast('Couldn’t send a screen', 'Connection stopped at screen ' + (i + 1) + ' of ' + list.length + '. Try again when the T3 is connected.', 'bad'); finish(false); return;
+          const command = { c: 'scr', i, n: list.length, d: list[i] };
+          if (partAcks) {
+            let received = false;
+            for (let attempt = 0; attempt < 3 && !done; attempt++) {
+              const pending = waitFor('part', 'i', i, 2500);
+              if (!await t3Send(command)) {
+                pending.cancel();
+                toast('Couldn’t send screen ' + (i + 1), 'The T3 connection dropped. Check Wi-Fi in Live > Diagnostics and retry.', 'bad');
+                finish(false); return;
+              }
+              const ack = await pending.promise;
+              if (done) return;
+              if (ack && ack.ok) { received = true; break; }
+              if (ack && !ack.ok) {
+                toast('The T3 refused screen ' + (i + 1), ack.why || 'Invalid screen', 'bad');
+                finish(false); return;
+              }
+            }
+            if (!received) {
+              toast('The T3 didn’t confirm screen ' + (i + 1), 'Check the Wi-Fi relay in Live > Diagnostics, then retry.', 'bad');
+              finish(false); return;
+            }
+          } else {
+            // T3 2.16 and earlier have no per-screen reply; pace relay packets and use the final set confirmation.
+            if (!await t3Send(command)) {
+              toast('Couldn’t send screen ' + (i + 1), 'The T3 connection dropped. Check Wi-Fi in Live > Diagnostics and retry.', 'bad');
+              finish(false); return;
+            }
+            if (t3Via() === 'net') await new Promise(r => setTimeout(r, 120));
           }
         }
-        if (!done && !await t3Send({ c: 'scrok', n: list.length, h: hash })) {
-          toast('Couldn’t finish the screen transfer', 'Try again when the T3 is connected.', 'bad'); finish(false);
+        let confirmed = false;
+        for (let attempt = 0; attempt < 3 && !done; attempt++) {
+          const pending = waitFor('final', 'hash', hash, 2500);
+          if (!await t3Send({ c: 'scrok', n: list.length, h: hash })) {
+            pending.cancel();
+            toast('Couldn’t finish the screen transfer', 'Check the Wi-Fi relay in Live > Diagnostics, then retry.', 'bad');
+            finish(false); return;
+          }
+          const ack = await pending.promise;
+          if (done) return;
+          if (ack && ack.ok && ack.h === hash) {
+            st.ackHash = hash; st.ackAt = Date.now(); scrSave(st);
+            if (LIVE.t3) LIVE.t3.scrh = hash;
+            toast('Screens are on the T3', list.length + ' screens');
+            finish(true); confirmed = true; break;
+          }
+          if (ack && !ack.ok) {
+            toast('The T3 refused the screens', ack.why || 'fingerprint different', 'bad');
+            finish(false); return;
+          }
+        }
+        if (!confirmed && !done) {
+          toast('The T3 didn’t confirm the complete screen set', 'Check the Wi-Fi relay in Live > Diagnostics, then retry.', 'bad');
+          finish(false);
         }
       } catch (e) {
         toast('Couldn’t send the screens', String(e && e.message || e).slice(0, 100), 'bad'); finish(false);
@@ -315,9 +394,9 @@ function screensSheet() {
           list,
           st.list.length < MAX_SCREENS ? h('button', { class: 'btn btn-glass glass btn-wide', onclick: () => addScreen(st, paint) }, icon('plus'), 'Add a screen') : h('div', { class: 'foot', text: 'That’s the most the T3 keeps (' + MAX_SCREENS + ').' }),
           h('div', { class: 'btn-row' },
-            h('button', { class: 'btn btn-primary', onclick: async () => { await sendScreens(st); paint(); } }, icon('bt'), 'Send to the T3'),
+            h('button', { class: 'btn btn-primary', onclick: async () => { await sendScreens(st); paint(); } }, icon('sync'), 'Send to the T3'),
             h('button', { class: 'btn btn-glass glass', onclick: async () => { const got = await loadScreensFromT3(); if (got) { st.list = got; st.ackHash = screensHash(got); st.ackAt = Date.now(); scrSave(st); paint(); toast('Loaded the T3’s screens', got.length + ' screens'); } } }, icon('sync'), 'Load from T3')),
-          h('div', { class: 'foot', text: 'Changes are kept on this phone as you make them. "Send to the T3" puts them on the T3 and waits for it to confirm it has exactly the same set.' }),
+          h('div', { class: 'foot', text: 'Changes stay on this phone until sent. Heep uses the Wi-Fi relay when the T3 is online; Safari can send screens without Bluefy. The T3 confirms each screen and the complete set.' }),
           h('div', { class: 'label', text: 'Steering wheel buttons (left: the T3)' }), buttonsCard(),
           h('div', { class: 'label', text: 'Nano: right wheel buttons, pedal, headlights' }), nanoCard(),
           h('div', { class: 'label', text: 'Display' }), displayCard(),
@@ -426,7 +505,7 @@ function screenEditor(st, idx, after) {
         wl, props,
         h('div', { class: 'btn-row' },
           h('button', { class: 'btn btn-glass glass', onclick: () => { save(); t3Send({ c: 'page', i: idx }); } }, icon('play'), 'Show on T3'),
-          h('button', { class: 'btn btn-primary', onclick: async () => { save(); await sendScreens(st); } }, icon('bt'), 'Send all')),
+          h('button', { class: 'btn btn-primary', onclick: async () => { save(); await sendScreens(st); } }, icon('sync'), 'Send all')),
         confirmButton('Delete this screen', 'Tap again to delete it', () => { st.list.splice(idx, 1); if (!st.list.length) st.list = [DEFAULT_SCREENS[0]]; scrSave(st); sheet.close(); }));
       paintAll();
       const tick = setInterval(() => { if (!document.body.contains(cv)) clearInterval(tick); else if (!drag && previewLive()) redraw(); }, 1000);

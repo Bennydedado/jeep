@@ -37,8 +37,8 @@ function mqParse(b) {
   return [type, '', ''];
 }
 
-// ---------------------------------------------------------------- the pretend T3 (2.4) behind the relay
-const T3 = { fw: '2.4', subscribed: '', cmds: [], badSig: 0, watched: 0, lastNonce: 0 };
+// ---------------------------------------------------------------- the pretend T3 behind the relay
+const T3 = { fw: '2.16', subscribed: '', cmds: [], screenAttempts: [], dropScrOnce: false, finalAttempts: 0, badSig: 0, watched: 0, lastNonce: 0 };
 let push = async () => {};
 async function onFrame(bytes) {
   const [type, topic, payload] = mqParse(Buffer.from(bytes));
@@ -50,22 +50,33 @@ async function onFrame(bytes) {
   T3.lastNonce = j.n;
   const m = JSON.parse(j.m);
   T3.cmds.push(m.c);
+  if (m.c === 'scr') T3.screenAttempts.push(m.i);
   if (T3.dead) return;   // key off: nothing answers
-  if (m.c === 'scr') { (T3.scr = T3.scr || [])[m.i] = m.d; return; }
-  if (m.c === 'scrok') { await push({ t: 'scr', ok: true, h: m.h, n: m.n }); return; }
+  if (m.c === 'scr') {
+    if (m.i === 2 && !T3.dropScrOnce) { T3.dropScrOnce = true; return; }  // simulate a lost Wi-Fi packet
+    (T3.scr = T3.scr || [])[m.i] = m.d;
+    await push({ t: 'scrpart', i: m.i, n: m.n, ok: true });
+    return;
+  }
+  if (m.c === 'scrok') {
+    T3.finalAttempts++;
+    if (T3.finalAttempts === 1) return;  // simulate a lost final confirmation
+    await push({ t: 'scr', ok: true, h: m.h, n: m.n });
+    return;
+  }
   if (m.c === 'watch' && T3.quiet) return;   // a parked T3 that isn't sending live numbers
   if (m.c === 'watch') { T3.watched++; await push({ t: 'live', rpm: 1850, kmh: 0, src: 'obd', ect: 71, g: 0, tp: 0, pg: 0, btn: '-', bn: 0, nano: 'none', sd: 1, trip: { id: 't9-1', km: 0, l: 0, s: 0, idle: 0, vmax: 0, gkm: 0 } }); }
   else if (m.c === 'status') await push({ t: 'hi', fw: T3.fw, proto: 2, obd: true, queued: 0, wifi: 'on starlink2.4', seen: '', ssids: ['starlink2.4'], nets: 1 });
   else if (m.c === 'wifi') await push({ t: 'wifi', fw: T3.fw, state: 'on starlink2.4', on: true, ssid: 'starlink2.4', rssi: -40, ch: 11, ip: '192.168.1.122', onFor: 300, scanning: false, scanAgo: 30, seen: [['starlink2.4', -40, 11, 1]], saved: ['starlink2.4'] });
   else if (m.c === 'update') {
-    const up = (phase, pct, text) => push({ t: 'upd', phase, pct, v: '2.5', text, fw: T3.fw });
+    const up = (phase, pct, text) => push({ t: 'upd', phase, pct, v: '2.17', text, fw: T3.fw });
     await up('wait', -1, 'starting');
     setTimeout(async () => {
       await up('check', -1, 'checking GitHub');
-      for (const p of [0, 25, 50, 75, 100]) { await new Promise(r => setTimeout(r, 250)); await up('download', p, 'downloading 2.5'); }
+      for (const p of [0, 25, 50, 75, 100]) { await new Promise(r => setTimeout(r, 250)); await up('download', p, 'downloading 2.17'); }
       T3.sawDownload = true;
-      await up('done', 100, 'installed 2.5, restarting');
-      setTimeout(async () => { T3.fw = '2.5'; await push({ t: 'hi', fw: '2.5', proto: 2, obd: true, queued: 0, wifi: 'on starlink2.4', ssids: ['starlink2.4'], nets: 1 }); }, 1500);
+      await up('done', 100, 'installed 2.17, restarting');
+      setTimeout(async () => { T3.fw = '2.17'; await push({ t: 'hi', fw: '2.17', proto: 2, obd: true, queued: 0, wifi: 'on starlink2.4', ssids: ['starlink2.4'], nets: 1 }); }, 1500);
     }, 400);
   }
 }
@@ -85,7 +96,7 @@ const srv = http.createServer((q, r) => {
   page.on('pageerror', e => errors.push('pageerror: ' + e.message));
   page.on('console', m => { if (m.type() === 'error' && !/tile\.openstreetmap|ERR_|Failed to load resource|script\.google/.test(m.text())) errors.push('console: ' + m.text()); });
   await page.route('https://script.google.com/**', r => r.abort());
-  await page.route('**/firmware/t3.json*', r => r.fulfill({ contentType: 'application/json', body: JSON.stringify({ v: '2.5', url: 'x' }) }));
+  await page.route('**/firmware/t3.json*', r => r.fulfill({ contentType: 'application/json', body: JSON.stringify({ v: '2.17', url: 'x' }) }));
   await page.exposeFunction('relayFrame', b => onFrame(b));
   push = obj => page.evaluate(([t, s]) => window.__relayPush(t, s), [LIVE_T, seal(obj)]);
   await page.addInitScript(([key]) => {
@@ -132,16 +143,16 @@ const srv = http.createServer((q, r) => {
   const t0 = Date.now();
   while (Date.now() - t0 < 8000) {
     const t = await page.locator(W).innerText();
-    if (/Downloading 2\.5 on the T3: (25|50|75) %/.test(t)) { sawPct = true; await page.screenshot({ path: shots + '/relay-2-downloading.png' }); break; }
+    if (/Downloading 2\.17 on the T3: (25|50|75) %/.test(t)) { sawPct = true; await page.screenshot({ path: shots + '/relay-2-downloading.png' }); break; }
     await page.waitForTimeout(100);
   }
   check(T3.cmds.includes('update'), 'the update request reached the T3, signed');
   check(sawPct, 'progress bar shows the download percentage');
   await page.waitForTimeout(1500);
-  check(/Installed 2\.5 ✓|running 2\.5 ✓/.test(await page.locator(W).innerText()), 'says installed');
+  check(/Installed 2\.17 ✓|running 2\.17 ✓/.test(await page.locator(W).innerText()), 'says installed');
   const t1 = Date.now();
-  while (Date.now() - t1 < 8000 && !/running 2\.5 ✓/.test(await page.locator(W).innerText())) await page.waitForTimeout(300);
-  check(/The T3 is running 2\.5 ✓/.test(await page.locator(W).innerText()), 'after the restart: running 2.5');
+  while (Date.now() - t1 < 8000 && !/running 2\.17 ✓/.test(await page.locator(W).innerText())) await page.waitForTimeout(300);
+  check(/The T3 is running 2\.17 ✓/.test(await page.locator(W).innerText()), 'after the restart: running 2.17');
   await page.screenshot({ path: shots + '/relay-3-done.png' });
 
   await page.locator(W + ' button[aria-label="Close"]').click(); await page.waitForTimeout(400);
@@ -157,6 +168,8 @@ const srv = http.createServer((q, r) => {
   while (Date.now() - t2 < 10000 && !/Screens are on the T3/.test(await page.locator('body').innerText())) await page.waitForTimeout(200);
   check(T3.cmds.slice(before).includes('status'), 'Heep asked the quiet T3 first (signed status)');
   check(/Screens are on the T3/.test(await page.locator('body').innerText()) && (T3.scr || []).length >= 5, 'the screens went over Wi-Fi and the T3 confirmed (' + (T3.scr || []).length + ')');
+  check(T3.screenAttempts.filter(i => i === 2).length >= 2, 'Safari retried a screen the Wi-Fi relay dropped');
+  check(T3.finalAttempts >= 2, 'Safari retried a lost final screen confirmation');
   await page.screenshot({ path: shots + '/relay-4-screens.png' });
   // ---- a T3 that doesn't answer at all: says so instead of "connect"
   T3.dead = true;

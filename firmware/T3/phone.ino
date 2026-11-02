@@ -97,10 +97,16 @@ void onCommand(const String& j, int src) {
   else if (c == "scr") {
     // one screen of a set: {"c":"scr","i":0,"n":5,"d":"Boost|1|v,boost,..."}
     int i = (int)numField(j, "i"), n = (int)numField(j, "n");
-    if (n < 1 || n > MAX_SCREENS || i < 0 || i >= n) { reply("{\"t\":\"scr\",\"ok\":false,\"why\":\"bad count\"}", src); return; }
+    if (n < 1 || n > MAX_SCREENS || i < 0 || i >= n) {
+      reply("{\"t\":\"scr\",\"ok\":false,\"why\":\"bad count\"}", src);
+      reply("{\"t\":\"scrpart\",\"i\":" + String(i) + ",\"n\":" + String(n) + ",\"ok\":false,\"why\":\"bad count\"}", src);
+      return;
+    }
     if (i == 0) { for (int k = 0; k < MAX_SCREENS; k++) pendingScr[k] = ""; }
     pendingScrN = n;
     pendingScr[i] = jStr(j, "d");
+    // Confirm each piece so Safari can safely retry a missed Wi-Fi relay packet.
+    reply("{\"t\":\"scrpart\",\"i\":" + String(i) + ",\"n\":" + String(n) + ",\"ok\":true}", src);
   }
   else if (c == "scrok") {
     // the set is complete: check the fingerprint, then keep it

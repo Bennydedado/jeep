@@ -33,6 +33,7 @@ function t3Message(m, via) {
   else if (m.t === 'cfg') { if (LIVE.onCfg) LIVE.onCfg(m); else if (LIVE.quietCfgUntil > Date.now()) {} else toast('Saved on the T3', m.reset ? 'Settings back to new' : 'It uses them from now on'); }
   else if (m.t === 'trip' && via === 'bt') saveTrip(m);
   else if (m.t === 'scr') { if (LIVE.onScr) LIVE.onScr(m); }
+  else if (m.t === 'scrpart') { if (LIVE.onScrPart) LIVE.onScrPart(m); }
   else if (m.t === 'cmdrefused') { if (LIVE.onCmdRefused) LIVE.onCmdRefused(m); }
   else if (m.t === 'scrd') { if (LIVE.onScrd) LIVE.onScrd(m); }
   else if (m.t === 'diag') { LIVE.diag = m; LIVE.diagAt = Date.now(); if (LIVE.onDiag) LIVE.onDiag(); }
