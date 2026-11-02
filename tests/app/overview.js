@@ -64,7 +64,7 @@ const DATA = { fill: [{ id: 'f1', t: now - 5 * day, odo: 159557, lit: 70.2, cost
   await page.goto('http://localhost:' + port + '/index.html');
   await page.waitForTimeout(900);
   let t = await page.locator('#view').innerText();
-  check(/10\.4/.test(t) && /the T3 so far \(60 km\)/.test(t), 'economy from the T3 before two full tanks: 10.4 (' + (t.match(/L\/100 km[^\n]*/) || [''])[0] + ')');
+  check(/10\.4/.test(t) && /T3 \(60 km\)/.test(t), 'economy from the T3 before two full tanks: 10.4 (' + (t.match(/L\/100 km[^\n]*/) || [''])[0] + ')');
   check(/\$0\.179/.test(t) && /estimate: economy × pump price/.test(t), 'cost per km: 10.42 L/100 × $1.715/L');
   const left = 77.6 - 6.25;   // full less what the T3 measured
   check(new RegExp('≈' + Math.round(left / (6.25 / 60 * 100) * 100)).test(t) && /71 L left/.test(t), 'distance to empty and litres left on the Overview');
