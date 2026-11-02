@@ -1,5 +1,11 @@
 # Changes
 
+## 2 Nov 2026 — T3 2.17, Heep 1.1.23: reliable screen sending in Safari
+
+- Live → Screens & buttons sends screen layouts through the Wi-Fi relay from Safari when the T3 is online; Bluefy is not required.
+- T3 confirms each screen, Heep retries a missed packet and a lost final confirmation, and the set fingerprint confirms the complete layout.
+- Screen send buttons use a general send icon instead of a Bluetooth icon.
+
 ## 2 Nov 2026 — T3 2.16, Heep 1.1.22: trip upload status and Jeep expense log
 
 - Trip sending no longer takes over the display with a repeated “Sending trips” screen. A dedicated status screen
