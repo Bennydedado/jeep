@@ -3,7 +3,7 @@
 name: Build the T3
 on:
   push:
-    paths: ['firmware/T3/**', '.github/workflows/t3.yml']
+    paths: ['firmware/T3/**', 'tests/**', '.github/workflows/t3.yml']
   workflow_dispatch:
 permissions:
   contents: write
