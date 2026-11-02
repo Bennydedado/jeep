@@ -34,11 +34,10 @@ void updateNow() {
 // With Bluetooth running, the T3 often can't get the memory for the secure connection to Google, so trips are sent
 // at start-up (bootSend below). To get a drive's trip on the sheet without waiting for the next key-on:
 //   - parked at home: the trip ends by itself after "parkSecs" with the engine off, then if your Wi-Fi was there in
-//     the last 3 minutes and the trip still hasn't gone 20 s later, the T3 restarts and sends it (screen: "Sending trips")
+//     the last 3 minutes and the trip still hasn't gone 20 s later, the T3 restarts and sends it (screen: Wi-Fi/trip status)
 //   - or now: the wheel menu's "Send trips" (ends the trip, restarts, sends)
 static uint32_t sendRestartAt = 0, parkSendAt = 0;
 void restartToSend(const char* why) {
-  flash("Sending trips...");
   sdEvent(String("restarting to send trips (") + why + ")");
   flushReq = true;
   sendRestartAt = millis() + 1500;
@@ -102,7 +101,7 @@ static String bootJoin(bool blind) {
     if (!blind && !seenAs[order[t]].length()) continue;   // quick: only networks in sight
     String ssid = seenAs[order[t]].length() ? seenAs[order[t]] : cfg.nets[order[t]].ssid;
     if (!ssid.length()) continue;
-    if (blind) bootShow("joining", ssid, -1); else bootShowAs("Sending trips", "joining", ssid, -1);
+    if (blind) bootShow("joining", ssid, -1); else bootShowAs("Trip status", "Wi-Fi: not connected", "Trips: not uploaded", -1);
     WiFi.begin(ssid.c_str(), cfg.nets[order[t]].pass.c_str());
     uint32_t t0 = millis();
     while (WiFi.status() != WL_CONNECTED && millis() - t0 < (blind ? 15000 : 10000)) delay(100);
@@ -181,16 +180,20 @@ void bootUpdate() {
 // needs, so trips sat on the T3. Only networks in sight, about 10 s at most when there's nothing to join.
 void bootSend() {
   if (queued <= 0 || !cfg.sheetUrl.length() || !cfg.netCount) return;
-  bootShowAs("Sending trips", String(queued) + (queued == 1 ? " trip" : " trips") + " waiting", "looking for Wi-Fi...", -1);
+  bootShowAs("Trip status", "Wi-Fi: not connected", "Trips: not uploaded", -1);
   String joined = bootJoin(false);
   if (joined.length()) {
     if (!timeSrc) {   // the trip times are kept; this is only for a trip that never had a clock
       configTime(0, 0, "pool.ntp.org", "time.google.com");
       struct tm tmv; if (getLocalTime(&tmv, 3000)) { struct timeval tv; gettimeofday(&tv, nullptr); setClock((int64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000, 'n'); }
     }
-    bootShowAs("Sending trips", "on " + joined, "sending...", -1);
+    bootShowAs("Trip status", "Wi-Fi: connected", "Trips: not uploaded", -1);
     uploadTrips(cfg.sheetUrl, cfg.sheetKey);
     bootNote = "trips at start: " + String(lastUpload);
-  } else bootNote = "trips at start: no Wi-Fi in sight";
+    bootShowAs("Trip status", "Wi-Fi: connected", queued > 0 ? "Trips: not uploaded" : "Trips: uploaded", -1);
+  } else {
+    bootNote = "trips at start: no Wi-Fi in sight";
+    bootShowAs("Trip status", "Wi-Fi: not connected", "Trips: not uploaded", -1);
+  }
   WiFi.disconnect(true); WiFi.mode(WIFI_OFF);
 }

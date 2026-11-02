@@ -33,6 +33,7 @@ function t3Message(m, via) {
   else if (m.t === 'cfg') { if (LIVE.onCfg) LIVE.onCfg(m); else if (LIVE.quietCfgUntil > Date.now()) {} else toast('Saved on the T3', m.reset ? 'Settings back to new' : 'It uses them from now on'); }
   else if (m.t === 'trip' && via === 'bt') saveTrip(m);
   else if (m.t === 'scr') { if (LIVE.onScr) LIVE.onScr(m); }
+  else if (m.t === 'cmdrefused') { if (LIVE.onCmdRefused) LIVE.onCmdRefused(m); }
   else if (m.t === 'scrd') { if (LIVE.onScrd) LIVE.onScrd(m); }
   else if (m.t === 'diag') { LIVE.diag = m; LIVE.diagAt = Date.now(); if (LIVE.onDiag) LIVE.onDiag(); }
   else if (m.t === 'wifi') { LIVE.wifi = m; LIVE.wifiAt = Date.now(); if (LIVE.onWifi) LIVE.onWifi(); }
@@ -77,8 +78,9 @@ async function t3Ready() {
   if (Date.now() - quietAt < 12000) return false;   // just asked and got nothing: don't make every step wait again
   if (!wakeP) wakeP = (async () => {
     const since = Date.now();
-    await relayCommand({ c: 'status' });
-    for (let i = 0; i < 40; i++) { if (NET.at >= since) return true; await new Promise(r => setTimeout(r, 200)); }
+    const before = LIVE.t3At || 0;
+    if (!await relayCommand({ c: 'status' })) return false;
+    for (let i = 0; i < 40; i++) { if ((LIVE.t3At || 0) > before && LIVE.t3At >= since) return true; await new Promise(r => setTimeout(r, 200)); }
     quietAt = Date.now();
     if (Date.now() - quietToastAt > 60000) { quietToastAt = Date.now(); toast('The T3 didn’t answer over Wi-Fi', 'Is the key on and the T3 on your hotspot or home Wi-Fi? Over Bluetooth, its Wi-Fi page shows the relay.', 'bad'); }
     return false;
@@ -344,6 +346,15 @@ function diagSheet() {
           sec('Wi-Fi and relay', [['Wi-Fi', w.state], w.rssi ? ['Signal', w.rssi + ' dBm' + (w.rssi > -60 ? ' (strong)' : w.rssi > -75 ? ' (ok)' : ' (weak)')] : null, w.ip ? ['T3 address', w.ip] : null,
             ['Networks the last scan saw', w.seen || '-'], ['Relay', w.relayTxt || (w.relay ? 'Connected' : 'Not connected'), w.relay ? 'ok' : 'due']]),
           sec('Bluetooth', [['Heep', bl.phone ? 'Connected' : 'Not connected'], ['iCar', bl.icar ? 'Connected' + (bl.icarAge >= 0 ? ', last answer ' + bl.icarAge + ' s ago' : '') : 'Not connected', bl.icar ? 'ok' : 'soon']]),
+          d.obd ? sec('iCar BLE search and connection', [
+            ['Searching for', d.obd.search || 'common OBD names'],
+            ['Last adapter seen', d.obd.found || 'Not found yet', d.obd.found ? 'ok' : 'soon'],
+            ['Searches / connection attempts', (d.obd.scans == null ? '--' : d.obd.scans) + ' / ' + (d.obd.attempts == null ? '--' : d.obd.attempts)],
+            ['Last step', d.obd.last || '--'], ['Paused for', d.obd.paused || 'No'],
+            ['Free / largest memory block', d.obd.free == null ? '--' : Math.round(d.obd.free / 1024) + ' / ' + Math.round((d.obd.largest || 0) / 1024) + ' KB'],
+            ['Memory when BLE started', d.obd.bleStartFree == null ? '--' : Math.round(d.obd.bleStartFree / 1024) + ' / ' + Math.round((d.obd.bleStartLargest || 0) / 1024) + ' KB'],
+            ['Memory at last connection try', d.obd.attemptFree == null ? '--' : Math.round(d.obd.attemptFree / 1024) + ' / ' + Math.round((d.obd.attemptLargest || 0) / 1024) + ' KB'],
+            d.obd.code ? ['Last BLE error code', d.obd.code] : null]) : null,
           d.obd ? sec('Engine (through the iCar)', [
             d.obd.data != null ? ['Engine answering', d.obd.data ? 'Yes' : 'No: is the key on?', d.obd.data ? 'ok' : 'due'] : null,
             ['Boost from', d.obd.boost === '-' ? (d.obd.known ? 'Not offered by this engine (standard OBD)' : 'Not known yet') : (OBD_PIDS[d.obd.boost] || 'PID ' + d.obd.boost) + ' · PID ' + d.obd.boost, d.obd.boost === '-' ? 'due' : 'ok'],

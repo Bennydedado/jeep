@@ -60,6 +60,7 @@ static const FieldDef FIELDS[] = {
   { "obd", "iCar", "", -1 },
   { "ble", "Phone", "", -1 },
   { "wifi", "Wi-Fi", "", -1 },
+  { "upstat", "Trips", "", -1 },
   { "nano", "Wheel", "", -1 },
   { "sd", "SD", "", -1 },
   { "sdfree", "SD free", "MB", 0 },
