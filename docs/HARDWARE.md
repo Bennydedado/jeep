@@ -168,9 +168,20 @@ All pins live in **`firmware/T3/config.h`**. If you move a wire, change it there
 ```
 $J,<seq>,B,<button 1-3>,<S|L|R>*HH     button: S short, L long (held 0.6 s), R repeat (every 0.25 s while still held)
 $J,<seq>,H,<uptime seconds>,1*HH       heartbeat, once a second
+$J,<seq>,E,<what>,<flags>*HH           headlight event (jeep_controller v3.2+), shown in Diagnostics only
 ```
 
-`HH` = XOR of every character between `$` and `*`, two hex digits (like NMEA). `seq` counts 0–255.
+`HH` = XOR of every character between `$` and `*`, two hex digits (like NMEA). `seq` counts 0–255 (T3 2.19+ also
+takes up to 65535 as its low byte, so an older Nano sketch with a 16-bit counter keeps working).
+Headlight events: `<what>` is two letters (`SD` stalk grounded, `SU` stalk released, `PD` pedal, `LM` / `RM` left /
+right middle, `WB` a wheel button set to beams, `MO` / `MX` headlight mode on / off, `MU` mode-off undid a tap, `BT`
+Nano started); `<flags>` is hex: 1 K1 told high, 2 stalk grounded (debounced), 4 headlight mode, 8 D7 grounded right
+now, 16 fail-safe module on. They say what the Nano **told** K1 to do, not what the relay contacts or lights did:
+if Diagnostics says "K1 told low" while the high beams stay on, something other than K1 is grounding the high-beam wire.
+
+**Diagnostics → Steering wheel** (T3 2.19+) also shows **Bytes heard on GPIO 39**: 0 means nothing arrives at all
+(green wire, divider, ground); bytes but no good lines means something arrives but not readable Nano lines
+(divider level, baud); **Last text heard** shows the last 32 characters, e.g. `$J,17,H,350,2,3FA0*4C|`.
 Each press is sent twice 30 ms apart with the same `seq`; the T3 keeps the first good copy. Anything malformed
 is dropped and counted, so a bad line can never press a button. Diagnostics shows good/bad/repeat counts and
 whether the link is "ok" (heard in the last 3 s), "lost" or "none".

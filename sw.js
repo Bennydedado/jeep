@@ -1,7 +1,7 @@
 // Keeps the app opening with no signal (gas stations up north). Your data never goes through here:
 // calls to the sheet go straight to Google, and map pictures (OpenStreetMap tiles) are left to the browser.
-const CACHE = 'jeep-1.1.23';
-const SHELL = ['./', 'index.html', 'app.css?v=1.1.23', 'core.js?v=1.1.23', 'econ.js?v=1.1.23', 'expenses.js?v=1.1.23', 'ui.js?v=1.1.23', 'views.js?v=1.1.23', 'live.js?v=1.1.23', 'trips.js?v=1.1.23', 't3.js?v=1.1.23', 't3screens.js?v=1.1.23', 't3net.js?v=1.1.23', 'codes.js?v=1.1.23', 'map.js?v=1.1.23', 'app.js?v=1.1.23',
+const CACHE = 'jeep-1.1.24';
+const SHELL = ['./', 'index.html', 'app.css?v=1.1.24', 'core.js?v=1.1.24', 'econ.js?v=1.1.24', 'expenses.js?v=1.1.24', 'ui.js?v=1.1.24', 'views.js?v=1.1.24', 'live.js?v=1.1.24', 'trips.js?v=1.1.24', 't3.js?v=1.1.24', 't3screens.js?v=1.1.24', 't3net.js?v=1.1.24', 'codes.js?v=1.1.24', 'map.js?v=1.1.24', 'app.js?v=1.1.24',
   'vendor/leaflet/leaflet.js?v=1.9.4', 'vendor/leaflet/leaflet.css?v=1.9.4',
   'manifest.webmanifest', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });

@@ -1,5 +1,14 @@
 # Changes
 
+## 3 Nov 2026 — T3 2.19, Heep 1.1.24: see what the Nano link is doing
+
+- Diagnostics → Steering wheel shows **Bytes heard on GPIO 39**, what that means in plain words, and the **Last text
+  heard**, so "nothing arrives" (wiring) can be told apart from "garbage arrives" (divider level or baud).
+- The T3 takes a Nano message counter up to 65535 (as its low byte), so an older Nano sketch with a 16-bit counter
+  no longer stops being heard after about four minutes.
+- New Diagnostics section **Headlights**: the Nano's last 12 headlight events (jeep_controller v3.2): what happened
+  (stalk, pedal, mode) and what the Nano told K1 to do right after. Shown only; the T3 never acts on them.
+
 ## 2 Nov 2026 — T3 2.18: keep screen transfers from restarting the T3
 
 - Prepare new screens on the heap instead of putting the entire twelve-screen set on the small loop stack.

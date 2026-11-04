@@ -3,6 +3,7 @@
 #include "check.h"
 #include <string>
 #include <stdio.h>
+#include <string.h>
 
 static std::string frame(const char* body) {
   unsigned char x = 0; for (const char* p = body; *p; p++) x ^= (unsigned char)*p;
@@ -38,7 +39,7 @@ int main() {
   CHECK(feed(p, frame("J,12,B,4,S"), 6000) == 0);                    // no button 4
   CHECK(feed(p, frame("J,13,B,0,S"), 6000) == 0);
   CHECK(feed(p, frame("J,14,B,2,X"), 6000) == 0);                    // unknown press type
-  CHECK(feed(p, frame("J,300,B,2,S"), 6000) == 0);                   // seq out of range
+  CHECK(feed(p, frame("J,70000,B,2,S"), 6000) == 0);                 // seq out of range
   CHECK(feed(p, frame("J,15,B,2,S,9"), 6000) == 0);                  // extra field
   CHECK(feed(p, frame("J,16,Q,2,S"), 6000) == 0);                    // unknown kind
   CHECK(feed(p, frame("X,17,B,2,S"), 6000) == 0);                    // not ours
@@ -56,6 +57,33 @@ int main() {
   CHECK(feed(p, frame("J,24,H,52,2,XYZ"), 10000) == 0);              // not hex
   CHECK(feed(p, frame("J,25,H,53,2,12345"), 10000) == 0);            // too long
   CHECK(feed(p, frame("J,26,H,54,2,1,2"), 10000) == 0);              // extra field
+  // 2.19: a 16-bit seq from an older Nano sketch is taken as its low byte (300 -> 44), so the link keeps working
+  CHECK(feed(p, frame("J,300,H,60,2,3FA0"), 20000, &e) == 1 && e.kind == 'H' && e.seq == 44);
+  CHECK(feed(p, frame("J,300,H,60,2,3FA0"), 20010) == 0);            // its repeat is still a repeat
+  CHECK(feed(p, frame("J,65535,H,61,2,3FA0"), 21000, &e) == 1 && e.seq == 255);
+  CHECK(feed(p, frame("J,123456,H,61,2,3FA0"), 22000) == 0);         // too long
+  // 2.19: headlight events (jeep_controller_v3.2)
+  CHECK(feed(p, frame("J,27,E,SD,13"), 23000, &e) == 1);
+  CHECK(e.kind == 'E' && !strcmp(e.what, "SD") && e.flags == (HL_K1 | HL_STALK | HL_SAFE));
+  CHECK(!strcmp(jlinkWhat("SD"), "Stalk grounded") && !strcmp(jlinkWhat("ZZ"), "?"));
+  CHECK(feed(p, frame("J,28,E,PD,4"), 23100, &e) == 1 && e.flags == HL_MODE);
+  CHECK(feed(p, frame("J,29,E,sd,1"), 23200) == 0);                   // lower case
+  CHECK(feed(p, frame("J,30,E,SDX,1"), 23200) == 0);                  // 3 letters
+  CHECK(feed(p, frame("J,31,E,SD,123"), 23200) == 0);                 // 3 hex digits
+  CHECK(feed(p, frame("J,32,E,SD,G"), 23200) == 0);                   // not hex
+  CHECK(feed(p, frame("J,33,E,SD"), 23200) == 0);                     // no flags
+  // 2.19: bytes heard and the last raw text, so Diagnostics can tell "nothing arrives" from "garbage arrives"
+  JLinkParser q; char raw[40];
+  q.rawText(raw, sizeof(raw));
+  CHECK(q.bytes == 0 && raw[0] == 0);
+  feed(q, std::string("\x01\xFF" "ab\r\n"), 0);
+  q.rawText(raw, sizeof(raw));
+  CHECK(q.bytes == 6 && !strcmp(raw, "..ab|"));
+  feed(q, frame("J,1,H,5,2,3FA0") + frame("J,2,H,6,2,3FA0"), 1000);
+  q.rawText(raw, sizeof(raw));
+  CHECK(strlen(raw) == 32);
+  CHECK(std::string(raw).find("|$J,2,H,6,2,3FA0*") != std::string::npos);
+  char tiny[5]; q.rawText(tiny, sizeof(tiny)); CHECK(strlen(tiny) == 4);
   // the T3 -> Nano map line
   char line[64];
   int n = jlinkMapLine("V+,V+;AN,HU;V-,V-", line, sizeof(line));

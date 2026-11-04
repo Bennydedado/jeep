@@ -135,6 +135,9 @@ struct Wheel {
   uint32_t mapSent = 0, mapSentAt = 0;      // map lines sent to the Nano
   char last[8] = "-";                       // last button, e.g. "3S"
   uint32_t lastAt = 0, presses = 0;
+  // the Nano's last headlight events (jeep_controller_v3.2+), newest at hl[(hlN - 1) % 12]; Diagnostics only
+  struct HlEvent { uint32_t at; char what[3]; uint8_t flags; } hl[12];
+  uint32_t hlN = 0;
 };
 extern Wheel wheel;
 extern JLinkParser jlink;
