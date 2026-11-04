@@ -1,5 +1,11 @@
 # Changes
 
+## 3 Nov 2026 — T3 2.20, Heep 1.1.25: holding a wheel button does its job once
+
+- Holding the top button jumps to the key-on screen and stays there, however long you hold it. Before, it went to the
+  key-on screen and then kept stepping through screens while held. Only a button whose hold is set to next or
+  previous screen keeps scrolling while held.
+
 ## 3 Nov 2026 — T3 2.19, Heep 1.1.24: see what the Nano link is doing
 
 - Diagnostics → Steering wheel shows **Bytes heard on GPIO 39**, what that means in plain words, and the **Last text

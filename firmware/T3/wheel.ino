@@ -107,8 +107,9 @@ String actionFor(int button, char press) {
   shortA.trim(); longA.trim();
   if (press == 'S') return shortA;
   if (press == 'L') return longA;
-  // held down after a long press: keep scrolling, but never repeat anything else
-  if (press == 'R' && (shortA == "next" || shortA == "prev")) return shortA;
+  // still held after the long press (2.20): a hold does its one job and stops. Only a button whose HOLD is set to
+  // next/previous screen keeps scrolling; "Key-on screen" no longer drifts on to the next screen if you hold too long.
+  if (press == 'R' && (longA == "next" || longA == "prev")) return longA;
   return "none";
 }
 
