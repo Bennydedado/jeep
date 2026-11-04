@@ -41,6 +41,10 @@ void wheelStep() {
       wheel.heardAt = now;
       if (e.kind == 'H') { wheel.nanoUp = e.uptime; wheel.proto = e.proto; wheel.cfg = e.cfg; }
       else if (e.kind == 'B') onWheelButton(e.button, e.press, "wheel");
+      else if (e.kind == 'E') {   // a headlight event: only kept for Heep's Diagnostics, the T3 never acts on it
+        Wheel::HlEvent& h = wheel.hl[wheel.hlN++ % 12];
+        h.at = now; memcpy(h.what, e.what, 3); h.flags = (uint8_t)e.flags;
+      }
     }
   }
   // bytes but nothing good for 3 s at this speed: try the next speed

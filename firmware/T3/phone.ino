@@ -186,6 +186,19 @@ String liveJson() {
 }
 
 // everything useful for finding a wiring or setup problem (Heep: Live > Diagnostics)
+// 2.19: what's arriving on GPIO 39 at all, and the Nano's last headlight events ([seconds ago, "SD", flags], newest first)
+String nanoLinkJson() {
+  char raw[40];
+  jlink.rawText(raw, sizeof(raw));
+  String m = ",\"bytes\":" + String(jlink.bytes) + ",\"raw\":\"" + jsonEsc(raw) + "\",\"hl\":[";
+  uint32_t n = wheel.hlN < 12 ? wheel.hlN : 12;
+  for (uint32_t i = 0; i < n; i++) {
+    const Wheel::HlEvent& h = wheel.hl[(wheel.hlN - 1 - i) % 12];
+    m += (i ? ",[" : "[") + String((long)(millis() - h.at) / 1000) + ",\"" + String(h.what) + "\"," + String(h.flags) + "]";
+  }
+  return m + "]";
+}
+
 String diagJson() {
   String m = "{\"t\":\"diag\",\"fw\":\"" FW "\",\"upS\":" + String(millis() / 1000) + ",\"boot\":" + String(bootNo) + ",\"reset\":\"" + resetWhy +
              "\",\"heap\":" + String(ESP.getFreeHeap()) + ",\"heapMin\":" + String(ESP.getMinFreeHeap()) + ",\"clock\":\"" + String(timeSrc ? timeSrc : '-') + "\"";
@@ -197,7 +210,7 @@ String diagJson() {
   m += ",\"nano\":{\"state\":\"" + String(wheelState()) + "\",\"baud\":" + String(wheel.baud) + ",\"good\":" + String(jlink.good) + ",\"bad\":" + String(jlink.bad) +
        ",\"dups\":" + String(jlink.dups) + ",\"up\":" + String(wheel.nanoUp) + ",\"proto\":" + String(wheel.proto) + ",\"last\":\"" + String(wheel.last) +
        "\",\"lastAgo\":" + String(wheel.lastAt ? (long)(millis() - wheel.lastAt) / 1000 : -1) + ",\"presses\":" + String(wheel.presses) +
-       ",\"map\":\"" + String(wheelMapState()) + "\",\"hash\":" + String(wheel.cfg) + ",\"sent\":" + String(wheel.mapSent) + "}";
+       ",\"map\":\"" + String(wheelMapState()) + "\",\"hash\":" + String(wheel.cfg) + ",\"sent\":" + String(wheel.mapSent) + nanoLinkJson() + "}";
   m += ",\"wifi\":{\"state\":\"" + jsonEsc(wifiNow) + "\",\"rssi\":" + String(wifiState == W_ON ? WiFi.RSSI() : 0) + ",\"ip\":\"" + (wifiState == W_ON ? WiFi.localIP().toString() : String("")) +
        "\",\"seen\":\"" + jsonEsc(wifiSeen) + "\",\"relay\":" + String(relayUp() ? 1 : 0) + ",\"relayTxt\":\"" + jsonEsc(relayStatus()) + "\"}";
   m += "," + obdDiagJson();

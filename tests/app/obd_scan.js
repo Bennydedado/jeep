@@ -13,7 +13,7 @@ const check = (ok, what) => { checks++; if (!ok) { failed++; console.log('  FAIL
 const T3 = { cmds: [], cfg: null, bytes: [] };
 let notify = async () => {};
 const hi = () => ({ t: 'hi', fw: '2.5', proto: 2, obd: true, queued: 0, wifi: 'on starlink2.4', ssids: ['starlink2.4'], nets: 1, opr: T3.cfg ? T3.cfg.opr : 0 });
-const diag = () => ({ t: 'diag', fw: '2.5', upS: 100, boot: 3, reset: 'power on', heap: 120000, heapMin: 90000, clock: 'n', gps: { state: 0 }, temp: { state: 0 }, nano: { state: 'none' },
+const diag = () => ({ t: 'diag', fw: '2.5', upS: 100, boot: 3, reset: 'power on', heap: 120000, heapMin: 90000, clock: 'n', gps: { state: 0 }, temp: { state: 0 }, nano: { state: 'lost', good: 0, bad: 3, dups: 0, bytes: 412, raw: '.x.$J,1..|', hl: [[4, 'PD', 20], [9, 'SD', 31]] },
   wifi: { state: 'on starlink2.4' }, ble: { phone: 1, icar: 1, icarAge: 0 }, sd: { ok: 1, totalMB: 30000, usedMB: 10, rows: 5, err: 0, waiting: 0 }, up: { sheet: 'not yet', queued: 0 },
   obd: { proto: 'A2', known: 1, data: 1, sup: '01 0C 11', boost: '-', map: null, baro: null, miss: '0D', raw: { '0100': 'SEARCHING...410080108000', '0C': '410C0BD0', '0B': '' } } });
 const SCAN = [
@@ -73,6 +73,12 @@ const srv = http.createServer((q, r) => {
   await page.evaluate(() => btConnect()); await page.waitForTimeout(700);
   await page.locator('button', { hasText: 'Diagnostics' }).click(); await page.waitForTimeout(1500);
   const D = '.sheet.on[aria-label="Diagnostics"]';
+  {   // 2.19: the Nano link's bytes, last text and headlight events
+    const d0 = await page.locator(D).innerText();
+    check(/Bytes heard on GPIO 39\s*412/.test(d0) && /no good Nano lines/.test(d0) && d0.includes('.x.$J,1..|'), 'Diagnostics shows the Nano bytes, hint and last text');
+    check(/4 s ago · Pedal tap\s*K1 told low · stalk open · headlight mode/.test(d0), 'a headlight event in plain words');
+    check(/9 s ago · Stalk grounded\s*K1 told HIGH · stalk grounded · headlight mode/.test(d0) && !/fail-safe OFF/.test(d0), 'the stalk event and flags');
+  }
   await page.locator(D + ' button', { hasText: 'Scan the Jeep' }).click();
   await page.waitForTimeout(800);
   check(T3.cmds.includes('obdscan'), 'the scan request reached the T3');

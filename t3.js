@@ -319,6 +319,23 @@ function scanCard() {
 }
 
 // ---------------------------------------------------------------- diagnostics: is everything wired and working?
+
+// Diagnostics > Steering wheel (T3 2.19+): plain words for what's arriving from the Nano, and its headlight events
+function nanoLinkHint(n) {
+  if (!n.bytes) return 'Nothing arrives: check the green wire is on GPIO 39 (S_VN), the 10k/20k divider and that the grounds are joined';
+  if (!n.good) return 'Something arrives but no good Nano lines: check the divider (about 3.3 V at the green wire, unplugged) and Last text heard';
+  if (n.state !== 'ok') return 'It worked, then stopped: is the Nano powered?';
+  return 'Working';
+}
+const HL_WHAT = { BT: 'Nano started', SD: 'Stalk grounded', SU: 'Stalk released', PD: 'Pedal tap', LM: 'Left middle', RM: 'Right middle',
+  WB: 'Wheel button (beams)', MO: 'Headlight mode on', MX: 'Headlight mode off', MU: 'Mode-off undid a tap' };
+// what the Nano's own pins said right after the event (not whether the relay or the lights followed)
+function hlFlags(f) {
+  const stalk = !!(f & 2), d7 = !!(f & 8);
+  return 'K1 told ' + (f & 1 ? 'HIGH' : 'low') + ' · stalk ' + (stalk ? 'grounded' : 'open') + (d7 !== stalk ? ' (D7 now ' + (d7 ? 'grounded' : 'open') + ')' : '') +
+    (f & 4 ? ' · headlight mode' : '') + (f & 16 ? '' : ' · fail-safe OFF');
+}
+
 function diagSheet() {
   openSheet({
     title: 'Diagnostics',
@@ -343,7 +360,12 @@ function diagSheet() {
             ['Reading', t.c == null ? '-' : t.c + ' °C'], ['Last good', t.age < 0 ? 'never' : t.age + ' s ago'], ['Read errors', t.err], ['Probe ID', t.rom || '-']]),
           sec('Steering wheel (Nano link, GPIO 39)', [['Link', ({ ok: 'Hearing the Nano', lost: 'Lost (was working)', none: 'Never heard it' })[n.state] || n.state, n.state === 'ok' ? 'ok' : 'due'],
             ['Baud', n.baud], ['Good / bad / repeats', n.good + ' / ' + n.bad + ' / ' + n.dups], ['Nano up', n.up ? dur(n.up) : '-'], ['Last button', n.last + (n.lastAgo >= 0 ? ' (' + n.lastAgo + ' s ago)' : '')], ['Presses', n.presses],
-            n.map ? ['Nano settings', ({ saved: 'Saved on the Nano', sending: 'Sending (' + (n.sent || 0) + ' tries)', old: 'Nano sketch is older than v3', none: 'Nano not heard' })[n.map] || n.map, n.map === 'saved' ? 'ok' : 'due'] : null]),
+            n.map ? ['Nano settings', ({ saved: 'Saved on the Nano', sending: 'Sending (' + (n.sent || 0) + ' tries)', old: 'Nano sketch is older than v3', none: 'Nano not heard' })[n.map] || n.map, n.map === 'saved' ? 'ok' : 'due'] : null,
+            n.bytes != null ? ['Bytes heard on GPIO 39', n.bytes] : null,
+            n.bytes != null ? ['What that means', nanoLinkHint(n), n.good > 0 ? 'ok' : 'due'] : null,
+            n.raw ? ['Last text heard', n.raw] : null]),
+          n.hl ? sec('Headlights (what the Nano did, newest first)', n.hl.length ? n.hl.map(([ago, what, f]) => [ago + ' s ago · ' + (HL_WHAT[what] || what), hlFlags(f)]) :
+            [['No headlight events yet', n.proto >= 2 ? 'Needs Nano sketch v3.2' : '-']]) : null,
           sec('Wi-Fi and relay', [['Wi-Fi', w.state], w.rssi ? ['Signal', w.rssi + ' dBm' + (w.rssi > -60 ? ' (strong)' : w.rssi > -75 ? ' (ok)' : ' (weak)')] : null, w.ip ? ['T3 address', w.ip] : null,
             ['Networks the last scan saw', w.seen || '-'], ['Relay', w.relayTxt || (w.relay ? 'Connected' : 'Not connected'), w.relay ? 'ok' : 'due']]),
           sec('Bluetooth', [['Heep', bl.phone ? 'Connected' : 'Not connected'], ['iCar', bl.icar ? 'Connected' + (bl.icarAge >= 0 ? ', last answer ' + bl.icarAge + ' s ago' : '') : 'Not connected', bl.icar ? 'ok' : 'soon']]),
