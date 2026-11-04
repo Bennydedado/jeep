@@ -209,8 +209,8 @@ Code: `firmware/T3/jlink.h` (T3 side), `nano/NanoT3Example/T3Link.h` (Nano side)
 | 2 (middle) | Mark this spot (in the trip's track) | Pause / resume trip |
 | 3 (bottom) | Next screen | End trip (a new one starts) |
 
-  Other actions: screen off/on, brightness, reset peak boost, send/sync now, nothing. Holding Next or Previous
-  keeps scrolling. While the T3's screen is off, the first press only wakes it.
+  Other actions: screen off/on, brightness, reset peak boost, send/sync now, nothing. A hold does its job once
+  (2.20+); only a hold set to Next or Previous keeps scrolling. While the T3's screen is off, the first press only wakes it.
 - **Settings menu on the T3** (action "Settings menu", default hold button 2): top / bottom move, middle changes the
   highlighted setting, hold middle closes (30 s on its own). Brightness, night, screen off, key-on screen, units,
   upside down, Live over Wi-Fi, reset peak, send trips, end trip.

@@ -537,7 +537,7 @@ function buttonsCard() {
     names.map((n, i) => h('div', { class: 'group' }, h('div', { class: 'gr' }, h('b', { text: n })),
       h('label', { class: 'gr' }, h('span', { text: 'Press' }), sel(i, 0)), h('label', { class: 'gr' }, h('span', { text: 'Hold' }), sel(i, 1)))),
     h('div', { class: 'foot' }, last),
-    h('div', { class: 'foot', text: 'Hold = 1 s (0.6 s with the NanoT3Example sketch). Holding a button set to Next or Previous keeps scrolling. When the T3’s screen is off, the first press only wakes it. "Settings menu" opens T3 settings on the screen: top / bottom move, middle changes, hold middle to close. Saved with T3 settings: tap "Send settings" below.' }),
+    h('div', { class: 'foot', text: 'Hold = 1 s (0.6 s with the NanoT3Example sketch). A hold does its job once (T3 2.20+); only a hold set to Next or Previous keeps scrolling. When the T3’s screen is off, the first press only wakes it. "Settings menu" opens T3 settings on the screen: top / bottom move, middle changes, hold middle to close. Saved with T3 settings: tap "Send settings" below.' }),
     h('button', { class: 'btn btn-glass glass btn-wide', onclick: () => t3SendSettings() }, icon('bt'), 'Send settings to the T3'));
 }
 
