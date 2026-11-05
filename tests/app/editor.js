@@ -146,6 +146,18 @@ const srv = http.createServer((q, r) => {
   check(JSON.stringify(daily.list) === JSON.stringify(daily.want) && T3.hash === screensHash(daily.list), 'Daily tab: its screens, sent to the T3');
   check(await page.locator(LIST + ' .scr-row').count() === daily.want.length, 'the list shows the Daily screens');
   await page.screenshot({ path: shots + '/setups-daily.png' });
+  // Mix: copy a screen from another tab, change the copy; the original stays
+  await page.locator(LIST + ' .scr-setups button', { hasText: 'Mix' }).click(); await page.waitForTimeout(4500);
+  await click('Add a screen', LIST); await page.waitForTimeout(400);
+  const ADD = '.sheet[aria-label="Add a screen"]';
+  check(await page.locator(ADD + ' .scr-open', { hasText: 'from Towing' }).count() > 0, 'Add a screen lists the other tabs’ screens');
+  await page.locator(ADD + ' .scr-open', { hasText: 'Coolant' }).first().click(); await page.waitForTimeout(600);
+  await page.locator(ED + ' input').first().fill('My coolant'); await page.locator(ED + ' input').first().dispatchEvent('change'); await page.waitForTimeout(200);
+  await page.locator(ED + ' button[aria-label="Close"]').click(); await page.waitForTimeout(600);
+  const mix = await page.evaluate(() => ({ list: scrState().list, tow: setupState().lists.tow || SETUPS.find(x => x.id === 'tow').list() }));
+  check(mix.list.length === 2 && mix.list[1].startsWith('My coolant|') && mix.tow.some(x => x.startsWith('Coolant|')) && !mix.tow.some(x => x.startsWith('My coolant')),
+    'Mix has the copy, renamed; Towing still has its own: ' + mix.list.map(x => x.split('|')[0]).join(', '));
+  await page.screenshot({ path: shots + '/setups-mix.png' });
   await page.locator(LIST + ' .scr-setups button', { hasText: 'Everything' }).click(); await page.waitForTimeout(4500);
   const back = await page.evaluate(() => scrState().list);
   check(JSON.stringify(back) === JSON.stringify(st2.list) && T3.hash === screensHash(back), 'back to Everything: the edited set (with Ben’s screen) again, and sent');
