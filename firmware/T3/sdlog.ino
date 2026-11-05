@@ -218,6 +218,7 @@ String sdIndexLine(const String& id) {
 // *pos moves on past them, `more` says if rows remain. Lines with nothing printable (left by a power cut) are skipped.
 String sdTrackRows(const String& id, uint32_t* pos, int count, int* got, bool* more) {
   String out;
+  out.reserve(count * 128);                              // one block, not grown (and scattered) row by row
   *got = 0; *more = false;
   xSemaphoreTake(sdLock, portMAX_DELAY);
   File f = SD.open("/jeep/trips/" + id + ".csv", FILE_READ);

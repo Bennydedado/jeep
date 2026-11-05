@@ -277,7 +277,26 @@ void uploadTrips(const String& url, const String& key) {
 // `budgetMs`), and while driving on Wi-Fi (small parts; with Bluetooth running the secure connection often can't get
 // the memory). Where a track got to is kept on the card (/jeep/upload.txt), so the next try carries on from there
 // instead of starting the track again: a long drive goes up over a few starts at home.
-#define PART_ROWS 100
+#define PART_ROWS 50
+// the body of one part, built in one go: the rows are escaped straight into it (no second copy of the rows),
+// so the secure connection still finds the 40-50 KB it needs while the part is held in memory
+static String partBody(const String& key, const String& id, int part, int got, const String& rows) {
+  String b;
+  b.reserve(rows.length() + rows.length() / 20 + key.length() + id.length() + 96);
+  b += "{\"k\":\""; b += jsonEsc(key); b += "\",\"op\":\"part\",\"id\":\""; b += id; b += "\",\"p\":"; b += String(part);
+  b += ",\"rows\":"; b += String(got); b += ",\"csv\":\"";
+  for (size_t i = 0; i < rows.length(); i++) {
+    char c = rows[i];
+    if (c == '"' || c == '\\') { b += '\\'; b += c; }
+    else if (c == '\n') b += "\\n";
+    else if ((uint8_t)c >= 32) b += c;
+  }
+  b += "\"}";
+  return b;
+}
+// the part size that last went through (2.28): starts at what the caller asks for and halves, down to 20 rows,
+// each time the T3 can't even open the connection (-1: usually not enough memory left for the secure connection)
+static int partRowsOk = 0;
 // returns how many tracks were confirmed; `progress` (may be null) is told the bytes of each part as it's confirmed
 int uploadTracks(const String& url, const String& key, uint32_t budgetMs, int partRows, void (*progress)(uint32_t)) {
   if (!url.length() || !sd.ok) return 0;
@@ -285,33 +304,48 @@ int uploadTracks(const String& url, const String& key, uint32_t budgetMs, int pa
   String ids[3];
   int n = sdWaitingIds(ids, 3), done = 0;
   bool anyFail = false;
+  int rowsNow = partRowsOk ? min(partRowsOk, partRows) : partRows;
   for (int k = 0; k < n && WiFi.status() == WL_CONNECTED; k++) {
     const String& id = ids[k];
     int part, total, got = 0;
     uint32_t pos;
     sdUpProgress(id, &part, &pos, &total);               // carry on where the last try stopped
     bool more = true, ok = true;
+    int code = 0;
     while (more && ok && WiFi.status() == WL_CONNECTED) {
       if (budgetMs && millis() - t0 > budgetMs) { more = true; ok = false; break; }   // out of time: the rest next start
       uint32_t at = pos;
-      String rows = sdTrackRows(id, &pos, partRows, &got, &more);
-      if (!got) break;
       String body;
-      int code = httpPost(url, "{\"k\":\"" + jsonEsc(key) + "\",\"op\":\"part\",\"id\":\"" + id + "\",\"p\":" + String(part) +
-                          ",\"rows\":" + String(got) + ",\"csv\":\"" + jsonEsc(rows) + "\"}", body);
-      ok = code == 200 && body.indexOf("\"ok\":true") >= 0;
+      {
+        String rows = sdTrackRows(id, &pos, rowsNow, &got, &more);
+        if (!got) break;
+        body = partBody(key, id, part, got, rows);
+      }                                                    // the rows are freed here: only the body is held
+      String answer;
+      code = httpPost(url, body, answer);
+      body = String();
+      ok = code == 200 && answer.indexOf("\"ok\":true") >= 0;
+      if (!ok && code < 0 && rowsNow > 20) {               // couldn't connect: try again at once with a smaller part
+        rowsNow = max(20, rowsNow / 2);
+        pos = at; more = true; ok = true;
+        delay(300);
+        continue;
+      }
       if (!ok) {
         pos = at;
-        trkStatus.set(body.indexOf("\"key\"") >= 0 ? String("track store key wrong") : "track send failed (" + String(code) + ", " + String(ESP.getFreeHeap() / 1024) + " KB free)");
+        trkStatus.set(answer.indexOf("\"key\"") >= 0 ? String("track store key wrong") :
+                      "track send failed (" + String(code) + ", " + String(ESP.getFreeHeap() / 1024) + " KB free, " +
+                      String(ESP.getMaxAllocHeap() / 1024) + " KB block, " + String(rowsNow) + " rows)");
         break;
       }
+      partRowsOk = rowsNow;
       total += got; part++;
       sdUpSave(id, part, pos, total);
       if (progress) progress(pos - at);
     }
     if (!ok || more) { anyFail = true; break; }          // (one track at a time: the next one waits for this one)
     String body;
-    int code = httpPost(url, "{\"k\":\"" + jsonEsc(key) + "\",\"op\":\"fin\",\"id\":\"" + id + "\",\"parts\":" + String(part) + ",\"rows\":" + String(total) +
+    code = httpPost(url, "{\"k\":\"" + jsonEsc(key) + "\",\"op\":\"fin\",\"id\":\"" + id + "\",\"parts\":" + String(part) + ",\"rows\":" + String(total) +
                         ",\"head\":\"" + jsonEsc(String(TRACK_HEADER)) + "\",\"idx\":\"" + jsonEsc(sdIndexLine(id)) + "\"}", body);
     if (code == 200 && body.indexOf("\"ok\":true") >= 0 && (long)numField(body, "rows") == total) {
       sdMarkUploaded(id);
@@ -323,7 +357,7 @@ int uploadTracks(const String& url, const String& key, uint32_t budgetMs, int pa
       // the store answered but is missing rows (it lost a part): send this track again from the start next time.
       // No answer at all (signal gone): keep the place, so next time only the last step is repeated.
       if (code == 200) sdUpSave("", 0, 0, 0);
-      trkStatus.set("track not confirmed (" + String(code) + ")"); anyFail = true; break;
+      trkStatus.set(body.indexOf("\"key\"") >= 0 ? String("track store key wrong") : "track not confirmed (" + String(code) + ")"); anyFail = true; break;
     }
   }
   if (anyFail) nextUploadTry = millis() + 120000;

@@ -464,7 +464,12 @@ function trackStoreSheet() {
           err.textContent = 'Checking…';
           store.set('trk', { u, k });
           try { await trkCall({ op: 'list' }); err.textContent = ''; store.del('trkKeyDraft'); sheet.close(); toast('Track store connected', 'Now send T3 settings over Bluetooth so the T3 knows it'); trkRefresh(true); render(); }
-          catch (e) { store.set('trk', cur); err.textContent = 'It answered with a problem: ' + e.message + '. Check "Who has access: Anyone" and that you pasted the script with its key.'; }
+          catch (e) {
+            store.set('trk', cur);
+            err.textContent = /key/.test(e.message)
+              ? 'The link works, but the key doesn’t match the one in the script. Paste the link and the key together as one line: link|key (the key is between the quotes in the line var KEY = \'…\' at the top of the script).'
+              : 'It answered with a problem: ' + e.message + '. Check "Who has access: Anyone" and that you pasted the script with its key.';
+          }
         } }, icon('link'), 'Connect'),
         h('div', { class: 'foot', text: 'Then T3 settings > Send settings to give the T3 the address and key (from Safari over Wi-Fi it needs T3 2.25; it goes sealed with your sheet key). Tracks go up when you start the Jeep at home on Wi-Fi (a long drive can take a few starts), and on your hotspot while driving.' }),
         cur ? h('button', { class: 'btn btn-glass glass btn-wide', onclick: e => copyText(cur.u + '|' + cur.k, e.currentTarget) }, icon('copy'), 'Copy link and key (for Safari or the dashboard)') : null,

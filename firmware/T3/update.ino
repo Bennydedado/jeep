@@ -309,7 +309,7 @@ static void bootSendTask(void*) {
   if (tracks) {
     upPart(0);
     while (WiFi.status() == WL_CONNECTED && sd.tracksWaiting > 0) {
-      int sent = uploadTracks(cfg.trkUrl, cfg.trkKey, 0, 250, upPart);
+      int sent = uploadTracks(cfg.trkUrl, cfg.trkKey, 0, 120, upPart);
       upSent += sent;
       sdCountWaiting();
       if (!sent) break;                                   // refused, or the Wi-Fi went: the rest next time
