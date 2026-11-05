@@ -1,5 +1,14 @@
 // obd.ino - the Vgate iCar Pro (Bluetooth LE OBD adapter, ELM327 commands): the T3 is its client.
 // It scans for the adapter, connects without stopping the loop, then asks for one engine value at a time.
+//
+// Keeping the link while driving (2.21): the ESP32 has one radio for Bluetooth and Wi-Fi. A Wi-Fi scan (looking
+// for your hotspot to upload trips or tracks) can starve Bluetooth for a couple of seconds, which used to be
+// longer than the link's 2.56 s "give up" time, so the iCar dropped. Now:
+//   - the link waits up to 8 s before giving up (supervision timeout), so a Wi-Fi scan doesn't break it
+//   - once the iCar has been found, a lost link reconnects straight to its address (no search needed);
+//     every 4th try searches again, in case it changed
+//   - while the iCar is reconnecting during a drive, Wi-Fi waits (up to 2 minutes): the engine numbers come first
+//   - every drop and reconnect goes into events.log on the SD card, and Diagnostics counts them
 #include "obdmatch.h"
 #include <esp_heap_caps.h>
 
@@ -17,6 +26,8 @@ static uint32_t obdFoundAt = 0;
 static int obdConnectCode = 0;
 static bool obdAttachFailed = false, obdConnectTimedOut = false;
 static bool noMatchNoted = false;
+static bool obdKnown = false;                   // the iCar's address is known (found once since power-on)
+static uint32_t obdTries = 0, obdDrops = 0, obdLostAt = 0, obdTryAt = 0;   // tries since the last link, links lost, when
 static char obdLast[64] = "waiting for scan", obdFoundName[33] = "";
 static portMUX_TYPE obdDiagMux = portMUX_INITIALIZER_UNLOCKED;
 static void obdDiagSet(const char* value) {
@@ -34,7 +45,7 @@ bool looksLikeObd(const NimBLEAdvertisedDevice* d) {
 class ScanCB : public NimBLEScanCallbacks {
   void onResult(const NimBLEAdvertisedDevice* d) override {
     if (!obdFound && looksLikeObd(d)) {
-      obdAddr = d->getAddress(); obdFound = true;
+      obdAddr = d->getAddress(); obdFound = true; obdKnown = true;
       String n = String(d->getName().c_str()); char text[64];
       portENTER_CRITICAL(&obdDiagMux);
       obdFoundAt = millis(); strlcpy(obdFoundName, n.c_str(), sizeof(obdFoundName));
@@ -107,10 +118,20 @@ void obdConnectStep() {
   if (connecting) {
     if (obdConnected) {
       connecting = false;
-      if (obdAttach()) { obdLinked = true; obdDiagSet("linked; engine setup"); sdEvent("iCar connected"); }
+      if (obdAttach()) {
+        obdLinked = true; obdDiagSet("linked; engine setup");
+        sdEvent(obdTries > 1 ? "iCar connected (try " + String(obdTries) + ")" : String("iCar connected"));
+        obdTries = 0;
+      }
       else { obdAttachFailed = true; obdClient->disconnect(); }
     } else if (now - connectAt > 8000) { connecting = false; obdConnectTimedOut = true; if (obdClient) obdClient->disconnect(); }
     return;
+  }
+  // the iCar was found before: go straight to its address every 3 s, searching again only every 4th try
+  if (!obdFound && obdKnown && obdTries % 4 != 3 && !NimBLEDevice::getScan()->isScanning()) {
+    if (now - obdTryAt < 3000) return;
+    if (wifiState == W_SCAN || wifiState == W_JOIN || otaMode) { obdDiagSet(otaMode ? "paused for Bluetooth update" : "paused for Wi-Fi scan/join"); return; }
+    obdFound = true;
   }
   if (!obdFound) {
     NimBLEScan* scan = NimBLEDevice::getScan();
@@ -122,17 +143,21 @@ void obdConnectStep() {
     lastScan = now;
     obdScans++; noMatchNoted = false; obdDiagSet("searching");
     scan->start(2000, false);   // runs by itself for 2 s; stops early when the iCar shows up
+    if (obdKnown) obdTries++;   // (a search counts as a try once the iCar is known, so the direct tries come back)
     return;
   }
   if (!obdClient) {
     obdClient = NimBLEDevice::createClient();
     if (!obdClient) { obdDiagSet("could not allocate BLE client"); return; }
     obdClient->setClientCallbacks(&obdCB, false); obdClient->setConnectTimeout(6000);
+    // 30-50 ms between radio meetings, and only give up after 8 s without hearing the iCar (was 2.56 s): a Wi-Fi
+    // scan can keep the radio busy for a couple of seconds (units: 1.25 ms, 1.25 ms, -, 10 ms)
+    obdClient->setConnectionParams(24, 40, 0, 800);
   }
   obdFound = false;
   obdConnected = false;
   obdAttachFailed = false; obdConnectTimedOut = false;
-  obdAttempts++;
+  obdAttempts++; obdTries++; obdTryAt = now;
   portENTER_CRITICAL(&obdDiagMux); obdConnectCode = 0; portEXIT_CRITICAL(&obdDiagMux);
   obdAttemptFree = ESP.getFreeHeap(); obdAttemptLargest = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
   obdDiagSet("connecting");
@@ -190,7 +215,7 @@ String obdDiagJson() {
   uint32_t freeNow = ESP.getFreeHeap(), largestNow = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
   return "\"obd\":{\"proto\":\"" + jsonEsc(obdProto) + "\",\"known\":" + String(obdSup.known ? 1 : 0) +
          ",\"search\":\"" + jsonEsc(target) + "\",\"found\":\"" + jsonEsc(found) + "\",\"foundAgo\":" + String(foundAt ? (long)(millis() - foundAt) / 1000 : -1) +
-         ",\"scans\":" + String(obdScans) + ",\"attempts\":" + String(obdAttempts) + ",\"last\":\"" + jsonEsc(last) + "\",\"code\":" + String(connectCode) +
+         ",\"scans\":" + String(obdScans) + ",\"attempts\":" + String(obdAttempts) + ",\"drops\":" + String(obdDrops) + ",\"last\":\"" + jsonEsc(last) + "\",\"code\":" + String(connectCode) +
          ",\"searching\":" + String(NimBLEDevice::getScan() && NimBLEDevice::getScan()->isScanning() ? 1 : 0) + ",\"paused\":\"" + jsonEsc(paused) +
          "\",\"free\":" + String(freeNow) + ",\"largest\":" + String(largestNow) + ",\"bleStartFree\":" + String(obdBleStartFree) +
          ",\"bleStartLargest\":" + String(obdBleStartLargest) + ",\"attemptFree\":" + String(obdAttemptFree) +
@@ -250,7 +275,17 @@ void obdAnswer(String r) {
     case 0x5E: car.lph = (256 * A + B) / 20.0; break;
   }
 }
+// Wi-Fi waits while the iCar is reconnecting during a drive (net.ino), for up to 2 minutes after the link went
+bool obdHoldWifi() { return obdKnown && !obdLinked && obdLostAt && millis() - obdLostAt < 120000; }
 void obdStep() {
+  static bool wasLinked = false;
+  if (wasLinked && !obdLinked) {   // the link just went (the Bluetooth callbacks can't write to the SD card themselves)
+    char why[64]; obdDiagCopy(why, sizeof(why));
+    obdDrops++; obdLostAt = millis(); obdTries = 0; obdTryAt = 0;
+    sdEvent("iCar link lost: " + String(why) + (wifiState == W_ON ? " (Wi-Fi on)" : wifiState == W_SCAN || wifiState == W_JOIN ? " (Wi-Fi looking)" : ""));
+  }
+  if (obdLinked) obdLostAt = 0;
+  wasLinked = obdLinked;
   obdConnectStep();
   // a link that died between connecting and attaching, or an adapter that went silent: start over
   if (obdLinked && obdClient && (!obdClient->isConnected() || (obdStage >= 9 && obdHeardAt && millis() - obdHeardAt > 20000))) {
