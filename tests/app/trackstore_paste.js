@@ -44,6 +44,21 @@ const check = (ok, what) => { n++; if (!ok) { fails++; console.log('FAIL ' + wha
   await page.waitForTimeout(300);
   const clip = await page.evaluate(() => navigator.clipboard.readText());
   check(clip === 'https://script.google.com/macros/s/ABC/exec|KEY123', 'copied line: ' + clip);
+  // Trips says when the T3 sends its tracks somewhere else (T3 2.27 fingerprint: first 8 hex of SHA-256 of link|key)
+  await page.keyboard.press('Escape');
+  const fp = require('crypto').createHash('sha256').update('https://script.google.com/macros/s/ABC/exec|KEY123').digest('hex').slice(0, 8);
+  const banner = async t3 => {
+    await page.evaluate(t => { store.set('t3trk', t); go('map'); render(); }, t3);
+    await page.waitForTimeout(400);
+    return page.evaluate(() => [...document.querySelectorAll('.banner b')].map(b => b.textContent).join(' / '));
+  };
+  check(/old track key/.test(await banner({ set: true, f: 'deadbeef', st: '', w: 12, at: 1 })), 'old key: warned');
+  await page.screenshot({ path: (process.env.SHOTS || '/tmp/heep-shots') + '/trips_t3_old_key.png' }).catch(() => {});
+  check(/no track storage/.test(await banner({ set: false, f: '', st: '', w: 12, at: 1 })), 'no store on the T3: warned');
+  check(/old track key/.test(await banner({ set: true, f: null, st: 'track store key wrong', w: 3, at: 1 })), 'older T3 saying key wrong: warned');
+  const same = await banner({ set: true, f: fp, st: 'sent t1', w: 12, at: 1 });
+  check(/12 GPS tracks are still on the T3/.test(same) && !/old track key/.test(same), 'same store, tracks waiting: ' + same);
+  check(!/T3/.test(await banner({ set: true, f: fp, st: 'sent t1', w: 0, at: 1 })), 'all sent: no banner');
   // a wrong key is refused and nothing is kept
   await page.evaluate(() => { store.del('trk'); });
   await page.reload(); await page.waitForTimeout(600);
