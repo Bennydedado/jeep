@@ -99,6 +99,10 @@ void setup() {
   Serial.begin(115200);
   Serial.println("Jeep T3 " FW " starting");
   resetWhy = resetReason();
+  // 2.31: hand the ESP32's Bluetooth Classic memory (~36 KB) back at once. The T3 only uses Bluetooth LE, but the
+  // NimBLE library marks Classic as "in use", so Arduino keeps it until Bluetooth starts. The start-up upload runs
+  // before that, and Google's secure connection needs this memory (it failed with -1/-11 at 54 KB free).
+  btMemRelease(BT_MODE_CLASSIC_BT);
   loraSleep();
   // the screen first, so there's something to look at
   Wire.begin(OLED_SDA, OLED_SCL);
