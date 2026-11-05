@@ -15,6 +15,8 @@ function t3Message(m, via) {
     updateLive();
   } else if (m.t === 'hi') {
     LIVE.fw = String(m.fw || ''); LIVE.t3 = m; LIVE.t3At = Date.now();
+    // what the T3 knows about the track store, kept so Trips can say what's wrong even when the T3 is off
+    store.set('t3trk', { set: !!m.trkSet, f: m.trkf != null ? String(m.trkf) : null, st: String(m.trk || ''), w: m.trkw != null ? Number(m.trkw) : -1, at: Date.now() });
     // after "Upload trips and tracks now": the T3 restarted to send, and says how it went once (per start)
     if (m.upl && m.uplb != null && store.get('uplSeen', null) !== String(m.uplb)) {
       store.set('uplSeen', String(m.uplb));

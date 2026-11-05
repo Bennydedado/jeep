@@ -116,6 +116,34 @@ function mapBox() {
   return MAP.el;
 }
 
+// ---------------------------------------------------------------- does the T3 send to this store? (T3 2.27)
+// The T3 says which store it sends to as a fingerprint (first 8 hex of SHA-256 of "link|key"), never the key itself.
+const TRK_FP = { for: '', v: null };
+function trkFingerprint(c) {
+  const want = c.u + '|' + c.k;
+  if (TRK_FP.for !== want) {
+    TRK_FP.for = want; TRK_FP.v = null;
+    if (window.crypto && crypto.subtle) crypto.subtle.digest('SHA-256', new TextEncoder().encode(want)).then(d => {
+      if (TRK_FP.for !== want) return;
+      TRK_FP.v = Array.from(new Uint8Array(d).slice(0, 4), b => b.toString(16).padStart(2, '0')).join('');
+      if (S.tab === 'map') render();
+    }, () => {});
+  }
+  return TRK_FP.v;
+}
+// a warning on Trips when the T3's tracks can't reach the store Heep reads from, and what to do about it
+function trkT3Banner(conf) {
+  const t = store.get('t3trk', null);
+  if (!t || !conf) return null;
+  const fix = () => t3Setup();
+  if (!t.set) return banner('warn', 'The T3 has no track storage', 'So its tracks can’t come here. Start the Jeep, then tap: T3 settings > Send settings', fix);
+  const mine = trkFingerprint(conf);
+  const other = (t.f && mine && t.f !== mine) || /key wrong/.test(t.st);
+  if (other) return banner('warn', 'The T3 has an old track key', 'Its tracks can’t reach this store. Start the Jeep, then tap: T3 settings > Send settings', fix);
+  if (t.w > 0) return banner('info', t.w + (t.w === 1 ? ' GPS track is' : ' GPS tracks are') + ' still on the T3', 'They go up when you start the Jeep at home on Wi-Fi' + (/failed|not confirmed/.test(t.st) ? ' (last try: ' + t.st + ')' : ''), fix);
+  return null;
+}
+
 // ---------------------------------------------------------------- the page
 function renderMap(v) {
   const conf = trkConf(), idx = store.get('trkIndex', null);
@@ -124,6 +152,7 @@ function renderMap(v) {
   topBanners(v);
   if (!conf) v.append(banner('map', 'Set up track storage', 'So the T3’s trips show here. These are made-up sample trips.', trackStoreSheet));
   else if (idx && idx.err) v.append(banner('warn', 'Couldn’t reach your track store', idx.err + ' · showing what this phone has', () => trkRefresh(true)));
+  else { const b = trkT3Banner(conf); if (b) v.append(b); }
   const box = mapBox();
   // full screen: the map fills the phone (Safari on iPhone has no real full screen for a page, so it's done with CSS)
   const wrap = h('div', { class: 'map-wrap card' + (MAP.full ? ' full' : '') });

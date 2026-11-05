@@ -162,7 +162,7 @@ String hiJson() {
          ",\"queued\":" + String(queued) + ",\"up\":\"" + jsonEsc(lastUpload) + "\",\"upAgo\":" + String(lastUploadAt ? (long)((millis() - lastUploadAt) / 1000) : -1) +
          ",\"totKm\":" + String(totalKm, 1) + ",\"upd\":\"" + jsonEsc(updStatus) + "\",\"wifi\":\"" + jsonEsc(wifiNow) + "\",\"seen\":\"" + jsonEsc(wifiSeen) +
          "\",\"scrh\":\"" + String(screensHash, HEX) + "\",\"scrn\":" + String(screenCount) + ",\"trk\":\"" + jsonEsc(trkStatus) + "\"" +
-         ",\"trkw\":" + String(sd.ok ? sd.tracksWaiting : -1) + (uplNote.length() ? ",\"upl\":\"" + jsonEsc(uplNote) + "\",\"uplb\":" + String(bootNo) : String("")) +
+         ",\"trkw\":" + String(sd.ok ? sd.tracksWaiting : -1) + ",\"trkf\":\"" + trackStoreFingerprint() + "\"" + (uplNote.length() ? ",\"upl\":\"" + jsonEsc(uplNote) + "\",\"uplb\":" + String(bootNo) : String("")) +
          "," + settingsJson() + "}";
 }
 

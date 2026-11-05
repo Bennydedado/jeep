@@ -230,7 +230,7 @@ volatile bool bootUp = false;          // the start-up upload is running (loop: 
 volatile bool upScreen = false;        // its screen is showing
 static volatile uint32_t upUntil = 0;  // the end screen goes at this millis() (0: still going)
 static volatile int upPctShown = -1;
-static char upTitle[24], upWhat[32], upSub[32];
+static char upTitle[24], upWhat[32], upSub[32], upWhy[32];
 static volatile bool upFlashDone = false;
 static char upDoneText[24];
 static uint32_t upTotal = 0, upDone = 0;
@@ -238,6 +238,7 @@ static int upN = 0, upSent = 0;
 static bool upAsked = false, upHome = false;
 static void upSet(const char* title, const String& what, const String& sub, int pct) {
   strlcpy(upTitle, title, sizeof(upTitle)); strlcpy(upWhat, what.c_str(), sizeof(upWhat)); strlcpy(upSub, sub.c_str(), sizeof(upSub));
+  upWhy[0] = 0;
   upPctShown = pct;
 }
 static void upShow(const String& what) {
@@ -257,6 +258,7 @@ bool upScreenDraw() {
   oled.drawFastHLine(0, 10, 128, SSD1306_WHITE);
   oled.setCursor(0, 16); oled.print(upWhat);
   oled.setCursor(0, 28); oled.print(upSub);
+  if (upWhy[0]) { oled.setCursor(0, 40); oled.print(upWhy); }
   int pct = upPctShown;
   if (pct >= 0) { oled.drawRect(0, 46, 128, 10, SSD1306_WHITE); oled.fillRect(2, 48, 124 * constrain(pct, 0, 100) / 100, 6, SSD1306_WHITE); }
   return true;
@@ -267,6 +269,18 @@ bool upScreenHide() {
   upScreen = false; upUntil = 0;
   if (bootUp) flash("Uploading behind");
   return true;
+}
+// why an upload stopped short, in two lines of 21 characters for the screen: what went wrong, and what to do
+static void upWhyText(bool tripsLeft, String& why, String& fix) {
+  String t = tripsLeft ? String(lastUpload) : String(trkStatus);
+  if (WiFi.status() != WL_CONNECTED) { why = "Wi-Fi lost"; fix = "rest next time"; }
+  else if (t.indexOf("key wrong") >= 0) { why = tripsLeft ? "sheet key wrong" : "track key wrong"; fix = "Heep: Send settings"; }
+  else if (t.indexOf("not confirmed") >= 0) { why = "store lost a part"; fix = "resends next time"; }
+  else if (t.indexOf("failed") >= 0) {
+    int a = t.indexOf('('), b = t.indexOf(',', a);
+    why = "send failed" + (a > 0 && b > a ? " (" + t.substring(a + 1, b) + ")" : String(""));
+    fix = "tries again next time";
+  } else { why = "rest next time"; fix = "on your Wi-Fi"; }
 }
 static void bootSendTask(void*) {
   String joined = bootJoin(upAsked);                     // asked for: hotspots that hide from a scan are tried too
@@ -313,7 +327,14 @@ static void bootSendTask(void*) {
   }
   String done = allDone ? String(upSent ? String(upSent) + (upSent == 1 ? " trip's track" : " trips' tracks") : String("trips")) + " sent"
                         : (tracks ? String(sd.tracksWaiting) + " track" + (sd.tracksWaiting == 1 ? "" : "s") + " to go" : String("trips to go"));
-  if (upScreen) { upSet(allDone ? "Upload done" : "Upload paused", done, allDone ? String("") : String("rest next time on Wi-Fi"), allDone ? 100 : -1); upUntil = millis() + 3000; }
+  // paused: say why on the screen (2.27), so a wrong track key doesn't look like "it just stops"
+  String why = "", fix = "";
+  if (!allDone) upWhyText(trips && queued, why, fix);
+  if (upScreen) {
+    upSet(allDone ? "Upload done" : "Upload paused", done, allDone ? String("") : why, allDone ? 100 : -1);
+    if (!allDone) strlcpy(upWhy, fix.c_str(), sizeof(upWhy));
+    upUntil = millis() + (allDone ? 3000 : 12000);
+  }
   else { strlcpy(upDoneText, allDone ? "Upload done" : "Upload paused", sizeof(upDoneText)); upFlashDone = true; }
   WiFi.disconnect(true); WiFi.mode(WIFI_OFF);
   bootUp = false;

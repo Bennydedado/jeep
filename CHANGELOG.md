@@ -1,5 +1,13 @@
 # Changes
 
+## 5 Nov 2026 — T3 2.27, Heep 1.1.32: say why tracks don't arrive
+
+- When an upload stops short, the T3 screen now says why and what to do, for 12 s: "track key wrong / Heep: Send
+  settings", "send failed (-1)", "Wi-Fi lost" and so on, instead of only "Upload paused".
+- The T3 tells Heep which track store it sends to as a short fingerprint of the link and key (never the key itself).
+  Heep's Trips page compares it with its own store and warns when the T3 has no track storage or an old key, with a
+  tap straight to T3 settings > Send settings. It also says how many GPS tracks are still on the T3.
+
 ## 5 Nov 2026 — T3 2.26: uploads keep going until they're done
 
 - At key-on the T3 no longer stops sending tracks after 25 s ("12 to go, next time"): it keeps going until every trip

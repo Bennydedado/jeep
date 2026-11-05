@@ -169,6 +169,18 @@ String settingsJson() {
          ",\"trkSet\":" + String(cfg.trkUrl.length() ? "true" : "false");
 }
 
+// which track store the T3 sends to, without giving away the link or key (2.27): the first 8 hex digits of
+// SHA-256 of "link|key". Heep works out the same from its own and says when they differ (an old key, another store).
+String trackStoreFingerprint() {
+  if (!cfg.trkUrl.length()) return "";
+  String in = cfg.trkUrl + "|" + cfg.trkKey;
+  uint8_t h[32];
+  mbedtls_sha256((const unsigned char*)in.c_str(), in.length(), h, 0);
+  char out[9];
+  snprintf(out, sizeof(out), "%02x%02x%02x%02x", h[0], h[1], h[2], h[3]);
+  return out;
+}
+
 // ---------------------------------------------------------------- small JSON helpers (the messages are flat and simple)
 bool has(const String& j, const char* key) { return j.indexOf("\"" + String(key) + "\":") >= 0; }
 String jStr(const String& j, const char* key) {
