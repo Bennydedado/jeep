@@ -231,7 +231,7 @@ function addNetSheet(name) {
     build(b, sheet) {
       const pass = textRow('Password', { autocapitalize: 'off', autocorrect: 'off', spellcheck: 'false' });
       put(b, h('div', { class: 'group' }, h('div', { class: 'gr' }, h('span', { text: 'Name' }), h('b', { text: name })), pass.row),
-        h('p', { class: 'foot', text: 'Saved on this phone and sent to the T3 over Bluetooth only. It tries your networks in order; this one goes last.' }),
+        h('p', { class: 'foot', text: 'Saved on this phone and sent to the T3 over Bluetooth, or over Wi-Fi sealed with your sheet key (T3 2.25+). It tries your networks in order; this one goes last.' }),
         h('button', { class: 'btn btn-primary btn-wide', onclick: async () => {
           const s = store.get('t3', {});
           const list = (Array.isArray(s.nets) ? s.nets : []).filter(x => x && x[0] && ssidKey(x[0]) !== ssidKey(name));
@@ -240,7 +240,8 @@ function addNetSheet(name) {
           s.nets = list; store.set('t3', s);
           sheet.close();
           if (t3Via() === 'bt') { await t3SendSettings(); if (verAtLeast(LIVE.fw, T3_BT_UPDATE_FROM)) t3Send({ c: 'wifi', scan: 1 }); }
-          else toast('Saved on this phone', 'Connect over Bluetooth and Send settings: Wi-Fi passwords only go over Bluetooth', 'info');
+          else if (t3Via() === 'net' && verAtLeast(LIVE.fw, '2.25')) await t3SendSettings();
+          else toast('Saved on this phone', 'Connect to the T3 and Send settings (over Wi-Fi it needs T3 2.25)', 'info');
         } }, icon('bt'), 'Save and send to the T3'));
       setTimeout(() => pass.input.focus(), 300);
     },

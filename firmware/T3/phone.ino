@@ -97,6 +97,13 @@ void onCommand(const String& j, int src) {
   else if (c == "wifi") { if (numField(j, "scan") > 0) wifiScanNow(); reply(wifiJson(), src); }   // the Wi-Fi page
   else if (c == "ota") { if (src == 0 && jStr(j, "do") == "begin") otaBegin(j); }                  // update over Bluetooth only
   else if (c == "cfg") { applySettings(j, src == 1); screenWake(); wifiNudge(false); reply("{\"t\":\"cfg\",\"ok\":true}", src); reply(hiJson(), src); }
+  else if (c == "sec") {   // 2.25: the secrets, sealed (Heep in Safari); applied as if they'd come over Bluetooth
+    String plain;
+    if (relayUnseal(jStr(j, "x"), plain) && plain.startsWith("{")) {
+      applySettings(plain, false); wifiNudge(false);
+      reply("{\"t\":\"cfg\",\"ok\":true,\"sec\":true}", src); reply(hiJson(), src);
+    } else reply("{\"t\":\"cfg\",\"ok\":false,\"sec\":true,\"why\":\"couldn't open the sealed settings (different sheet key?)\"}", src);
+  }
   else if (c == "cfgreset") { resetSettings(); reply("{\"t\":\"cfg\",\"ok\":true,\"reset\":true}", src); reply(hiJson(), src); }
   else if (c == "scr") {
     // one screen of a set: {"c":"scr","i":0,"n":5,"d":"Boost|1|v,boost,..."}

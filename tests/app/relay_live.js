@@ -44,6 +44,7 @@ async function onFrame(bytes) {
   const [type, topic, payload] = mqParse(Buffer.from(bytes));
   if (type === 8) { T3.subscribed = topic; return; }
   if (type !== 3 || topic !== CMD_T) return;
+  (T3.rawCmds = T3.rawCmds || []).push(payload);
   const j = JSON.parse(payload);
   const mac = hex(crypto.createHmac('sha256', KEY).update(j.n + '|' + j.m).digest());
   if (mac !== j.h || j.n <= T3.lastNonce) { T3.badSig++; return; }
@@ -62,6 +63,16 @@ async function onFrame(bytes) {
     T3.finalAttempts++;
     if (T3.finalAttempts === 1) return;  // simulate a lost final confirmation
     await push({ t: 'scr', ok: true, h: m.h, n: m.n });
+    return;
+  }
+  if (m.c === 'cfg') { T3.cfg = m; await push({ t: 'cfg', ok: true }); return; }
+  if (m.c === 'sec') {   // what net.ino relayUnseal() does: nonce + ciphertext + tag, the relay key
+    try {
+      const raw = Buffer.from(m.x, 'base64'), d = crypto.createDecipheriv('aes-256-gcm', encKey, raw.subarray(0, 12));
+      d.setAuthTag(raw.subarray(raw.length - 16));
+      T3.sec = JSON.parse(Buffer.concat([d.update(raw.subarray(12, raw.length - 16)), d.final()]).toString());
+      await push({ t: 'cfg', ok: true, sec: true });
+    } catch (e) { T3.secBad = true; }
     return;
   }
   if (m.c === 'watch' && T3.quiet) return;   // a parked T3 that isn't sending live numbers
@@ -156,6 +167,14 @@ const srv = http.createServer((q, r) => {
   await page.screenshot({ path: shots + '/relay-3-done.png' });
 
   await page.locator(W + ' button[aria-label="Close"]').click(); await page.waitForTimeout(400);
+
+  // ---- Safari sends Wi-Fi passwords and links too (T3 2.25): sealed in their own message, never in the clear
+  T3.fw = '2.25';
+  await page.evaluate(() => { const s = store.get('t3', {}); s.nets = [['starlink2.4', 'hunter2-pass']]; store.set('t3', s); store.set('trk', { u: 'https://script.google.com/macros/s/TRK/exec', k: 'track-key-xyz' }); LIVE.fw = '2.25'; });
+  await page.evaluate(() => t3SendSettings()); await page.waitForTimeout(1500);
+  check(T3.cfg && !('wifi' in T3.cfg) && !('trk' in T3.cfg) && !('k' in T3.cfg), 'the settings themselves carry no secrets over the relay');
+  check(!T3.secBad && T3.sec && T3.sec.wifi[1] === 'hunter2-pass' && T3.sec.trk === 'track-key-xyz' && T3.sec.tru.includes('TRK'), 'the sealed message opens on the T3 with the Wi-Fi password and track link');
+  check(!JSON.stringify(T3.rawCmds || []).includes('hunter2-pass'), 'the password never appears in the clear on the relay');
 
   // ---- from another tab, a T3 that's quiet (not sending live numbers): Heep wakes it and the screens go over Wi-Fi
   T3.quiet = true;

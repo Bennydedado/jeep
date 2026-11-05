@@ -77,8 +77,8 @@ void loadSettings() {
   xSemaphoreGive(cfgLock);
 }
 
-// a {"c":"cfg",...} message. Over the relay (fromRelay) the secrets are refused: Wi-Fi passwords,
-// the sheet link and key only ever arrive over Bluetooth.
+// a {"c":"cfg",...} message. Over the relay (fromRelay) the secrets are refused in the clear: Wi-Fi passwords, the
+// sheet link and key and the track store's only arrive over Bluetooth, or sealed in a "sec" message (phone.ino, 2.25).
 bool applySettings(const String& j, bool fromRelay) {
   Preferences p;
   p.begin("t3", false);

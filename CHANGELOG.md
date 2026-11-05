@@ -1,5 +1,13 @@
 # Changes
 
+## 5 Nov 2026 — T3 2.25, Heep 1.1.31: Safari can send Wi-Fi passwords and links
+
+- Heep in Safari (over the Wi-Fi relay) can now send Wi-Fi networks, the sheet link and the track storage link and key
+  to the T3, not just Bluefy. They travel sealed (AES-256-GCM with the key from your sheet key) in their own `sec`
+  message; only a T3 with the same sheet key can open them. Nothing secret ever goes in the clear. The very first
+  hookup (giving the T3 the sheet key) still needs Bluetooth once.
+- CI pins Playwright below 1.65 (1.65.0 was published without its playwright-core).
+
 ## 5 Nov 2026 — T3 2.24, Heep 1.1.30: Upload trips and tracks now
 
 - Heep: T3 settings has **Upload trips and tracks now** and shows what's waiting. The T3 answers straight away (what

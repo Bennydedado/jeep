@@ -181,6 +181,28 @@ void relaySend(const String& line) {
   free(buf);
 }
 
+// {"c":"sec","x":"<base64 of nonce + ciphertext + tag>"} (2.25): Wi-Fi passwords and links from Heep in Safari,
+// sealed with the same key as the live numbers. Only a message sealed with your sheet key opens (the tag checks it).
+bool relayUnseal(const String& b64, String& out) {
+  relayKey();
+  size_t cap = b64.length() * 3 / 4 + 4, n = 0;
+  if (b64.length() < 40 || cap > 4096) return false;
+  uint8_t* raw = (uint8_t*)malloc(cap);
+  if (!raw) return false;
+  bool ok = mbedtls_base64_decode(raw, cap, &n, (const unsigned char*)b64.c_str(), b64.length()) == 0 && n > 28;
+  char* plain = ok ? (char*)malloc(n - 28 + 1) : nullptr;
+  if (ok && plain) {
+    mbedtls_gcm_context g;
+    mbedtls_gcm_init(&g);
+    ok = mbedtls_gcm_setkey(&g, MBEDTLS_CIPHER_ID_AES, encKey, 256) == 0 &&
+         mbedtls_gcm_auth_decrypt(&g, n - 28, raw, 12, nullptr, 0, raw + n - 16, 16, raw + 12, (unsigned char*)plain) == 0;
+    mbedtls_gcm_free(&g);
+    if (ok) { plain[n - 28] = 0; out = plain; }
+  } else ok = false;
+  free(plain); free(raw);
+  return ok;
+}
+
 // ---------------------------------------------------------------- https POST (Apps Script answers from a second address)
 int httpPost(const String& url, const String& body, String& out) {
   WiFiClientSecure tls;

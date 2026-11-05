@@ -46,7 +46,8 @@ answers with all tabs (see `core.js` `sync()`).
 5. **The T3's loop must never block.** No `delay()` over a few ms, no waiting for Wi-Fi or a server in `loop()`.
    Slow network work goes in `uploadTask` (net.ino), which must not touch loop()'s `String`s
    (use `taskEvent()` and the `Txt` status buffers).
-6. **Secrets** (Wi-Fi passwords, sheet key, track key) only go to the T3 over Bluetooth, never the relay, never into the repo.
+6. **Secrets** (Wi-Fi passwords, sheet key, track key) go to the T3 only over Bluetooth, or over the relay sealed with
+   AES-256-GCM in a `sec` message (T3 2.25+, Ben's OK, Nov 2026) - never in the clear on the relay, never into the repo.
 7. **Honest data:** unknown values show `--`, never a made-up number. GPS heading is "course", not a compass. Gaps in a
    track are never drawn across. Estimated times are marked.
 8. **Screens and fields exist twice:** `firmware/T3/fields.h` + `screens.h` and `t3screens.js` must match (the tests check it).
