@@ -84,7 +84,11 @@ void onCommand(const String& j, int src) {
   else if (c == "trip") tripCommand(jStr(j, "do"), src ? "Heep (Wi-Fi)" : "Heep");   // start pause resume end
   else if (c == "act") { doAction(jStr(j, "a"), "Heep"); screenWake(); }       // next prev home mark sleep bright peak send
   else if (c == "page") { pageGo((int)numField(j, "i")); screenWake(); }
-  else if (c == "update") { updateNow(); reply(updJson(), src); }   // Heep's "Update over Wi-Fi": progress follows as {"t":"upd"}
+  else if (c == "update") { updateNow(); reply(updJson(), src); }
+  else if (c == "upload") {   // Heep's "Upload trips and tracks now" (2.24): answers at once, then restarts to send
+    int a, b; String why = uploadNow(src ? "Heep (Wi-Fi)" : "Heep", a, b);
+    reply("{\"t\":\"upl\",\"ok\":" + String(why.length() ? "false" : "true") + ",\"why\":\"" + jsonEsc(why) + "\",\"trips\":" + String(a) + ",\"tracks\":" + String(b) + "}", src);
+  }   // Heep's "Update over Wi-Fi": progress follows as {"t":"upd"}
   else if (c == "watch") relayWatched();                              // Heep in Safari is showing Live: keep the numbers coming
   else if (c == "obdscan") obdScanStart(src);                         // Heep: Diagnostics > Scan the Jeep
   else if (c == "kw") { bool ok = wheelTestCode(jStr(j, "x")); reply("{\"t\":\"kw\",\"x\":\"" + jsonEsc(jStr(j, "x")) + "\",\"ok\":" + String(ok ? "true" : "false") + ",\"nano\":\"" + String(wheelMapState()) + "\"}", src); }
@@ -150,7 +154,9 @@ String hiJson() {
   return "{\"t\":\"hi\",\"fw\":\"" FW "\",\"proto\":" + String(PROTO) + ",\"obd\":" + String(obdLinked ? "true" : "false") +
          ",\"queued\":" + String(queued) + ",\"up\":\"" + jsonEsc(lastUpload) + "\",\"upAgo\":" + String(lastUploadAt ? (long)((millis() - lastUploadAt) / 1000) : -1) +
          ",\"totKm\":" + String(totalKm, 1) + ",\"upd\":\"" + jsonEsc(updStatus) + "\",\"wifi\":\"" + jsonEsc(wifiNow) + "\",\"seen\":\"" + jsonEsc(wifiSeen) +
-         "\",\"scrh\":\"" + String(screensHash, HEX) + "\",\"scrn\":" + String(screenCount) + ",\"trk\":\"" + jsonEsc(trkStatus) + "\"," + settingsJson() + "}";
+         "\",\"scrh\":\"" + String(screensHash, HEX) + "\",\"scrn\":" + String(screenCount) + ",\"trk\":\"" + jsonEsc(trkStatus) + "\"" +
+         ",\"trkw\":" + String(sd.ok ? sd.tracksWaiting : -1) + (uplNote.length() ? ",\"upl\":\"" + jsonEsc(uplNote) + "\",\"uplb\":" + String(bootNo) : String("")) +
+         "," + settingsJson() + "}";
 }
 
 // the live numbers: twice a second over Bluetooth, once a second over the relay. Anything unknown is left out.

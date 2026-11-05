@@ -15,7 +15,7 @@ int menuChanges = 0;   // saved as "mc"; Heep copies the settings back when it s
 
 enum { MI_BRIGHT, MI_NIGHTBR, MI_NIGHT, MI_SLEEP, MI_HOME, MI_TEMP, MI_ENGT, MI_FLIP, MI_LIVE, MI_PEAK, MI_SEND, MI_END, MI_CLOSE, MI_COUNT };
 static const char* const MENU_NAMES[MI_COUNT] = { "Brightness", "Night bright", "Night mode", "Screen off", "Key-on scr", "Outside temp",
-                                                   "Engine temp", "Upside down", "Live Wi-Fi", "Reset peak", "Send trips", "End trip", "Close" };
+                                                   "Engine temp", "Upside down", "Live Wi-Fi", "Reset peak", "Upload now", "End trip", "Close" };
 static const int SLEEP_STEPS[] = { 30, 60, 120, 300, 900, 0 };
 
 bool menuOpen() {
@@ -37,7 +37,7 @@ static String menuValue(int i) {
     case MI_ENGT: return cfg.engF ? "F" : "C";
     case MI_FLIP: return cfg.flip ? "Yes" : "No";
     case MI_LIVE: return cfg.liveWifi ? "On" : "Off";
-    case MI_SEND: return queued > 0 ? String(queued) + " waiting" : String("none");
+    case MI_SEND: { int w = queued + (sd.ok ? sd.tracksWaiting : 0); return w > 0 ? String(w) + " waiting" : String("none"); }
     default: return menuConfirmItem == i && millis() - menuConfirmAt < 3000 ? String("again?") : String("");
   }
 }

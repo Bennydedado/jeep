@@ -22,9 +22,9 @@ function t3Parse(list) {
 // ---------------------------------------------------------------- the pretend T3
 const T3 = { screens: DEFAULT_SCREENS.slice(), hash: screensHash(DEFAULT_SCREENS), pending: [], pendingN: 0, cfg: null, cmds: [], bytes: [] };
 let notify = async () => {};
-const hi = () => ({ t: 'hi', fw: '2.0', proto: 2, obd: true, queued: 0, up: 'not yet', upAgo: -1, totKm: 15204, upd: 'up to date (2.0)', wifi: 'off', seen: '',
+const hi = () => ({ t: 'hi', fw: T3.fw || '2.0', proto: 2, obd: true, queued: 0, up: 'not yet', upAgo: -1, totKm: 15204, upd: 'up to date (2.0)', wifi: 'off', seen: '',
   scrh: T3.hash, scrn: T3.screens.length, trk: 'not set up', fc: 1, dc: 1, ss: 60, pk: 90, br: 2, bn: 0, nf: -1, nt: 7, tz: -420, sp: 0, lw: 1, spd: 0, hm: 5,
-  h16: 0, hh: 1, tf: 0, to: 0, gb: 0, li: 1, lis: 10, lfl: 5, sdm: 90, rot: 0, rf: 250, bm: 'prev,home;mark,pause;next,end', io4: 0, obdName: '', ssids: [], nets: 0, sheet: false, trkSet: false });
+  h16: 0, hh: 1, tf: 0, to: 0, gb: 0, li: 1, lis: 10, lfl: 5, sdm: 90, rot: 0, rf: 250, bm: 'prev,home;mark,pause;next,end', io4: 0, obdName: '', ssids: [], nets: 0, sheet: false, trkSet: false, queued: T3.queued || 0, trkw: T3.trkw != null ? T3.trkw : -1 });
 async function onT3Line(line) {
   const m = JSON.parse(line);
   T3.cmds.push(m.c);
@@ -43,6 +43,7 @@ async function onT3Line(line) {
   } else if (m.c === 'getscr') {
     const t = t3Parse(T3.screens);
     for (let i = 0; i < t.screens.length; i++) await notify({ t: 'scrd', i, n: t.screens.length, d: t.screens[i].s });
+  } else if (m.c === 'upload') { T3.uploads = (T3.uploads || 0) + 1; await notify(T3.uplAnswer || { t: 'upl', ok: true, why: '', trips: 2, tracks: 1 });
   } else if (m.c === 'kw') { T3.kw = (T3.kw || []).concat(m.x); await notify({ t: 'kw', x: m.x, ok: true, nano: 'saved' });
   } else if (m.c === 'cfg') { T3.cfgs = (T3.cfgs || []).concat(m); if (m.bvp != null && Object.keys(m).length <= 3) return; T3.cfg = m; await notify({ t: 'cfg', ok: true }); await notify(hi()); }
 }
@@ -246,6 +247,21 @@ const srv = http.createServer((q, r) => {
   await notify(Object.assign(hi(), { br: 0, nf: -2, mc: 3 })); await page.waitForTimeout(400);
   check(await page.evaluate(() => store.get('t3', {}).br === 0 && store.get('t3', {}).nf === -2), 'wheel-menu changes are taken into Heep');
 
+  // T3 settings > Upload trips and tracks now (T3 2.24): says what's going, or why not; then how it went after the restart
+  await page.keyboard.press('Escape'); await page.waitForTimeout(300);
+  T3.fw = '2.24'; T3.queued = 2; T3.trkw = 1;
+  await page.evaluate(() => { LIVE.fw = '2.24'; LIVE.t3 = Object.assign({}, LIVE.t3 || {}, { queued: 2, trkw: 1 }); document.querySelectorAll('.sheet.on').forEach(e => e.classList.remove('on')); t3Setup(); });
+  await page.waitForTimeout(600);
+  const SET = '.sheet[aria-label="T3 settings"]';
+  check(/Waiting on the T3: 2 trips, 1 GPS track/.test(await page.locator(SET).innerText()), 'T3 settings shows what is waiting');
+  await page.locator(SET + ' button', { hasText: 'Upload trips and tracks now' }).click(); await page.waitForTimeout(800);
+  check(T3.uploads === 1 && /Uploading 2 trips and 1 GPS track/.test(await page.locator('.toast').innerText()), 'Upload now: the T3 is asked and Heep says what is going');
+  T3.uplAnswer = { t: 'upl', ok: false, why: 'not while driving: stop first', trips: 0, tracks: 0 };
+  await page.locator(SET + ' button', { hasText: 'Upload trips and tracks now' }).click(); await page.waitForTimeout(800);
+  check(/Not while driving/.test(await page.locator('.toast').innerText()), 'Upload now: why not, when it can not');
+  await notify(Object.assign(hi(), { fw: '2.24', upl: 'sent 2 trips and 1 track', uplb: 41 })); await page.waitForTimeout(500);
+  check(/Upload done/.test(await page.locator('.toast').innerText()) && /Sent 2 trips and 1 track/.test(await page.locator('.toast').innerText()), 'after the restart Heep says how it went');
+  await page.screenshot({ path: shots + '/upload-now.png' });
   check(!errors.length, 'no errors in the page: ' + errors.join(' | '));
   console.log('editor.js: ' + checks + ' checks, ' + failed + ' failed');
   await browser.close(); srv.close();
