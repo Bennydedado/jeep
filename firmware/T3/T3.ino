@@ -35,6 +35,7 @@ String wifiName, wifiNow = "off", wifiSeen;
 Txt lastUpload, updStatus, trkStatus;
 volatile bool phoneOn = false, obdLinked = false, updating = false;
 uint32_t bootNo = 0;
+bool bleLater = false;   // Bluetooth waits for the start-up upload (update.ino bootSend)
 String resetWhy;
 T3Oled oled(SCREEN_W, SCREEN_H, &Wire, -1);
 int page = 0;
@@ -120,23 +121,24 @@ void setup() {
   tempBegin();
   wheelBegin();
   tripBegin();
-  bootSend();     // trips waiting for the sheet: sent now, before Bluetooth takes the memory (update.ino)
   fuelLoad();
-  phoneBegin();
-  obdBegin();
+  // trips and tracks waiting go up in the background (update.ino); Bluetooth starts once that's over
+  bleLater = bootSend();
+  if (!bleLater) { phoneBegin(); obdBegin(); }
   sdEvent("boot " FW " (" + resetWhy + ")");
   if (bootUpdNote.length()) sdEvent(bootUpdNote);
-  if (bootNote.length()) sdEvent(bootNote);
 }
 
 void loop() {
-  obdStep();
+  if (bleLater && !bootUp) { bleLater = false; phoneBegin(); obdBegin(); }   // the start-up upload is over
+  if (!bleLater) obdStep();
   gpsStep();
   tempStep();
   wheelStep();
   tripStep();
-  phoneStep();
-  wifiStep();
+  if (!bleLater) phoneStep();
+  if (!bootUp) wifiStep();          // (the start-up upload has the Wi-Fi)
+  bootSendStep();
   sdStep();
   displayStep();
   otaStep();
