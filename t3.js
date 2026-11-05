@@ -373,6 +373,7 @@ function diagSheet() {
             ['Searching for', d.obd.search || 'common OBD names'],
             ['Last adapter seen', d.obd.found || 'Not found yet', d.obd.found ? 'ok' : 'soon'],
             ['Searches / connection attempts', (d.obd.scans == null ? '--' : d.obd.scans) + ' / ' + (d.obd.attempts == null ? '--' : d.obd.attempts)],
+            ['Times the link dropped since key-on', d.obd.drops == null ? '--' : String(d.obd.drops), d.obd.drops ? 'due' : 'ok'],
             ['Last step', d.obd.last || '--'], ['Paused for', d.obd.paused || 'No'],
             ['Free / largest memory block', d.obd.free == null ? '--' : Math.round(d.obd.free / 1024) + ' / ' + Math.round((d.obd.largest || 0) / 1024) + ' KB'],
             ['Memory when BLE started', d.obd.bleStartFree == null ? '--' : Math.round(d.obd.bleStartFree / 1024) + ' / ' + Math.round((d.obd.bleStartLargest || 0) / 1024) + ' KB'],

@@ -430,6 +430,8 @@ void wifiStep() {
   switch (wifiState) {
     case W_IDLE:
       if (!want || cfg.netCount == 0 || now < nextWifiTry) return;
+      // the iCar is reconnecting during a drive: a Wi-Fi scan now would make that harder (one radio for both)
+      if (obdHoldWifi()) { wifiNow = "waiting for the iCar to reconnect"; nextWifiTry = now + 5000; return; }
       WiFi.mode(WIFI_STA);
       WiFi.scanNetworks(true);
       wifiState = W_SCAN; wifiAt = now; wifiNow = "looking";

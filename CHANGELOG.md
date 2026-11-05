@@ -1,5 +1,16 @@
 # Changes
 
+## 4 Nov 2026 — T3 2.21, Heep 1.1.26: the iCar stays connected (and comes back) during a drive
+
+- The T3 now waits 8 s without hearing the iCar before calling the Bluetooth link lost (it was 2.56 s). The ESP32 has
+  one radio for Bluetooth and Wi-Fi, and a Wi-Fi scan for your hotspot (to upload trips or tracks) could keep it busy
+  long enough to drop the iCar.
+- When the link does drop, the T3 reconnects straight to the iCar it already knows, every 3 s, instead of only
+  searching every 8 s; every 4th try searches again in case the adapter changed.
+- While the iCar is reconnecting during a drive, Wi-Fi waits (up to 2 minutes) instead of scanning over the top of it.
+- Each drop and reconnect is written to `/jeep/events.log` on the SD card (with what Wi-Fi was doing at the time), and
+  Diagnostics → iCar shows how many times the link dropped since key-on.
+
 ## 3 Nov 2026 — T3 2.20, Heep 1.1.25: holding a wheel button does its job once
 
 - Holding the top button jumps to the key-on screen and stays there, however long you hold it. Before, it went to the

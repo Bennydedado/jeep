@@ -365,6 +365,7 @@ Note: the T3 never installs an *older* version by itself, so after a manual down
 | Wi-Fi "none of yours in range" | Hotspot off, 5 GHz only (turn on Maximize Compatibility), name typed differently. |
 | Wi-Fi "couldn't join" | Password. |
 | iCar not connected | Live → Diagnostics → OBD shows the name searched, whether an adapter was seen, scan and connection counts, the last BLE step, and free memory now, when BLE started, and at the last connection try. If it says it paused for Wi-Fi, wait for Wi-Fi to finish; if it never sees the adapter, check the saved iCar name and that the adapter is powered. |
+| iCar drops during a drive | T3 2.21+ keeps the link through Wi-Fi scans (8 s before it gives up), reconnects straight to the iCar's address every 3 s, and holds Wi-Fi off for up to 2 minutes while it does. Diagnostics shows **Times the link dropped since key-on**; the SD card's `/jeep/events.log` has a line for each drop ("iCar link lost: …", with what Wi-Fi was doing) and each reconnect ("iCar connected (try N)"). |
 | iCar found but will not connect | Check the last BLE step and error code in Diagnostics. “OBD service/notify missing” means the adapter's Bluetooth service does not match the supported profiles; include the adapter name and Diagnostics screen when reporting it. |
 | Trips "sheet key wrong" | Re-send T3 settings from the phone connected to the right Jeep log. |
 | Tracks "track store key wrong" | Re-do Trips → Track storage, then Send settings over Bluetooth. |
