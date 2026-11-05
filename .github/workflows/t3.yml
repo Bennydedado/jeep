@@ -27,7 +27,8 @@ jobs:
           node-version: 22
       - name: Install browser test tools
         run: |
-          npm install --no-save playwright
+          # pinned below 1.65: playwright 1.65.0 was published without its playwright-core (Nov 2026)
+          npm install --no-save 'playwright@<1.65'
           npx playwright install --with-deps chromium
       - name: Run all repository tests
         run: bash tests/run.sh
