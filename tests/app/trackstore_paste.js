@@ -68,6 +68,7 @@ const check = (ok, what) => { n++; if (!ok) { fails++; console.log('FAIL ' + wha
   await page.click('.sheet.on button.btn-primary:has-text("Connect")');
   await page.waitForTimeout(800);
   check(!(await page.evaluate(() => store.get('trk', null))), 'wrong key not kept');
+  check(/key doesn’t match/.test(await page.textContent('.sheet.on .err')), 'wrong key: says the key is the problem');
   check(errors.length === 0, 'no page errors: ' + errors.join(' | '));
   await browser.close(); srv.close();
   console.log('trackstore_paste.js: ' + n + ' checks, ' + fails + ' failed');

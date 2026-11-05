@@ -1,5 +1,14 @@
 # Changes
 
+## 5 Nov 2026 — T3 2.28, Heep 1.1.33: tracks that fail with -1
+
+- Tracks failed with "send failed (-1)": the T3 couldn't open the secure connection, most likely because a 250-row part
+  (two copies of about 30 KB) left too little memory for it. Parts are now built in one copy, start at 120 rows at
+  key-on (50 while driving), and when the connection can't be opened the same part is tried again at once at half
+  the size, down to 20 rows. The size that worked is kept. A failure now also says the largest free memory block and
+  the part size, so the next problem shows its cause.
+- Track storage: when the link works but the key doesn't match, Heep says so plainly and how to paste link|key.
+
 ## 5 Nov 2026 — T3 2.27, Heep 1.1.32: say why tracks don't arrive
 
 - When an upload stops short, the T3 screen now says why and what to do, for 12 s: "track key wrong / Heep: Send
