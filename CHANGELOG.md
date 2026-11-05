@@ -1,5 +1,11 @@
 # Changes
 
+## 5 Nov 2026 — T3 2.30: which try failed
+
+- Still "-1, 55 KB free, 37 KB block" with the iCar connected: a try while driving passed the 56 KB check, then the
+  part and the connection used it up. While Bluetooth runs, tracks now need 100 KB in one piece (in practice: they
+  wait for key-on at home). A failure now starts with "at start:" or "driving:", so it's clear which try it was.
+
 ## 5 Nov 2026 — T3 2.29: tracks wait for key-on instead of failing while driving
 
 - Ben's T3 showed "track send failed (-1, 54 KB free, 43 KB block, 20 rows)" with the iCar connected: with Bluetooth
