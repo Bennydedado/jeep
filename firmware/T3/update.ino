@@ -299,6 +299,7 @@ static void bootSendTask(void*) {
   bool trips = queued > 0 && cfg.sheetUrl.length();
   bool tracks = sd.ok && sd.tracksWaiting > 0 && cfg.trkUrl.length();
   int tripsBefore = queued;
+  uint32_t heapAtStart = ESP.getFreeHeap() / 1024, blockAtStart = ESP.getMaxAllocHeap() / 1024;
   upTotal = tracks ? sdWaitingBytes(&upN) : 0; upDone = 0; upSent = 0;
   if (!upAsked) upScreen = true;                         // quiet until now: something is going up
   if (trips) {
@@ -315,7 +316,8 @@ static void bootSendTask(void*) {
       if (!sent) break;                                   // refused, or the Wi-Fi went: the rest next time
     }
     bootNote += String(bootNote.length() ? "; " : "") + "tracks at start: " + String(upSent) + " sent, " + String(sd.tracksWaiting) +
-                " waiting (" + String(trkStatus) + ")" + (upHome ? " [home]" : "") + (upAsked ? " [asked]" : "");
+                " waiting (" + String(trkStatus) + ")" + (upHome ? " [home]" : "") + (upAsked ? " [asked]" : "") +
+                " [" + String(heapAtStart) + " KB free, " + String(blockAtStart) + " KB block on Wi-Fi]";
   }
   bool allDone = (!trips || queued == 0) && (!tracks || sd.tracksWaiting == 0);
   if (upAsked) {

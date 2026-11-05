@@ -1,5 +1,12 @@
 # Changes
 
+## 5 Nov 2026 — T3 2.31: give back the Bluetooth Classic memory at start
+
+- 2.30 showed the start-up try failing too: "at start: -11, 54 KB free, 33 KB block". The NimBLE library includes a
+  header that marks Bluetooth Classic as in use, so Arduino kept its memory (~36 KB) reserved until Bluetooth
+  started, which is after the start-up upload. The T3 only uses Bluetooth LE: it now releases Classic's memory first
+  thing at power-on, so the upload has it. The start-up note (Diagnostics) also gives the memory at that moment.
+
 ## 5 Nov 2026 — T3 2.30: which try failed
 
 - Still "-1, 55 KB free, 37 KB block" with the iCar connected: a try while driving passed the 56 KB check, then the
