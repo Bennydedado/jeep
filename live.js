@@ -486,9 +486,17 @@ let relayKeyP = null, relayKeyFor = '';
 function relayKey() {
   if (relayKeyFor !== S.conn.k) {
     relayKeyFor = S.conn.k;
-    relayKeyP = crypto.subtle.digest('SHA-256', new TextEncoder().encode('heep-enc:' + S.conn.k)).then(d => crypto.subtle.importKey('raw', d, 'AES-GCM', false, ['decrypt']));
+    relayKeyP = crypto.subtle.digest('SHA-256', new TextEncoder().encode('heep-enc:' + S.conn.k)).then(d => crypto.subtle.importKey('raw', d, 'AES-GCM', false, ['decrypt', 'encrypt']));
   }
   return relayKeyP;
+}
+// the other way (T3 2.25): Wi-Fi passwords and links sealed for the T3 ("sec"), so Safari can send them too
+async function relaySeal(text) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await relayKey(), new TextEncoder().encode(text)));
+  const all = new Uint8Array(12 + ct.length); all.set(iv); all.set(ct, 12);
+  let s = ''; for (const b of all) s += String.fromCharCode(b);
+  return btoa(s);
 }
 async function relayOpen(b64) {
   const raw = Uint8Array.from(atob(b64), c => c.charCodeAt(0));

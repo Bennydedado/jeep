@@ -157,6 +157,12 @@ function t3UploadNow() {
   };
   t3Send({ c: 'upload' });
 }
+// {"c":"sec","x":<sealed JSON>}: only the T3 with your sheet key can open it (net.ino relayUnseal)
+async function t3SendSecrets(sec) {
+  const x = await relaySeal(JSON.stringify(sec));
+  if (x.length > 1700) return false;   // the relay's 2 KB message, with the signature around it
+  return relayCommand({ c: 'sec', x });
+}
 async function t3SendSettings() {
   const v = t3Cfg();
   if (!(await t3Ready())) { toast('Saved on this phone', 'Connect to the T3 (Bluetooth, or the T3 on your hotspot) and send again', 'info'); return false; }
@@ -164,16 +170,21 @@ async function t3SendSettings() {
   const msg = { c: 'cfg', fc: Math.max(30, Math.min(300, num(v.fc) || 100)) / 100, dc: Math.max(50, Math.min(200, num(v.dc) || 100)) / 100 };
   for (const k of ['ss', 'pk', 'br', 'bn', 'nf', 'nt', 'tz', 'sp', 'lw', 'spd', 'hm', 'h16', 'hh', 'tf', 'to', 'gb', 'li', 'lis', 'lfl', 'sdm', 'rot', 'rf', 'io4', 'opr', 'etf']) msg[k] = Number(v[k]);
   msg.bv = String(v.bv || '1,70,255'); msg.bm = String(v.bm); msg.wb = typeof writeNanoCfg === 'function' ? writeNanoCfg(parseNanoCfg(v.wb)) : String(v.wb); msg.obd = String(v.obd || '');
-  if (via === 'bt') {
-    // the secrets only ever go over Bluetooth
-    const nets = Array.isArray(v.nets) ? v.nets : [];
-    msg.wifi = []; for (const [a, b] of nets) if (a) msg.wifi.push(a, b);
-    if (S.conn) { msg.u = S.conn.u; msg.k = S.conn.k; }
-    const trk = store.get('trk', null);
-    if (trk && trk.u) { msg.tru = trk.u; msg.trk = trk.k; }
-  }
+  // the secrets: over Bluetooth in the settings themselves; over the relay never in the clear, only sealed with your
+  // sheet key in their own "sec" message (T3 2.25+), so Heep in Safari can send them too
+  const sec = {};
+  const nets = Array.isArray(v.nets) ? v.nets : [];
+  sec.wifi = []; for (const [a, b] of nets) if (a) sec.wifi.push(a, b);
+  if (S.conn) { sec.u = S.conn.u; sec.k = S.conn.k; }
+  const trk = store.get('trk', null);
+  if (trk && trk.u) { sec.tru = trk.u; sec.trk = trk.k; }
+  if (via === 'bt') Object.assign(msg, sec);
   await t3Send(msg);
-  if (via === 'net') toast('Sent over Wi-Fi', 'Wi-Fi passwords and links only go over Bluetooth', 'info');
+  if (via === 'net') {
+    if (!verAtLeast(LIVE.fw, '2.25')) { toast('Sent over Wi-Fi', 'Wi-Fi passwords and links need T3 2.25 to go over Wi-Fi: tap Update in Live first', 'info'); return true; }
+    const sent = await t3SendSecrets(sec);
+    toast(sent ? 'Sent over Wi-Fi' : 'Settings sent, but not the passwords and links', sent ? 'Wi-Fi networks and links went sealed with your sheet key' : 'They were too long for one message: remove a Wi-Fi network and try again', sent ? 'info' : 'bad');
+  }
   return true;
 }
 

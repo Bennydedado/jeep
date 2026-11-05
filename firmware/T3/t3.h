@@ -90,6 +90,7 @@ extern int menuChanges;              // settings changed from the wheel menu (me
 extern String bootNote;              // how sending trips at start-up went (update.ino)
 extern String uplNote;               // how an upload asked for from Heep / the wheel went (update.ino, in "hi")
 String uploadNow(const char* from, int& nTrips, int& nTracks);
+bool relayUnseal(const String& b64, String& out);   // net.ino: a sealed "sec" message from Heep (2.25)
 
 // ---------------------------------------------------------------- the clock
 // Best source wins: GPS ('g') over internet time ('n') over the phone ('a'). 0 = unknown.

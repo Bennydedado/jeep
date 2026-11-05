@@ -437,7 +437,7 @@ function trackStoreSheet() {
           try { await trkCall({ op: 'list' }); err.textContent = ''; store.del('trkKeyDraft'); sheet.close(); toast('Track store connected', 'Now send T3 settings over Bluetooth so the T3 knows it'); trkRefresh(true); render(); }
           catch (e) { store.set('trk', cur); err.textContent = 'It answered with a problem: ' + e.message + '. Check "Who has access: Anyone" and that you pasted the script with its key.'; }
         } }, icon('link'), 'Connect'),
-        h('div', { class: 'foot', text: 'Then T3 settings > Send settings (over Bluetooth, in Bluefy) to give the T3 the address and key. Tracks go up when you start the Jeep at home on Wi-Fi (a long drive can take a few starts), and on your hotspot while driving.' }),
+        h('div', { class: 'foot', text: 'Then T3 settings > Send settings to give the T3 the address and key (from Safari over Wi-Fi it needs T3 2.25; it goes sealed with your sheet key). Tracks go up when you start the Jeep at home on Wi-Fi (a long drive can take a few starts), and on your hotspot while driving.' }),
         cur ? h('button', { class: 'btn btn-glass glass btn-wide', onclick: e => copyText(cur.u + '|' + cur.k, e.currentTarget) }, icon('copy'), 'Copy link and key (for Safari or the dashboard)') : null,
         cur ? null : h('div', { class: 'foot', text: 'Already set up in another browser? There, tap Copy link and key, then paste it into the box above and Connect: this browser then uses the same storage.' }),
         cur ? confirmButton('Disconnect the track store', 'Tap again: this phone forgets it (your Drive keeps the tracks)', () => { store.del('trk'); store.del('trkIndex'); sheet.close(); render(); }) : null);
