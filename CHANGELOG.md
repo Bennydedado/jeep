@@ -1,5 +1,12 @@
 # Changes
 
+## 5 Nov 2026 — T3 2.29: tracks wait for key-on instead of failing while driving
+
+- Ben's T3 showed "track send failed (-1, 54 KB free, 43 KB block, 20 rows)" with the iCar connected: with Bluetooth
+  running there isn't one piece of memory big enough for the secure connection, however small the part. While
+  Bluetooth is on, tracks are no longer tried unless at least 56 KB is free in one piece; they go at key-on at home
+  (before Bluetooth starts) or with Upload now. The status from that try is no longer overwritten by failing ones.
+
 ## 5 Nov 2026 — T3 2.28, Heep 1.1.33: tracks that fail with -1
 
 - Tracks failed with "send failed (-1)": the T3 couldn't open the secure connection, most likely because a 250-row part
