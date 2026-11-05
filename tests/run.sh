@@ -10,6 +10,16 @@ for t in nmea jlink wheelmap sun screens otarx obdpid obdmatch; do g++ -std=c++1
 g++ -std=c++17 -Wall -O1 -Werror=frame-larger-than=2048 -o $T/t_screenstore tests/firmware/test_screenstore.cpp
 $T/t_screenstore
 g++ -std=c++17 -Wall -O1 -I tests/firmware/mock -o $T/t_nano tests/firmware/test_nano_link.cpp && $T/t_nano
+# The default screens drawn with the T3's own drawing code and the real Adafruit GFX library (the one the T3 is built
+# with): nothing spills out of its box. Needs the library installed (arduino-cli lib install "Adafruit GFX Library").
+G=$(dirname "$(find "${GFX_DIR:-/nonexistent}" "$(arduino-cli config get directories.user 2>/dev/null)/libraries" ~/Arduino/libraries \
+      -maxdepth 2 -name Adafruit_GFX.cpp 2>/dev/null | head -1)")
+if [ -f "$G/Adafruit_GFX.cpp" ]; then
+  g++ -std=c++17 -Wall -O1 -DARDUINO=200 -I tests/firmware/gfxmock -I "$G" -o $T/t_draw tests/firmware/test_draw.cpp "$G/Adafruit_GFX.cpp"
+  node -e "const A=require('./t3screens.js');const s=new Set();A.SCREEN_TEMPLATES.forEach(t=>s.add(t[1]));A.SETUPS.forEach(u=>u.list().forEach(x=>s.add(x)));console.log([...s].filter(x=>x.split('|').length>2).join('\\n'))" > $T/more_screens.txt
+  $T/t_draw - $T/more_screens.txt
+elif [ -n "$CI" ]; then echo "test_draw: Adafruit GFX library not found"; exit 1
+else echo "test_draw skipped (Adafruit GFX library not found; set GFX_DIR to its folder)"; fi
 for t in tests/app/test_*.js; do node $t; done
 g++ -std=c++17 -Wall -O1 -o $T/scrtool tests/firmware/scrtool.cpp
 if node -e "require('playwright')" 2>/dev/null; then

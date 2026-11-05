@@ -36,7 +36,7 @@ Txt lastUpload, updStatus, trkStatus;
 volatile bool phoneOn = false, obdLinked = false, updating = false;
 uint32_t bootNo = 0;
 String resetWhy;
-Adafruit_SSD1306 oled(SCREEN_W, SCREEN_H, &Wire, -1);
+T3Oled oled(SCREEN_W, SCREEN_H, &Wire, -1);
 int page = 0;
 Screen screens[MAX_SCREENS];
 int screenCount = 0;

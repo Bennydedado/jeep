@@ -125,10 +125,23 @@ function renderMap(v) {
   if (!conf) v.append(banner('map', 'Set up track storage', 'So the T3’s trips show here. These are made-up sample trips.', trackStoreSheet));
   else if (idx && idx.err) v.append(banner('warn', 'Couldn’t reach your track store', idx.err + ' · showing what this phone has', () => trkRefresh(true)));
   const box = mapBox();
+  // full screen: the map fills the phone (Safari on iPhone has no real full screen for a page, so it's done with CSS)
+  const wrap = h('div', { class: 'map-wrap card' + (MAP.full ? ' full' : '') });
+  const setFull = on => {
+    MAP.full = on;
+    wrap.classList.toggle('full', on); document.body.classList.toggle('map-full', on);
+    fullBtn.setAttribute('aria-label', on ? 'Close full screen' : 'Full screen');
+    fullBtn.textContent = ''; fullBtn.append(icon(on ? 'x' : 'full'));
+    if (MAP.map) setTimeout(() => MAP.map.invalidateSize(), 50);
+  };
+  const fullBtn = h('button', { class: 'circle glass', 'aria-label': MAP.full ? 'Close full screen' : 'Full screen', onclick: () => setFull(!MAP.full) }, icon(MAP.full ? 'x' : 'full'));
   const tools = h('div', { class: 'map-tools' },
+    fullBtn,
     h('button', { class: 'circle glass', 'aria-label': 'Fit the trip', onclick: fitSelection }, icon('fit')),
     h('button', { class: 'circle glass', 'aria-label': 'Where the Jeep is', onclick: () => showLive(true) }, icon('pin')));
-  v.append(h('div', { class: 'map-wrap card' }, box, tools, h('div', { class: 'map-legend' }, MAP.sel ? colorLegend() : liveLegend())));
+  wrap.append(box, tools, h('div', { class: 'map-legend' }, MAP.sel ? colorLegend() : liveLegend()));
+  v.append(wrap);
+  document.body.classList.toggle('map-full', !!MAP.full);
   if (MAP.map) setTimeout(() => { MAP.map.invalidateSize(); }, 0);
   if (MAP.sel) renderTrip(v);
   else renderTripList(v, list);

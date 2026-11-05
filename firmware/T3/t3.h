@@ -27,6 +27,7 @@
 #include <Adafruit_SSD1306.h>
 #include <Fonts/FreeSansBold18pt7b.h>
 #include <Fonts/FreeSansBold12pt7b.h>
+#include <Fonts/FreeSansBold9pt7b.h>   // size 2 (2.23+: replaces the blocky double-size font)
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
@@ -189,7 +190,15 @@ extern uint32_t bootNo;
 extern String resetWhy;
 
 // ---------------------------------------------------------------- the screen
-extern Adafruit_SSD1306 oled;
+// the OLED, with a clip box: while one is set, pixels outside it aren't drawn (draw.h sets one per widget)
+struct T3Oled : public Adafruit_SSD1306 {
+  using Adafruit_SSD1306::Adafruit_SSD1306;
+  int16_t cx0 = -32768, cy0 = -32768, cx1 = 32767, cy1 = 32767;
+  void clipTo(int x, int y, int w, int h) { cx0 = x; cy0 = y; cx1 = x + w - 1; cy1 = y + h - 1; }
+  void clipOff() { cx0 = cy0 = -32768; cx1 = cy1 = 32767; }
+  void drawPixel(int16_t x, int16_t y, uint16_t c) override { if (x >= cx0 && x <= cx1 && y >= cy0 && y <= cy1) Adafruit_SSD1306::drawPixel(x, y, c); }
+};
+extern T3Oled oled;
 extern int page;
 extern Screen screens[MAX_SCREENS];
 extern int screenCount;

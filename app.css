@@ -313,6 +313,8 @@ button.row:active, .row.tap:active { background: var(--glass-lo); }
 .seg { display: flex; padding: 3px; border-radius: 999px; background: var(--field); position: relative; }
 .seg button { flex: 1; height: 32px; border-radius: 999px; font-size: 14px; font-weight: 500; color: var(--ink-2); position: relative; z-index: 1; transition: color .2s; white-space: nowrap; padding: 0 10px; }
 .seg button[aria-pressed="true"] { color: var(--ink); background: var(--glass-solid); box-shadow: 0 3px 10px rgba(0, 0, 0, .18), inset 1px 1px 0 var(--glass-hi); font-weight: 600; }
+.scr-setups { margin: 2px 0 6px; }
+.scr-setups button { padding: 0 6px; }
 
 /* status pills */
 .pill { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px 3px 7px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--field); color: var(--ink); white-space: nowrap; }
@@ -552,6 +554,11 @@ input.sw:checked::after { transform: translateX(20px); }
 @media (max-width: 400px) { .tabbar .tab { width: 52px; } .tab span { font-size: 9.5px; } }
 
 .map-wrap { position: relative; padding: 0; overflow: hidden; }
+.map-wrap.full { position: fixed; inset: 0; z-index: 9000; margin: 0; border-radius: 0; display: flex; flex-direction: column; background: var(--bg, #000); }
+.map-wrap.full .mapbox { flex: 1; height: auto; min-height: 0; }
+.map-wrap.full .map-tools { top: calc(env(safe-area-inset-top, 0px) + 10px); }
+.map-wrap.full .map-legend { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); }
+body.map-full { overflow: hidden; }
 .mapbox { height: min(52vh, 460px); min-height: 280px; background: var(--field); z-index: 0; }
 .mapbox.offline { background: repeating-linear-gradient(0deg, transparent 0 39px, var(--sep) 39px 40px), repeating-linear-gradient(90deg, transparent 0 39px, var(--sep) 39px 40px), var(--field); }
 .map-wait { display: grid; place-items: center; height: 100%; color: var(--ink-2); font-size: 15px; padding: 20px; text-align: center; }

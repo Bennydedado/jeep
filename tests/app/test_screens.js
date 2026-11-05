@@ -17,6 +17,14 @@ ok(!!statusScreen && statusScreen.includes('|r,wifi,') && statusScreen.includes(
 const worstScreen = A.writeScreen({ name: 'Transfer test', on: true, w: Array.from({ length: 10 }, (_, i) => ({ type: 'r', field: 'upstat', x: 0, y: i * 6, w: 128, h: 8, size: 1, align: 'l', label: true, unit: false, frame: false, invert: false, mn: 0, mx: 100, text: '"status"\\' })) });
 const transferSize = A.screenWireSizes(11, 12, worstScreen);
 ok(transferSize.bluetooth <= 1490 && transferSize.relay <= 2048, 'a full 10-widget screen fits Bluetooth and signed relay message buffers');
+// setups: each a whole set the T3 can keep, every screen valid; Everything is the T3's own default set
+ok(A.SETUPS.length >= 3 && A.SETUPS[0].id === 'all' && JSON.stringify(A.SETUPS[0].list()) === JSON.stringify(A.DEFAULT_SCREENS), 'setups start with Everything = the defaults');
+for (const su of A.SETUPS) {
+  const l = su.list();
+  ok(l.length >= 1 && l.length <= 12 && l.every(x => typeof x === 'string' && A.parseScreen(x)), 'setup ' + su.name + ': 1-12 valid screens');
+  ok(l.length < 12 || su.id !== 'all', 'setup ' + su.name + ': room left to add a screen');
+}
+ok(A.DEFAULT_SCREENS.length < 12, 'room to add a screen to the defaults (' + A.DEFAULT_SCREENS.length + ')');
 // parse -> write round trip is exact for every default
 for (const s of A.DEFAULT_SCREENS) { const once = A.writeScreen(A.parseScreen(s)); ok(A.writeScreen(A.parseScreen(once)) === once, 'round trip: ' + s.slice(0, 20)); }
 // fingerprint matches the T3's FNV-1a (test_screens.cpp checks "abc" = 1a47e90b too)
