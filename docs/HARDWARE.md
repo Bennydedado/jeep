@@ -271,7 +271,9 @@ Send settings · Try Wi-Fi and update now · Put T3 settings back to new.
 
 **Live → Screens:** up to 12 screens, each on/off, in any order; per screen up to 10 widgets. The built-in Trip status
 screen shows Wi-Fi connected/not connected and trips uploaded/not uploaded; add it to existing custom screens from
-Add a screen. During a key-on upload, the T3 briefly shows the same status instead of an upload prompt.
+Add a screen. While trips or tracks go up at start-up (2.22+), the T3 shows **Uploading** with a progress bar (only
+once something is actually being sent, not while it joins Wi-Fi), then **Upload done** for 3 s, or **Upload paused**
+with how many are left.
 value (label + number in size 1–4, auto-shrinks), row (label left, value right), bar (from/to), text, line;
 position and size in T3 pixels; label/unit/box/inverted; any value in `firmware/T3/fields.h`.
 Templates: blank, boost gauge, temperature & direction, one big number, two big numbers, list of six.
@@ -289,8 +291,20 @@ safe value; a broken or missing screen file falls back to the built-in screens.
 - **Where tracks come from:** the T3 uploads each finished trip's CSV to your **track store**, a small Apps
   Script in your own Google Drive (`tracks/TrackStore.gs`), separate from the Jeep log sheet's script.
   Set it up once: Trips → Set up track storage (Heep puts a fresh key into the script for you), then
-  T3 settings → Send settings over Bluetooth. Tracks go up 100 rows per request; a trip only counts as uploaded
-  when the store confirms every row. Files: Drive folder "Jeep tracks", one CSV per trip + `index.json`.
+  T3 settings → Send settings over Bluetooth (in Bluefy). Already set up in another browser? There, open Track
+  storage and tap **Copy link and key**; paste that one line into Track storage in the other browser (or the Hub's
+  Map tab) and Connect. A trip only counts as uploaded when the store confirms every row. Files: Drive folder
+  "Jeep tracks", one CSV per trip + `index.json`.
+- **When tracks go up (2.22+):** the secure connection to Google needs ~50 KB, which Bluetooth usually leaves too
+  little of, so tracks go before Bluetooth starts:
+  - **Getting home:** on one of your Wi-Fi networks that isn't a phone hotspot (a name with iPhone, iPad, Android,
+    Hotspot, Galaxy or Pixel counts as a hotspot), stopped for 5 s, with something waiting: the T3 ends the trip,
+    restarts and sends everything, showing the progress bar. Stopping with something waiting also makes it look
+    for Wi-Fi straight away. Once per key-on.
+  - **Key-on:** trips, then tracks for up to 25 s.
+  - **Driving on your hotspot:** small pieces in the background, when the memory allows.
+  The T3 remembers where a track got to (`/jeep/upload.txt` on the card), so a key-off mid-upload just carries on next
+  time. Tracks recorded before the store was set up go up too, oldest first.
 - **What the page shows:** trip list (month filter, newest/oldest/longest/coldest), start → end (named places or
   coordinates), distance, time, top speed, temperature range. A trip: the recorded track in unbroken pieces
   coloured by speed or temperature (or plain), start/end markers, hollow dots where the GPS lost and regained the

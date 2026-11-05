@@ -49,8 +49,33 @@ void sendTripsNow(const char* from) {
   restartToSend(from);
 }
 void parkedTripEnded() { parkSendAt = millis() + 20000; }   // trip.ino: the trip ended because the Jeep was parked
+// Got home: on one of your Wi-Fi networks that isn't a phone's hotspot, stopped for 5 s, with trips or tracks waiting.
+// The T3 ends the trip and restarts, so bootSend has all the memory (the upload shows on the screen, then "Upload
+// done"). Once per power-on: RTC memory survives the T3's own restart but not the key going off.
+#define HOME_MAGIC 0x484F4D45UL
+RTC_NOINIT_ATTR static uint32_t homeSent;
+static uint32_t stillSince = 0, nudgedAt = 0;
+bool isHotspot(String n) {
+  n.toLowerCase();
+  return n.indexOf("iphone") >= 0 || n.indexOf("ipad") >= 0 || n.indexOf("android") >= 0 || n.indexOf("hotspot") >= 0 ||
+         n.indexOf("galaxy") >= 0 || n.indexOf("pixel") >= 0;
+}
+static void homeStep(uint32_t now) {
+  bool waiting = (queued > 0 && cfg.sheetUrl.length()) || (sd.ok && sd.tracksWaiting > 0 && cfg.trkUrl.length());
+  if (homeSent == HOME_MAGIC || sendRestartAt || !waiting || uploading || !cfg.netCount) { stillSince = 0; return; }
+  if (speedNow() >= 3) { stillSince = 0; return; }     // (no speed known counts as stopped)
+  if (!stillSince) { stillSince = now; return; }
+  // just stopped and not on Wi-Fi: look now instead of waiting for the next try (at most every 2 minutes)
+  if (wifiState == W_IDLE && now - stillSince > 3000 && (!nudgedAt || now - nudgedAt > 120000)) { nudgedAt = now; wifiNudge(true); }
+  if (wifiState != W_ON || isHotspot(wifiName) || now - stillSince < 5000) return;
+  homeSent = HOME_MAGIC;
+  Preferences p; p.begin("t3", false); p.putUChar("hsend", 1); p.end();
+  if (trip.km >= 0.2 || trip.gpsKm >= 0.2) tripCommand("end", "home Wi-Fi");
+  restartToSend("home Wi-Fi");
+}
 static void sendStep() {
   uint32_t now = millis();
+  homeStep(now);
   if (parkSendAt && (int32_t)(now - parkSendAt) >= 0) {
     if (uploading && now - parkSendAt < 60000) return;   // give a send that's under way a chance
     parkSendAt = 0;
@@ -101,7 +126,7 @@ static String bootJoin(bool blind) {
     if (!blind && !seenAs[order[t]].length()) continue;   // quick: only networks in sight
     String ssid = seenAs[order[t]].length() ? seenAs[order[t]] : cfg.nets[order[t]].ssid;
     if (!ssid.length()) continue;
-    if (blind) bootShow("joining", ssid, -1); else bootShowAs("Trip status", "Wi-Fi: not connected", "Trips: not uploaded", -1);
+    if (blind) bootShow("joining", ssid, -1);   // (sending trips joins quietly: the screen only changes once something goes up)
     WiFi.begin(ssid.c_str(), cfg.nets[order[t]].pass.c_str());
     uint32_t t0 = millis();
     while (WiFi.status() != WL_CONNECTED && millis() - t0 < (blind ? 15000 : 10000)) delay(100);
@@ -175,25 +200,65 @@ void bootUpdate() {
   delay(2500);   // long enough to read
 }
 
-// at key-on (T3.ino setup, after the last trip is finished and before Bluetooth): trips waiting for the sheet go now,
-// while all the memory is free. With Bluetooth running the secure connection to Google often can't get the ~50 KB it
-// needs, so trips sat on the T3. Only networks in sight, about 10 s at most when there's nothing to join.
+// at start-up (T3.ino setup, after the last trip is finished and before Bluetooth): trips waiting for the sheet, then
+// GPS tracks waiting for the track store, go now while all the memory is free. With Bluetooth running the secure
+// connection to Google often can't get the ~50 KB it needs, so they sat on the T3.
+//   - key-on: only networks in sight (about 10 s at most when there's nothing to join), tracks for up to 25 s
+//   - arrived home (sendStep below restarted the T3 for it): everything, however long it takes
+// The T3 remembers where a track got to, so whatever doesn't go now carries on next time. Joining Wi-Fi happens
+// quietly; the screen shows "Uploading" with a bar only once something is actually going up, then "Upload done".
+static uint32_t upTotal = 0, upDone = 0;
+static int upN = 0, upSent = 0;
+static void upShow(const String& what) {
+  int pct = upTotal ? (int)min((uint64_t)100, (uint64_t)upDone * 100 / upTotal) : 0;
+  bootShowAs("Uploading", what, String(pct) + "%", pct);
+}
+static void upPart(uint32_t bytes) {
+  upDone += bytes;
+  upShow(upN > 1 ? "trip " + String(min(upSent + 1, upN)) + " of " + String(upN) : String("GPS track"));
+}
 void bootSend() {
-  if (queued <= 0 || !cfg.sheetUrl.length() || !cfg.netCount) return;
-  bootShowAs("Trip status", "Wi-Fi: not connected", "Trips: not uploaded", -1);
+  Preferences pr; pr.begin("t3", false);
+  bool home = pr.getUChar("hsend", 0);                 // sendStep: restarted because the Jeep got home
+  if (home) pr.remove("hsend");
+  pr.end();
+  bool trips = queued > 0 && cfg.sheetUrl.length();
+  bool tracks = sd.ok && sd.tracksWaiting > 0 && cfg.trkUrl.length();
+  if ((!trips && !tracks) || !cfg.netCount) return;
   String joined = bootJoin(false);
-  if (joined.length()) {
-    if (!timeSrc) {   // the trip times are kept; this is only for a trip that never had a clock
-      configTime(0, 0, "pool.ntp.org", "time.google.com");
-      struct tm tmv; if (getLocalTime(&tmv, 3000)) { struct timeval tv; gettimeofday(&tv, nullptr); setClock((int64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000, 'n'); }
-    }
-    bootShowAs("Trip status", "Wi-Fi: connected", "Trips: not uploaded", -1);
+  if (!joined.length()) {
+    bootNote = "uploads at start: no Wi-Fi in sight";
+    WiFi.disconnect(true); WiFi.mode(WIFI_OFF);
+    return;
+  }
+  if (!timeSrc) {   // the trip times are kept; this is only for a trip that never had a clock
+    configTime(0, 0, "pool.ntp.org", "time.google.com");
+    struct tm tmv; if (getLocalTime(&tmv, 3000)) { struct timeval tv; gettimeofday(&tv, nullptr); setClock((int64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000, 'n'); }
+  }
+  upTotal = tracks ? sdWaitingBytes(&upN) : 0; upDone = 0; upSent = 0;
+  if (trips) {
+    upShow("trips to Jeep log");
     uploadTrips(cfg.sheetUrl, cfg.sheetKey);
     bootNote = "trips at start: " + String(lastUpload);
-    bootShowAs("Trip status", "Wi-Fi: connected", queued > 0 ? "Trips: not uploaded" : "Trips: uploaded", -1);
-  } else {
-    bootNote = "trips at start: no Wi-Fi in sight";
-    bootShowAs("Trip status", "Wi-Fi: not connected", "Trips: not uploaded", -1);
   }
+  if (tracks) {
+    uint32_t t0 = millis(), budget = home ? 0 : 25000;
+    upPart(0);
+    while (WiFi.status() == WL_CONNECTED && sd.tracksWaiting > 0) {
+      uint32_t used = millis() - t0;
+      if (budget && used >= budget) break;
+      int sent = uploadTracks(cfg.trkUrl, cfg.trkKey, budget ? budget - used : 0, 250, upPart);
+      upSent += sent;
+      sdCountWaiting();
+      if (!sent) break;                                 // refused or out of time: the rest next time
+    }
+    bootNote += String(bootNote.length() ? "; " : "") + "tracks at start: " + String(upSent) + " sent, " + String(sd.tracksWaiting) +
+                " waiting (" + String(trkStatus) + ")" + (home ? " [home]" : "");
+  }
+  bool allDone = (!trips || queued == 0) && (!tracks || sd.tracksWaiting == 0);
+  if (allDone) bootShowAs("Upload done", String(upSent ? String(upSent) + (upSent == 1 ? " trip's track" : " trips' tracks") : String("trips")) + " sent", "", 100);
+  else bootShowAs("Upload paused", tracks ? String(sd.tracksWaiting) + " track" + (sd.tracksWaiting == 1 ? "" : "s") + " to go" : String("trips to go"),
+                  "rest goes next time", -1);
+  delay(allDone ? 3000 : 2500);                         // long enough to read
   WiFi.disconnect(true); WiFi.mode(WIFI_OFF);
 }

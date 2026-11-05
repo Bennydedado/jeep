@@ -1,5 +1,16 @@
 # Changes
 
+## 4 Nov 2026 — T3 2.22, Heep 1.1.27: GPS tracks upload when you get home, with a progress bar
+
+- Getting home: once the T3 is on one of your Wi-Fi networks (not a phone hotspot) and the Jeep has stopped for 5 s
+  with trips or tracks waiting, it ends the trip, restarts and sends everything before Bluetooth starts, when all the
+  memory is free. The screen shows **Uploading** with a bar while things actually go up, then **Upload done**.
+- Key-on: trips, then tracks for up to 25 s, the same way (joining Wi-Fi no longer puts "Trip status" on the screen).
+- A track that doesn't finish carries on where it stopped next time instead of starting over, in bigger pieces at
+  start-up (250 rows).
+- Heep: Track storage has **Copy link and key**, and accepts that line pasted in another browser (Bluefy → Safari, or
+  the Hub), so they all use the same storage. The trip sheet says when tracks go up.
+
 ## 4 Nov 2026 — T3 2.21, Heep 1.1.26: the iCar stays connected (and comes back) during a drive
 
 - The T3 now waits 8 s without hearing the iCar before calling the Bluetooth link lost (it was 2.56 s). The ESP32 has
