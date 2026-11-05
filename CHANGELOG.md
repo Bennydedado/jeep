@@ -1,5 +1,14 @@
 # Changes
 
+## 5 Nov 2026 — T3 2.26: uploads keep going until they're done
+
+- At key-on the T3 no longer stops sending tracks after 25 s ("12 to go, next time"): it keeps going until every trip
+  and track is up or the Wi-Fi is gone (driving away). What's sent is remembered and never sent again; a track cut
+  off part way carries on where it stopped.
+- The upload now runs in the background: your screens, the GPS, logging and the wheel buttons work while it goes.
+  Any wheel button hides the "Uploading" screen and the upload carries on ("Upload done" flashes when it finishes).
+  The iCar and Heep connect over Bluetooth once it's over, because the upload needs that memory.
+
 ## 5 Nov 2026 — T3 2.25, Heep 1.1.31: Safari can send Wi-Fi passwords and links
 
 - Heep in Safari (over the Wi-Fi relay) can now send Wi-Fi networks, the sheet link and the track storage link and key

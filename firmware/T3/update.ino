@@ -143,7 +143,8 @@ static String bootJoin(bool blind) {
     if (!blind && !seenAs[order[t]].length()) continue;   // quick: only networks in sight
     String ssid = seenAs[order[t]].length() ? seenAs[order[t]] : cfg.nets[order[t]].ssid;
     if (!ssid.length()) continue;
-    if (blind) bootShow("joining", ssid, -1);   // (sending trips joins quietly: the screen only changes once something goes up)
+    if (blind && bootUp) upSet("Uploading", "joining " + ssid, "any button: hide", -1);   // (the start-up upload: its own screen)
+    else if (blind) bootShow("joining", ssid, -1);
     WiFi.begin(ssid.c_str(), cfg.nets[order[t]].pass.c_str());
     uint32_t t0 = millis();
     while (WiFi.status() != WL_CONNECTED && millis() - t0 < (blind ? 15000 : 10000)) delay(100);
@@ -217,76 +218,125 @@ void bootUpdate() {
   delay(2500);   // long enough to read
 }
 
-// at start-up (T3.ino setup, after the last trip is finished and before Bluetooth): trips waiting for the sheet, then
-// GPS tracks waiting for the track store, go now while all the memory is free. With Bluetooth running the secure
-// connection to Google often can't get the ~50 KB it needs, so they sat on the T3.
-//   - key-on: only networks in sight (about 10 s at most when there's nothing to join), tracks for up to 25 s
-//   - arrived home (sendStep below restarted the T3 for it): everything, however long it takes
-// The T3 remembers where a track got to, so whatever doesn't go now carries on next time. Joining Wi-Fi happens
-// quietly; the screen shows "Uploading" with a bar only once something is actually going up, then "Upload done".
+// at start-up (2.26): trips waiting for the sheet, then GPS tracks waiting for the track store, go up in the
+// background while the T3 starts as usual (screens, GPS, the card, the wheel buttons). Bluetooth (the iCar and Heep)
+// waits until it's over, because the secure connection to Google needs ~50 KB of memory in one piece. It keeps going
+// until everything is up or the Wi-Fi is gone (driving away): no time limit. The T3 remembers where a track got to,
+// so whatever doesn't go now carries on next time; what's gone is marked sent and never goes again.
+//   - key-on: only networks in sight, quietly; "Uploading" with a bar shows once something actually goes up
+//   - arrived home or asked for (Heep's Upload now, the wheel menu): the same, hidden hotspots tried too when asked
+// Any wheel button hides the upload screen (the upload carries on); "Upload done" flashes when it finishes.
+volatile bool bootUp = false;          // the start-up upload is running (loop: Wi-Fi and Bluetooth wait for it)
+volatile bool upScreen = false;        // its screen is showing
+static volatile uint32_t upUntil = 0;  // the end screen goes at this millis() (0: still going)
+static volatile int upPctShown = -1;
+static char upTitle[24], upWhat[32], upSub[32];
+static volatile bool upFlashDone = false;
+static char upDoneText[24];
 static uint32_t upTotal = 0, upDone = 0;
 static int upN = 0, upSent = 0;
+static bool upAsked = false, upHome = false;
+static void upSet(const char* title, const String& what, const String& sub, int pct) {
+  strlcpy(upTitle, title, sizeof(upTitle)); strlcpy(upWhat, what.c_str(), sizeof(upWhat)); strlcpy(upSub, sub.c_str(), sizeof(upSub));
+  upPctShown = pct;
+}
 static void upShow(const String& what) {
   int pct = upTotal ? (int)min((uint64_t)100, (uint64_t)upDone * 100 / upTotal) : 0;
-  bootShowAs("Uploading", what, String(pct) + "%", pct);
+  upSet("Uploading", what, String(pct) + "%  any button: hide", pct);
 }
 static void upPart(uint32_t bytes) {
   upDone += bytes;
   upShow(upN > 1 ? "trip " + String(min(upSent + 1, upN)) + " of " + String(upN) : String("GPS track"));
 }
-void bootSend() {
-  Preferences pr; pr.begin("t3", false);
-  uint8_t hs = pr.getUChar("hsend", 0);                // 1: got home (sendStep), 2: asked for (uploadNow)
-  if (hs) pr.remove("hsend");
-  pr.end();
-  bool home = hs > 0, asked = hs == 2;
-  bool trips = queued > 0 && cfg.sheetUrl.length();
-  bool tracks = sd.ok && sd.tracksWaiting > 0 && cfg.trkUrl.length();
-  if ((!trips && !tracks) || !cfg.netCount) { if (asked) uplNote = "nothing was waiting"; return; }
-  if (asked) bootShowAs("Uploading", "joining Wi-Fi...", "", -1);
-  String joined = bootJoin(asked);                     // asked for: hotspots that hide from a scan are tried too
+// display.ino: the upload screen instead of your screens while it's showing
+bool upScreenDraw() {
+  if (!upScreen) return false;
+  if (upUntil && (int32_t)(millis() - upUntil) >= 0) { upScreen = false; upUntil = 0; return false; }
+  oled.setFont(); oled.setTextSize(1); oled.setTextColor(SSD1306_WHITE);
+  oled.setCursor(0, 0); oled.print(upTitle);
+  oled.drawFastHLine(0, 10, 128, SSD1306_WHITE);
+  oled.setCursor(0, 16); oled.print(upWhat);
+  oled.setCursor(0, 28); oled.print(upSub);
+  int pct = upPctShown;
+  if (pct >= 0) { oled.drawRect(0, 46, 128, 10, SSD1306_WHITE); oled.fillRect(2, 48, 124 * constrain(pct, 0, 100) / 100, 6, SSD1306_WHITE); }
+  return true;
+}
+// wheel.ino: any button while it shows hides it; the upload carries on
+bool upScreenHide() {
+  if (!upScreen) return false;
+  upScreen = false; upUntil = 0;
+  if (bootUp) flash("Uploading behind");
+  return true;
+}
+static void bootSendTask(void*) {
+  String joined = bootJoin(upAsked);                     // asked for: hotspots that hide from a scan are tried too
   if (!joined.length()) {
     bootNote = "uploads at start: no Wi-Fi in sight";
-    if (asked) { uplNote = "couldn't join your Wi-Fi: nothing was sent"; bootShowAs("Upload failed", "couldn't join Wi-Fi", "nothing was sent", -1); delay(2500); }
+    if (upAsked) { uplNote = "couldn't join your Wi-Fi: nothing was sent"; upSet("Upload failed", "couldn't join Wi-Fi", "nothing was sent", -1); upScreen = true; upUntil = millis() + 3000; }
     WiFi.disconnect(true); WiFi.mode(WIFI_OFF);
+    bootUp = false;
+    vTaskDelete(nullptr);
     return;
   }
-  int tripsBefore = queued;
   if (!timeSrc) {   // the trip times are kept; this is only for a trip that never had a clock
     configTime(0, 0, "pool.ntp.org", "time.google.com");
     struct tm tmv; if (getLocalTime(&tmv, 3000)) { struct timeval tv; gettimeofday(&tv, nullptr); setClock((int64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000, 'n'); }
   }
+  bool trips = queued > 0 && cfg.sheetUrl.length();
+  bool tracks = sd.ok && sd.tracksWaiting > 0 && cfg.trkUrl.length();
+  int tripsBefore = queued;
   upTotal = tracks ? sdWaitingBytes(&upN) : 0; upDone = 0; upSent = 0;
+  if (!upAsked) upScreen = true;                         // quiet until now: something is going up
   if (trips) {
     upShow("trips to Jeep log");
     uploadTrips(cfg.sheetUrl, cfg.sheetKey);
     bootNote = "trips at start: " + String(lastUpload);
   }
   if (tracks) {
-    uint32_t t0 = millis(), budget = home ? 0 : 25000;
     upPart(0);
     while (WiFi.status() == WL_CONNECTED && sd.tracksWaiting > 0) {
-      uint32_t used = millis() - t0;
-      if (budget && used >= budget) break;
-      int sent = uploadTracks(cfg.trkUrl, cfg.trkKey, budget ? budget - used : 0, 250, upPart);
+      int sent = uploadTracks(cfg.trkUrl, cfg.trkKey, 0, 250, upPart);
       upSent += sent;
       sdCountWaiting();
-      if (!sent) break;                                 // refused or out of time: the rest next time
+      if (!sent) break;                                   // refused, or the Wi-Fi went: the rest next time
     }
     bootNote += String(bootNote.length() ? "; " : "") + "tracks at start: " + String(upSent) + " sent, " + String(sd.tracksWaiting) +
-                " waiting (" + String(trkStatus) + ")" + (home ? " [home]" : "");
+                " waiting (" + String(trkStatus) + ")" + (upHome ? " [home]" : "") + (upAsked ? " [asked]" : "");
   }
   bool allDone = (!trips || queued == 0) && (!tracks || sd.tracksWaiting == 0);
-  if (asked) {
+  if (upAsked) {
     int tripsSent = trips ? tripsBefore - queued : 0;
     String s = "sent " + String(tripsSent) + (tripsSent == 1 ? " trip" : " trips") + " and " + String(upSent) + (upSent == 1 ? " track" : " tracks");
     if (!allDone) s += "; still waiting: " + String(trips ? queued : 0) + " trips, " + String(tracks ? sd.tracksWaiting : 0) + " tracks (" +
                        (trips && queued ? String(lastUpload) : String(trkStatus)) + ")";
     uplNote = s;
   }
-  if (allDone) bootShowAs("Upload done", String(upSent ? String(upSent) + (upSent == 1 ? " trip's track" : " trips' tracks") : String("trips")) + " sent", "", 100);
-  else bootShowAs("Upload paused", tracks ? String(sd.tracksWaiting) + " track" + (sd.tracksWaiting == 1 ? "" : "s") + " to go" : String("trips to go"),
-                  "rest goes next time", -1);
-  delay(allDone ? 3000 : 2500);                         // long enough to read
+  String done = allDone ? String(upSent ? String(upSent) + (upSent == 1 ? " trip's track" : " trips' tracks") : String("trips")) + " sent"
+                        : (tracks ? String(sd.tracksWaiting) + " track" + (sd.tracksWaiting == 1 ? "" : "s") + " to go" : String("trips to go"));
+  if (upScreen) { upSet(allDone ? "Upload done" : "Upload paused", done, allDone ? String("") : String("rest next time on Wi-Fi"), allDone ? 100 : -1); upUntil = millis() + 3000; }
+  else { strlcpy(upDoneText, allDone ? "Upload done" : "Upload paused", sizeof(upDoneText)); upFlashDone = true; }
   WiFi.disconnect(true); WiFi.mode(WIFI_OFF);
+  bootUp = false;
+  vTaskDelete(nullptr);
+}
+// T3.ino setup(): starts the upload if there's anything to send (true = it's running, Bluetooth waits)
+bool bootSend() {
+  Preferences pr; pr.begin("t3", false);
+  uint8_t hs = pr.getUChar("hsend", 0);                  // 1: got home (sendStep), 2: asked for (uploadNow)
+  if (hs) pr.remove("hsend");
+  pr.end();
+  upHome = hs > 0; upAsked = hs == 2;
+  bool trips = queued > 0 && cfg.sheetUrl.length();
+  bool tracks = sd.ok && sd.tracksWaiting > 0 && cfg.trkUrl.length();
+  if ((!trips && !tracks) || !cfg.netCount) { if (upAsked) uplNote = "nothing was waiting"; return false; }
+  if (upAsked) { upSet("Uploading", "joining Wi-Fi...", "any button: hide", -1); upScreen = true; }
+  bootUp = true;
+  if (xTaskCreatePinnedToCore(bootSendTask, "bootsend", 16384, nullptr, 1, nullptr, 0) != pdPASS) { bootUp = false; upScreen = false; return false; }
+  return true;
+}
+// loop(): an upload that finished behind your screens says so, and goes in the card's event log
+void bootSendStep() {
+  static bool logged = false;
+  if (upFlashDone) { upFlashDone = false; flash(upDoneText); }
+  if (!bootUp && !logged && bootNote.length()) { logged = true; sdEvent(bootNote); }
 }

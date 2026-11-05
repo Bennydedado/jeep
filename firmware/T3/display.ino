@@ -94,7 +94,8 @@ void displayStep() {
   oled.clearDisplay();
   oled.setTextColor(SSD1306_WHITE);
   oled.setTextWrap(false);
-  if (menuOpen()) menuDraw();
+  if (upScreenDraw()) {}           // the start-up upload's screen, until a button hides it (update.ino)
+  else if (menuOpen()) menuDraw();
   else if (screenCount && page < screenCount) for (int i = 0; i < screens[page].n; i++) drawWidget(screens[page].w[i]);
   if (updating) { msg = otaMode ? "BT update " + String(otaPercent()) + "%" : String("Updating T3..."); msgUntil = now + 500; }
   if (now < msgUntil) {

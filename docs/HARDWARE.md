@@ -296,12 +296,15 @@ safe value; a broken or missing screen file falls back to the built-in screens.
   Map tab) and Connect. A trip only counts as uploaded when the store confirms every row. Files: Drive folder
   "Jeep tracks", one CSV per trip + `index.json`.
 - **When tracks go up (2.22+):** the secure connection to Google needs ~50 KB, which Bluetooth usually leaves too
-  little of, so tracks go before Bluetooth starts:
+  little of, so tracks go before Bluetooth starts (2.26: in the background, with the screens, GPS and logging
+  already running; Bluetooth waits until it's done):
   - **Getting home:** on one of your Wi-Fi networks that isn't a phone hotspot (a name with iPhone, iPad, Android,
     Hotspot, Galaxy or Pixel counts as a hotspot), stopped for 5 s, with something waiting: the T3 ends the trip,
     restarts and sends everything, showing the progress bar. Stopping with something waiting also makes it look
     for Wi-Fi straight away. Once per key-on.
-  - **Key-on:** trips, then tracks for up to 25 s.
+  - **Key-on:** trips, then tracks, until everything is up or the Wi-Fi is gone (2.26; it was 25 s). Any wheel
+    button hides the upload screen and it carries on behind; "Upload done" flashes at the end. The iCar and Heep
+    (Bluetooth) connect once it's over.
   - **Driving on your hotspot:** small pieces in the background, when the memory allows.
   The T3 remembers where a track got to (`/jeep/upload.txt` on the card), so a key-off mid-upload just carries on next
   time. Tracks recorded before the store was set up go up too, oldest first.

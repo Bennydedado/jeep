@@ -86,6 +86,9 @@ struct Settings {
 extern Settings cfg;
 extern String liveTopic, cmdTopic;   // relay channels (settings.ino)
 extern String bootUpdNote;           // how an update at start-up went (update.ino)
+extern volatile bool bootUp;         // the start-up upload is running in the background (update.ino, 2.26)
+extern volatile bool upScreen;       // its screen is showing
+bool bootSend(); void bootSendStep(); bool upScreenDraw(); bool upScreenHide();
 extern int menuChanges;              // settings changed from the wheel menu (menu.ino)
 extern String bootNote;              // how sending trips at start-up went (update.ino)
 extern String uplNote;               // how an upload asked for from Heep / the wheel went (update.ino, in "hi")
