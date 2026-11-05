@@ -248,41 +248,64 @@ void uploadTrips(const String& url, const String& key) {
   if (ok) { dropTrips(ids); lastUploadAt = millis(); } else nextUploadTry = millis() + 120000;
 }
 
-// GPS tracks from the SD card -> the track store, 100 rows per request. Each part can be sent again safely
-// (the store replaces it); a trip only counts as uploaded when the store confirms every row arrived.
-// A track the store keeps refusing doesn't hold up the others.
+// GPS tracks from the SD card -> the track store, a part at a time. Each part can be sent again safely (the store
+// replaces it); a trip only counts as uploaded when the store confirms every row arrived. A track the store keeps
+// refusing doesn't hold up the others.
+// Two ways in: at key-on before Bluetooth starts (update.ino bootSend: bigger parts, all the memory free, for up to
+// `budgetMs`), and while driving on Wi-Fi (small parts; with Bluetooth running the secure connection often can't get
+// the memory). Where a track got to is kept on the card (/jeep/upload.txt), so the next try carries on from there
+// instead of starting the track again: a long drive goes up over a few starts at home.
 #define PART_ROWS 100
-void uploadTracks(const String& url, const String& key) {
-  if (!url.length() || !sd.ok) return;
+// returns how many tracks were confirmed; `progress` (may be null) is told the bytes of each part as it's confirmed
+int uploadTracks(const String& url, const String& key, uint32_t budgetMs, int partRows, void (*progress)(uint32_t)) {
+  if (!url.length() || !sd.ok) return 0;
+  uint32_t t0 = millis();
   String ids[3];
-  int n = sdWaitingIds(ids, 3);
+  int n = sdWaitingIds(ids, 3), done = 0;
   bool anyFail = false;
-  for (int k = 0; k < n && wifiState == W_ON; k++) {
+  for (int k = 0; k < n && WiFi.status() == WL_CONNECTED; k++) {
     const String& id = ids[k];
-    int part = 0, total = 0, got = 0;
-    uint32_t pos = 0;
+    int part, total, got = 0;
+    uint32_t pos;
+    sdUpProgress(id, &part, &pos, &total);               // carry on where the last try stopped
     bool more = true, ok = true;
-    while (more && ok && wifiState == W_ON) {
-      String rows = sdTrackRows(id, &pos, PART_ROWS, &got, &more);
+    while (more && ok && WiFi.status() == WL_CONNECTED) {
+      if (budgetMs && millis() - t0 > budgetMs) { more = true; ok = false; break; }   // out of time: the rest next start
+      uint32_t at = pos;
+      String rows = sdTrackRows(id, &pos, partRows, &got, &more);
       if (!got) break;
       String body;
       int code = httpPost(url, "{\"k\":\"" + jsonEsc(key) + "\",\"op\":\"part\",\"id\":\"" + id + "\",\"p\":" + String(part) +
                           ",\"rows\":" + String(got) + ",\"csv\":\"" + jsonEsc(rows) + "\"}", body);
       ok = code == 200 && body.indexOf("\"ok\":true") >= 0;
-      if (!ok) trkStatus.set(body.indexOf("\"key\"") >= 0 ? String("track store key wrong") : "track send failed (" + String(code) + ")");
+      if (!ok) {
+        pos = at;
+        trkStatus.set(body.indexOf("\"key\"") >= 0 ? String("track store key wrong") : "track send failed (" + String(code) + ", " + String(ESP.getFreeHeap() / 1024) + " KB free)");
+        break;
+      }
       total += got; part++;
+      sdUpSave(id, part, pos, total);
+      if (progress) progress(pos - at);
     }
-    if (!ok || more) { anyFail = true; continue; }
+    if (!ok || more) { anyFail = true; break; }          // (one track at a time: the next one waits for this one)
     String body;
     int code = httpPost(url, "{\"k\":\"" + jsonEsc(key) + "\",\"op\":\"fin\",\"id\":\"" + id + "\",\"parts\":" + String(part) + ",\"rows\":" + String(total) +
                         ",\"head\":\"" + jsonEsc(String(TRACK_HEADER)) + "\",\"idx\":\"" + jsonEsc(sdIndexLine(id)) + "\"}", body);
     if (code == 200 && body.indexOf("\"ok\":true") >= 0 && (long)numField(body, "rows") == total) {
       sdMarkUploaded(id);
+      sdUpSave("", 0, 0, 0);
+      done++;
       trkStatus.set("sent " + id);
       taskEvent("track uploaded " + id + " (" + String(total) + " rows)");
-    } else { trkStatus.set("track not confirmed (" + String(code) + ")"); anyFail = true; }
+    } else {
+      // the store answered but is missing rows (it lost a part): send this track again from the start next time.
+      // No answer at all (signal gone): keep the place, so next time only the last step is repeated.
+      if (code == 200) sdUpSave("", 0, 0, 0);
+      trkStatus.set("track not confirmed (" + String(code) + ")"); anyFail = true; break;
+    }
   }
   if (anyFail) nextUploadTry = millis() + 120000;
+  return done;
 }
 
 void uploadTask(void*) {
@@ -291,7 +314,7 @@ void uploadTask(void*) {
   String sUrl = cfg.sheetUrl, sKey = cfg.sheetKey, tUrl = cfg.trkUrl, tKey = cfg.trkKey;
   xSemaphoreGive(cfgLock);
   if (queued > 0) uploadTrips(sUrl, sKey);
-  uploadTracks(tUrl, tKey);
+  uploadTracks(tUrl, tKey, 0, PART_ROWS, nullptr);
   if (nextUploadTry < millis() + 1000) nextUploadTry = millis() + 60000;   // done for now; look again in a minute
   uploading = false;
   vTaskDelete(nullptr);

@@ -396,6 +396,9 @@ function trackStoreSheet() {
     title: 'Track storage',
     build(b, sheet) {
       const url = h('textarea', { rows: 2, placeholder: 'https://script.google.com/macros/s/…/exec', style: 'font:15px/1.35 var(--font)' }, cur ? cur.u : '');
+      // set up in another browser already (e.g. Bluefy, which sends it to the T3)? Its "Copy link and key" pastes
+      // here as one line, link|key, and this browser uses the same store instead of making a new key
+      const linkAndKey = () => { const v = url.value.trim(), i = v.lastIndexOf('|'); return i > 0 ? { u: v.slice(0, i).trim(), k: v.slice(i + 1).trim() } : { u: v, k: key }; };
       const err = h('div', { class: 'err' });
       const copyCode = async btn => {
         try {
@@ -413,14 +416,17 @@ function trackStoreSheet() {
           h('li', null, h('div', { text: 'Copy the Web app URL and paste it here, then Connect.' }))),
         h('div', { class: 'field small-in' }, h('span', { class: 'fl', text: 'Web app URL' }), url), err,
         h('button', { class: 'btn btn-primary btn-wide', onclick: async () => {
-          const u = url.value.trim();
+          const { u, k } = linkAndKey();
           if (!/^https:\/\/script\.google(usercontent)?\.com\//.test(u)) { err.textContent = 'That doesn’t look like an Apps Script web app URL.'; return; }
+          if (!k) { err.textContent = 'The key after the | is missing.'; return; }
           err.textContent = 'Checking…';
-          store.set('trk', { u, k: key });
+          store.set('trk', { u, k });
           try { await trkCall({ op: 'list' }); err.textContent = ''; store.del('trkKeyDraft'); sheet.close(); toast('Track store connected', 'Now send T3 settings over Bluetooth so the T3 knows it'); trkRefresh(true); render(); }
           catch (e) { store.set('trk', cur); err.textContent = 'It answered with a problem: ' + e.message + '. Check "Who has access: Anyone" and that you pasted the script with its key.'; }
         } }, icon('link'), 'Connect'),
-        h('div', { class: 'foot', text: 'Then T3 settings > Send settings (over Bluetooth) to give the T3 the address and key. Finished trips upload by themselves whenever the T3 is on home Wi-Fi or your hotspot.' }),
+        h('div', { class: 'foot', text: 'Then T3 settings > Send settings (over Bluetooth, in Bluefy) to give the T3 the address and key. Tracks go up when you start the Jeep at home on Wi-Fi (a long drive can take a few starts), and on your hotspot while driving.' }),
+        cur ? h('button', { class: 'btn btn-glass glass btn-wide', onclick: e => copyText(cur.u + '|' + cur.k, e.currentTarget) }, icon('copy'), 'Copy link and key (for Safari or the dashboard)') : null,
+        cur ? null : h('div', { class: 'foot', text: 'Already set up in another browser? There, tap Copy link and key, then paste it into the box above and Connect: this browser then uses the same storage.' }),
         cur ? confirmButton('Disconnect the track store', 'Tap again: this phone forgets it (your Drive keeps the tracks)', () => { store.del('trk'); store.del('trkIndex'); sheet.close(); render(); }) : null);
     },
   });

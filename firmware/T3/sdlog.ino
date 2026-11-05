@@ -139,6 +139,47 @@ bool sdUploaded(const String& id) {
   xSemaphoreGive(sdLock);
   return found;
 }
+// where an unfinished track upload got to (net.ino uploadTracks): one line, id|next part|byte position|rows sent
+void sdUpProgress(const String& id, int* part, uint32_t* pos, int* total) {
+  *part = 0; *pos = 0; *total = 0;
+  if (!sd.ok) return;
+  xSemaphoreTake(sdLock, portMAX_DELAY);
+  File f = SD.open("/jeep/upload.txt", FILE_READ);
+  String l = f ? f.readStringUntil('\n') : String("");
+  if (f) f.close();
+  xSemaphoreGive(sdLock);
+  // id|next part|byte position|rows sent
+  int a = l.indexOf('|'), b = l.indexOf('|', a + 1), c = l.indexOf('|', b + 1);
+  if (a < 0 || b < 0 || c < 0 || l.substring(0, a) != id) return;
+  *part = l.substring(a + 1, b).toInt(); *pos = (uint32_t)l.substring(b + 1, c).toInt(); *total = l.substring(c + 1).toInt();
+  if (*part < 0 || *total < 0) { *part = 0; *pos = 0; *total = 0; }
+}
+void sdUpSave(const String& id, int part, uint32_t pos, int total) {
+  if (!sd.ok) return;
+  xSemaphoreTake(sdLock, portMAX_DELAY);
+  File f = SD.open("/jeep/upload.txt", FILE_WRITE);   // (FILE_WRITE starts the file again)
+  if (f) { f.print(id + "|" + String(part) + "|" + String(pos) + "|" + String(total) + "\n"); f.close(); }
+  xSemaphoreGive(sdLock);
+}
+// how much track is still to go up (bytes on the card), and how many tracks: for the upload's progress bar
+uint32_t sdWaitingBytes(int* count) {
+  String ids[50];
+  int n = sdWaitingIds(ids, 50);
+  if (count) *count = n;
+  uint32_t total = 0, first = 0;
+  xSemaphoreTake(sdLock, portMAX_DELAY);
+  for (int k = 0; k < n; k++) {
+    File f = SD.open("/jeep/trips/" + ids[k] + ".csv", FILE_READ);
+    if (f) { uint32_t sz = f.size(); total += sz; if (!k) first = sz; f.close(); }
+  }
+  xSemaphoreGive(sdLock);
+  if (n) {   // part of the first one may have gone up already
+    int part, rows; uint32_t pos;
+    sdUpProgress(ids[0], &part, &pos, &rows);
+    total -= min(pos, first);
+  }
+  return total;
+}
 void sdMarkUploaded(const String& id) { sdAppend("/jeep/uploaded.txt", id + "\n"); sdCountWaiting(); }
 
 // the finished trips (oldest first) whose track hasn't been uploaded: up to `max` ids
