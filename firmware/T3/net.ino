@@ -370,7 +370,11 @@ void uploadTask(void*) {
   String sUrl = cfg.sheetUrl, sKey = cfg.sheetKey, tUrl = cfg.trkUrl, tKey = cfg.trkKey;
   xSemaphoreGive(cfgLock);
   if (queued > 0) uploadTrips(sUrl, sKey);
-  uploadTracks(tUrl, tKey, 0, PART_ROWS, nullptr);
+  // with Bluetooth running the T3 seldom has the ~50 KB in one piece a secure connection needs (Ben's: 43 KB block,
+  // -1 every time). Then tracks wait for key-on at home, where they go before Bluetooth starts, and the status from
+  // that try is kept instead of being overwritten by a try that can't work (2.29)
+  if (ESP.getMaxAllocHeap() >= 56 * 1024) uploadTracks(tUrl, tKey, 0, PART_ROWS, nullptr);
+  else if (sd.tracksWaiting > 0 && trkStatus.empty()) trkStatus.set("waiting for key-on at home (not enough memory with Bluetooth on)");
   if (nextUploadTry < millis() + 1000) nextUploadTry = millis() + 60000;   // done for now; look again in a minute
   uploading = false;
   vTaskDelete(nullptr);
