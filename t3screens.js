@@ -73,6 +73,7 @@ const SETUPS = [
   { id: 'daily', name: 'Daily', about: 'Around town: speed and direction, economy, the trip, and whether trips went up.', list: () => [DS('Drive'), DS('Temp & dir'), DS('Economy'), DS('Trip'), DS('Trip status')] },
   { id: 'tow', name: 'Towing', about: 'Working the engine: boost, coolant big, engine numbers, then speed.', list: () => [DS('Boost'), COOLANT_SCREEN, DS('Engine'), DS('Drive'), DS('Economy')] },
   { id: 'trip', name: 'Road trip', about: 'Long drives: speed, fuel left and range, the trip so far.', list: () => [DS('Drive'), FUEL_SCREEN, DS('Trip'), DS('Trip 2'), DS('Economy'), DS('Temp & dir')] },
+  { id: 'mix', name: 'Mix', about: 'Your own mix: Add a screen copies any screen from the other tabs, then change the copy however you like (the original stays as it was).', list: () => [DS('Drive')] },
 ];
 
 // ---------------------------------------------------------------- the text format (screens.h)
@@ -498,16 +499,35 @@ function screensSheet() {
   });
 }
 
+// every screen in the other setup tabs (as they are on this phone, with your changes), each once
+function otherTabScreens() {
+  const su = setupState(), seen = new Map();
+  for (const x of SETUPS) {
+    if (x.id === su.active) continue;
+    for (const txt of (su.lists[x.id] && su.lists[x.id].length ? su.lists[x.id] : x.list())) {
+      const sc = parseScreen(txt);
+      if (!sc || !sc.w.length) continue;
+      if (!seen.has(txt)) seen.set(txt, { name: sc.name, txt, tabs: [] });
+      seen.get(txt).tabs.push(x.name);
+    }
+  }
+  return [...seen.values()];
+}
 function addScreen(st, after) {
   openSheet({
     title: 'Add a screen',
     build(b, sheet) {
-      put(b, h('div', { class: 'card list' }, SCREEN_TEMPLATES.map(([name, txt]) => {
+      const pick = (name, txt, from) => {
         const sc = parseScreen(txt);
         const cv = h('canvas', { width: SCR_W * 2, height: SCR_H * 2, class: 'scr-thumb' });
         drawScreen(cv.getContext('2d'), sc, 2, null, -1);
-        return h('button', { class: 'row scr-open', onclick: () => { st.list.push(txt); scrSave(st); sheet.close(); after(); screenEditor(st, st.list.length - 1, after); } }, cv, h('div', { class: 'main' }, h('b', { text: name })));
-      })));
+        return h('button', { class: 'row scr-open', onclick: () => { st.list.push(txt); scrSave(st); sheet.close(); after(); screenEditor(st, st.list.length - 1, after); } },
+          cv, h('div', { class: 'main' }, h('b', { text: name }), from ? h('span', { text: from }) : null));
+      };
+      put(b, h('div', { class: 'label', text: 'Copy one from your other tabs (your changes to the copy stay here)' }),
+        h('div', { class: 'card list' }, otherTabScreens().map(o => pick(o.name, o.txt, 'from ' + o.tabs.join(', ')))),
+        h('div', { class: 'label', text: 'Or start from' }),
+        h('div', { class: 'card list' }, SCREEN_TEMPLATES.map(([name, txt]) => pick(name, txt))));
     },
   });
 }

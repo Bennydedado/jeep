@@ -1,5 +1,10 @@
 # Changes
 
+## 5 Nov 2026 — Heep 1.1.29: a Mix tab for your own screen set
+
+- Live → Screens has a fifth tab, **Mix**. "Add a screen" now lists every screen from your other tabs (with your
+  changes) as well as the templates; picking one adds a copy you can change without touching the original.
+
 ## 4 Nov 2026 — T3 2.23, Heep 1.1.28: screens you can read from the seat, setups, full-screen map
 
 - Size 2 text is now a smooth 9 pt bold font (about 13 px tall) instead of the blocky doubled small font. The default
