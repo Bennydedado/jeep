@@ -31,34 +31,48 @@ const FIELD = Object.fromEntries(FIELDS.map(f => [f.id, f]));
 const SAMPLE = { kmh: 87, kmhg: 86, kmho: 87, hdg: 'NE', hdgd: '047°', otemp: -12.5, clock: '18:42', date: '2026-10-27', rpm: 1850, boost: 14.2, bmax: 21.6,
   ect: 86, iat: 8, volt: 14.1, load: 52, lph: 7.4, econ: 8.5, maf: 38.5, rail: 850, tstate: 'RUNNING', tkm: 42.7, ttime: '0:38', tl: 3.94, tavg: 9.2, tavgs: 67, tvmax: 104,
   tidle: '0:03', totkm: 15204, totl: 1421, totavg: 9.3, dte: 512, fuel: 61, gfix: '3D FIX', sats: '9/14', hdop: 0.9, alt: 702, lat: 56.24650, lon: -120.84760,
-  obd: 'reading', ble: 'Heep on', wifi: 'connected', upstat: 'uploaded', nano: 'ok', sd: 'logging', sdfree: 29811, logn: 2311, queue: 0, fw: '2.0', up: '0:41', heap: 92, btn: '3S' };
+  obd: 'reading', ble: 'Heep on', wifi: 'connected', upstat: 'uploaded', nano: 'ok', sd: 'logging', sdfree: 29811, logn: 2311, queue: 0, fw: '2.23', up: '0:41', heap: 92, btn: '3S' };
 
 // same screens a new T3 starts with: keep in step with DEFAULT_SCREENS in firmware/T3/screens.h
 const DEFAULT_SCREENS = [
-  'Temp & dir|1|l,-,0,0,60,8,1,c,,0,0,HEADING|l,-,66,0,62,8,1,c,,0,0,OUTSIDE|v,hdg,0,10,62,30,4,c,,0,0,|v,otemp,66,10,62,30,4,c,u,0,0,|n,-,63,2,1,46,1,l,,0,0,|r,hdgd,0,48,62,8,1,l,,0,0,|r,gfix,0,56,128,8,1,l,l,0,0,|r,sats,66,48,62,8,1,r,l,0,0,',
-  'Drive|1|v,kmh,0,0,80,40,4,l,lu,0,0,|v,hdg,82,0,46,20,2,r,,0,0,|v,otemp,82,22,46,18,1,r,u,0,0,|r,tavg,0,46,128,8,1,l,lu,0,0,|r,tkm,0,56,128,8,1,l,lu,0,0,',
-  'Boost|1|v,boost,0,0,128,40,4,c,lu,0,0,|b,boost,0,42,128,12,1,l,,0,30,|r,bmax,0,56,64,8,1,l,l,0,0,|r,rpm,66,56,62,8,1,r,l,0,0,',
-  'Economy|1|v,tavg,0,0,128,40,4,c,lu,0,0,|r,econ,0,44,128,8,1,l,lu,0,0,|r,tkm,0,54,128,8,1,l,lu,0,0,',
-  'Trip|1|r,tstate,0,0,128,8,1,l,l,0,0,|r,tkm,0,10,128,8,1,l,lu,0,0,|r,ttime,0,19,128,8,1,l,l,0,0,|r,tl,0,28,128,8,1,l,lu,0,0,|r,tavgs,0,37,128,8,1,l,lu,0,0,|r,tvmax,0,46,128,8,1,l,lu,0,0,|r,tidle,0,55,128,8,1,l,l,0,0,',
-  'Engine|1|r,rpm,0,0,128,8,1,l,l,0,0,|r,boost,0,10,128,8,1,l,lu,0,0,|r,ect,0,20,128,8,1,l,lu,0,0,|r,iat,0,30,128,8,1,l,lu,0,0,|r,volt,0,40,128,8,1,l,lu,0,0,|r,load,0,50,128,8,1,l,lu,0,0,',
-  'GPS|1|r,gfix,0,0,128,8,1,l,l,0,0,|r,sats,0,9,128,8,1,l,l,0,0,|r,hdop,0,18,128,8,1,l,l,0,0,|r,kmhg,0,27,128,8,1,l,lu,0,0,|r,lat,0,36,128,8,1,l,l,0,0,|r,lon,0,45,128,8,1,l,l,0,0,|r,alt,0,54,128,8,1,l,lu,0,0,',
-  'Connections|1|r,obd,0,0,128,8,1,l,l,0,0,|r,ble,0,10,128,8,1,l,l,0,0,|r,wifi,0,20,128,8,1,l,l,0,0,|r,nano,0,30,128,8,1,l,l,0,0,|r,queue,0,40,128,8,1,l,l,0,0,|r,clock,0,50,128,8,1,l,l,0,0,',
-  'Logging|1|r,sd,0,0,128,8,1,l,l,0,0,|r,sdfree,0,10,128,8,1,l,lu,0,0,|r,logn,0,20,128,8,1,l,l,0,0,|r,queue,0,30,128,8,1,l,l,0,0,|r,tstate,0,40,128,8,1,l,l,0,0,',
-  'System|1|r,fw,0,0,128,8,1,l,l,0,0,|r,up,0,10,128,8,1,l,l,0,0,|r,heap,0,20,128,8,1,l,lu,0,0,|r,btn,0,30,128,8,1,l,l,0,0,|r,date,0,40,128,8,1,l,l,0,0,|r,totkm,0,50,128,8,1,l,lu,0,0,',
-  'Trip status|1|r,wifi,0,20,128,12,1,l,l,0,0,|r,upstat,0,40,128,12,1,l,l,0,0,',
+  'Drive|1|v,kmh,0,0,82,46,4,c,,0,0,|v,hdg,84,0,44,22,3,c,,0,0,|v,otemp,84,24,44,22,3,c,,0,0,|r,tavg,0,48,128,16,2,l,lu,0,0,Avg',
+  'Temp & dir|1|v,hdg,0,0,62,48,4,c,l,0,0,Dir|v,otemp,66,0,62,48,4,c,l,0,0,Temp|n,-,63,2,1,44,1,l,,0,0,|r,hdgd,0,48,128,16,2,l,l,0,0,Course',
+  'Boost|1|v,boost,0,0,128,42,4,c,u,0,0,|b,boost,0,42,128,5,1,l,,0,30,|r,bmax,0,48,128,16,2,l,lu,0,0,Peak',
+  'Economy|1|v,tavg,0,0,128,46,4,c,lu,0,0,Trip avg|r,econ,0,48,128,16,2,l,lu,0,0,Now',
+  'Trip|1|r,tkm,0,0,128,16,2,l,lu,0,0,Dist|r,ttime,0,16,128,16,2,l,l,0,0,Time|r,tl,0,32,128,16,2,l,lu,0,0,Diesel|r,tavgs,0,48,128,16,2,l,lu,0,0,Avg',
+  'Trip 2|1|r,tvmax,0,0,128,16,2,l,lu,0,0,Top|r,tidle,0,16,128,16,2,l,l,0,0,Idle|r,tstate,0,32,128,16,2,l,l,0,0,Trip|r,dte,0,48,128,16,2,l,lu,0,0,Range',
+  'Engine|1|r,rpm,0,0,128,16,2,l,l,0,0,|r,ect,0,16,128,16,2,l,lu,0,0,|r,iat,0,32,128,16,2,l,lu,0,0,|r,volt,0,48,128,16,2,l,lu,0,0,',
+  'GPS|1|r,gfix,0,0,128,16,2,l,l,0,0,|r,sats,0,16,128,16,2,l,l,0,0,|r,kmhg,0,32,128,16,2,l,lu,0,0,Speed|r,alt,0,48,128,16,2,l,lu,0,0,Height',
+  'Connections|1|r,obd,0,0,128,16,2,l,l,0,0,|r,ble,0,16,128,16,2,l,l,0,0,|r,wifi,0,32,128,16,2,l,l,0,0,|r,nano,0,48,128,16,2,l,l,0,0,',
+  'System|1|r,fw,0,0,128,16,2,l,l,0,0,|r,sd,0,16,128,16,2,l,l,0,0,|r,queue,0,32,128,16,2,l,l,0,0,|r,totkm,0,48,128,16,2,l,lu,0,0,Total',
+  'Trip status|1|l,-,0,0,128,16,2,c,,0,0,Wi-Fi|r,wifi,0,16,128,16,2,c,,0,0,|l,-,0,32,128,16,2,c,,0,0,Trips|r,upstat,0,48,128,16,2,c,,0,0,',
 ];
 
 // ready-made screens to start from in "Add a screen"
 const SCREEN_TEMPLATES = [
   ['Blank', 'New screen|1'],
-  ['Wi-Fi and trip upload', 'Trip status|1|r,wifi,0,20,128,12,1,l,l,0,0,|r,upstat,0,40,128,12,1,l,l,0,0,'],
-  ['Boost gauge', 'Boost|1|v,boost,0,0,128,40,4,c,lu,0,0,|b,boost,0,42,128,12,1,l,,0,30,|r,bmax,0,56,64,8,1,l,l,0,0,|r,rpm,66,56,62,8,1,r,l,0,0,'],
-  ['Temperature & direction', DEFAULT_SCREENS[0].replace('Temp & dir', 'Temp & dir 2')],
+  ['Wi-Fi and trip upload', DEFAULT_SCREENS.find(x => x.startsWith('Trip status|'))],
+  ['Boost gauge', DEFAULT_SCREENS.find(x => x.startsWith('Boost|'))],
+  ['Temperature & direction', DEFAULT_SCREENS.find(x => x.startsWith('Temp & dir|')).replace('Temp & dir', 'Temp & dir 2')],
   ['One big number', 'Big|1|v,kmh,0,0,128,64,4,c,lu,0,0,'],
-  ['Fuel left', 'Fuel|1|v,fuel,0,0,128,40,4,c,lu,0,0,|b,fuel,0,42,128,12,1,l,,0,78,|r,dte,0,56,128,8,1,l,lu,0,0,'],
-  ['Distance to empty', 'Range|1|v,dte,0,0,128,42,4,c,lu,0,0,|r,fuel,0,46,128,8,1,l,lu,0,0,|r,tavg,0,56,128,8,1,l,lu,0,0,'],
+  ['Fuel left', 'Fuel|1|v,fuel,0,0,128,41,4,c,lu,0,0,Fuel left|b,fuel,0,42,128,5,1,l,,0,78,|r,dte,0,48,128,16,2,l,lu,0,0,Range'],
+  ['Coolant (big)', 'Coolant|1|v,ect,0,0,128,46,4,c,lu,0,0,|r,iat,0,48,128,16,2,l,lu,0,0,'],
+  ['Distance to empty', 'Range|1|v,dte,0,0,128,46,4,c,lu,0,0,To empty|r,fuel,0,48,128,16,2,l,lu,0,0,Left'],
   ['Two big numbers', 'Two|1|v,kmh,0,0,63,64,4,c,lu,0,0,|n,-,64,4,1,56,1,l,,0,0,|v,otemp,65,0,63,64,3,c,lu,0,0,'],
-  ['List of six', 'List|1|r,rpm,0,0,128,8,1,l,l,0,0,|r,boost,0,11,128,8,1,l,lu,0,0,|r,ect,0,22,128,8,1,l,lu,0,0,|r,iat,0,33,128,8,1,l,lu,0,0,|r,volt,0,44,128,8,1,l,lu,0,0,|r,otemp,0,55,128,8,1,l,lu,0,0,'],
+  ['List of four (big)', 'List|1|r,rpm,0,0,128,16,2,l,l,0,0,|r,boost,0,16,128,16,2,l,lu,0,0,|r,ect,0,32,128,16,2,l,lu,0,0,|r,volt,0,48,128,16,2,l,lu,0,0,'],
+  ['List of six (small)', 'List|1|r,rpm,0,0,128,8,1,l,l,0,0,|r,boost,0,11,128,8,1,l,lu,0,0,|r,ect,0,22,128,8,1,l,lu,0,0,|r,iat,0,33,128,8,1,l,lu,0,0,|r,volt,0,44,128,8,1,l,lu,0,0,|r,otemp,0,55,128,8,1,l,lu,0,0,'],
+];
+
+// Setups: a few whole screen sets to flip between at the top of the Screens page (each keeps its own changes on this
+// phone; picking one sends it to the T3). "Everything" is the T3's own default set.
+const DS = name => DEFAULT_SCREENS.find(x => x.startsWith(name + '|'));
+const COOLANT_SCREEN = 'Coolant|1|v,ect,0,0,128,46,4,c,lu,0,0,|r,iat,0,48,128,16,2,l,lu,0,0,';
+const FUEL_SCREEN = 'Fuel|1|v,fuel,0,0,128,41,4,c,lu,0,0,Fuel left|b,fuel,0,42,128,5,1,l,,0,78,|r,dte,0,48,128,16,2,l,lu,0,0,Range';
+const SETUPS = [
+  { id: 'all', name: 'Everything', about: 'Every screen: driving, trip, engine, GPS and the T3’s own checks.', list: () => DEFAULT_SCREENS.slice() },
+  { id: 'daily', name: 'Daily', about: 'Around town: speed and direction, economy, the trip, and whether trips went up.', list: () => [DS('Drive'), DS('Temp & dir'), DS('Economy'), DS('Trip'), DS('Trip status')] },
+  { id: 'tow', name: 'Towing', about: 'Working the engine: boost, coolant big, engine numbers, then speed.', list: () => [DS('Boost'), COOLANT_SCREEN, DS('Engine'), DS('Drive'), DS('Economy')] },
+  { id: 'trip', name: 'Road trip', about: 'Long drives: speed, fuel left and range, the trip so far.', list: () => [DS('Drive'), FUEL_SCREEN, DS('Trip'), DS('Trip 2'), DS('Economy'), DS('Temp & dir')] },
 ];
 
 // ---------------------------------------------------------------- the text format (screens.h)
@@ -111,7 +125,10 @@ function fnv1a(str) {
 const screensHash = list => fnv1a(list.join('\n')).toString(16);
 
 // ---------------------------------------------------------------- the preview: draws like the T3 does
-const PREVIEW_FONT = { 1: ['600 8px ui-monospace, Menlo, monospace', 8], 2: ['600 16px ui-monospace, Menlo, monospace', 16], 3: ['700 17px Helvetica, Arial, sans-serif', 17], 4: ['700 25px Helvetica, Arial, sans-serif', 25] };
+// the T3's fonts: 1 its small 6x8 font; 2, 3, 4 FreeSans Bold 9, 12, 18 pt - a Helvetica copy, so Helvetica Bold at
+// these sizes has the same widths. CAP = rows a digit covers, TAIL = rows a g or y hangs below (draw.h)
+const PREVIEW_FONT = { 1: ['600 8px ui-monospace, Menlo, monospace', 8], 2: ['700 18px Helvetica, Arial, sans-serif', 13], 3: ['700 24px Helvetica, Arial, sans-serif', 17], 4: ['700 34px Helvetica, Arial, sans-serif', 25] };
+const PREVIEW_TAIL = { 1: 0, 2: 4, 3: 5, 4: 7 };
 function fieldShown(id, live) {
   const f = FIELD[id];
   if (!f) return '?';
@@ -131,58 +148,97 @@ function fitLabel(label, room) {
   while (cut > 0 && label[cut - 1] === ' ') cut--;
   return label.slice(0, cut);
 }
+// the same steps as drawWidget() in firmware/T3/draw.h (tests/firmware/test_draw.cpp draws the real thing)
 function drawScreen(ctx, sc, scale, live, sel) {
   const S2 = scale;
   ctx.save();
   ctx.fillStyle = '#000'; ctx.fillRect(0, 0, SCR_W * S2, SCR_H * S2);
   ctx.scale(S2, S2);
-  ctx.textBaseline = 'top';
-  const fit = (t, w, size) => { while (size > 1) { ctx.font = PREVIEW_FONT[size][0]; if (ctx.measureText(t).width <= w) break; size--; } ctx.font = PREVIEW_FONT[size][0]; return size; };
-  const text = (t, x, y, w, h, align, size, col) => {
-    size = fit(t, w, size);
-    const tw = ctx.measureText(t).width, th = PREVIEW_FONT[size][1];
-    const cx = align === 'c' ? x + (w - tw) / 2 : align === 'r' ? x + w - tw : x;
-    ctx.fillStyle = col; ctx.fillText(t, Math.max(x, cx), y + Math.max(0, (h - th) / 2));
+  const CAP = s => PREVIEW_FONT[s][1];
+  const tw = (t, size) => { if (size === 1) return t.length * 6; ctx.font = PREVIEW_FONT[size][0]; return Math.ceil(ctx.measureText(t).width); };
+  const fitSize = (t, w, size) => { while (size > 1 && tw(t, size) > w) size--; return size; };
+  const baselineIn = (y, h, size) => { const full = CAP(size) + PREVIEW_TAIL[size]; return y + (h > full ? Math.floor((h - full) / 2) : 0) + CAP(size) - 1; };
+  let ink = '#7fd4ff';
+  const printAt = (t, x, base, size) => {
+    ctx.font = PREVIEW_FONT[size][0]; ctx.fillStyle = ink;
+    if (size === 1) { ctx.textBaseline = 'top'; ctx.fillText(t, x, base - 7); } else { ctx.textBaseline = 'alphabetic'; ctx.fillText(t, x, base + 1); }
+  };
+  // text centred in a box (the T3 centres the letters it actually has: a g's tail counts, a missing one doesn't)
+  const text = (t, x, y, w, h, align, size) => {
+    size = fitSize(t, w, size);
+    const width = tw(t, size), th = size === 1 ? 8 : CAP(size) + (/[gjpqy(),]/.test(t) ? PREVIEW_TAIL[size] : 0);
+    const cx = Math.max(x, align === 'c' ? x + Math.floor((w - width) / 2) : align === 'r' ? x + w - width : x);
+    const top = th > h && size > 1 ? y : y + Math.floor((h - th) / 2);
+    printAt(t, cx, top + (size === 1 ? 7 : CAP(size) - 1), size);
   };
   sc.w.forEach((w, i) => {
     const f = FIELD[w.field];
+    ctx.save();
+    ctx.beginPath(); ctx.rect(w.x, w.y, w.w, w.h); ctx.clip();   // like the T3: nothing leaves its box
     let fg = '#7fd4ff';
     if (w.invert) { ctx.fillStyle = fg; ctx.fillRect(w.x, w.y, w.w, w.h); fg = '#000'; }
+    ink = fg;
     ctx.strokeStyle = fg; ctx.lineWidth = 1 / S2 * 1.5;
     if (w.frame) ctx.strokeRect(w.x + .5, w.y + .5, w.w - 1, w.h - 1);
     const label = w.text || (f ? f.label : '?');
     const unit = f && w.unit ? (w.field === 'otemp' ? (t3TempF() ? 'F' : 'C') : (w.field === 'ect' || w.field === 'iat') ? (t3EngF() ? 'F' : 'C') : f.unit) : '';
     let v = f ? fieldShown(w.field, live) : '?';
     if (w.type === 'n') { ctx.fillStyle = fg; if (w.w >= w.h) ctx.fillRect(w.x, w.y, w.w, 1); else ctx.fillRect(w.x, w.y, 1, w.h); }
-    else if (w.type === 'l') text(w.text, w.x, w.y, w.w, w.h, w.align, w.size, fg);
+    else if (w.type === 'l') text(w.text, w.x, w.y, w.w, w.h, w.align, w.size);
     else if (w.type === 'r') {
       if (unit && v !== '--') v += ' ' + unit;
-      ctx.font = PREVIEW_FONT[1][0]; ctx.fillStyle = fg;
-      const ty = w.y + (w.h - 8) / 2;
-      if (w.label) { const fx = w.frame ? 2 : 0; ctx.fillText(fitLabel(label, w.w - v.length * 6 - 2 * fx), w.x + fx, ty); ctx.fillText(v, w.x + w.w - fx - ctx.measureText(v).width, ty); }
-      else text(v, w.x, w.y, w.w, w.h, w.align, 1, fg);
+      const pad = w.frame ? 2 : 0;
+      let sz = w.size >= 3 ? 3 : w.size === 2 ? 2 : 1;
+      if (sz > 1 && tw(v, sz) > w.w - 2 * pad - (w.label ? 17 : 0)) sz = 1;
+      const base = baselineIn(w.y, w.h, sz), vw = tw(v, sz), vx = w.x + w.w - pad - vw;
+      if (sz === 1) {
+        if (w.label) printAt(fitLabel(label, vx - w.x - pad), w.x + pad, base, 1);
+        printAt(v, w.label ? vx : w.align === 'c' ? w.x + Math.floor((w.w - vw) / 2) : w.align === 'r' ? vx : w.x, base, 1);
+      } else if (w.label) {
+        const room = vx - w.x - pad - 5;
+        let lb = label, ls = sz;
+        if (tw(lb, sz) > room) {
+          if (tw(lb, 1) <= room) ls = 1;
+          else {
+            while (lb && tw(lb, sz) > room) { const sp = lb.lastIndexOf(' '); lb = sp > 0 ? lb.slice(0, sp) : ''; }
+            lb = lb.trim();
+            if (!lb) { lb = fitLabel(label, room + 6); ls = 1; }
+          }
+        }
+        if (lb) printAt(lb, w.x + pad, base, ls);
+        printAt(v, vx, base, sz);
+      } else printAt(v, w.align === 'c' ? w.x + Math.floor((w.w - vw) / 2) : w.align === 'r' ? vx : w.x + pad, base, sz);
     } else if (w.type === 'b') {
       let top = w.y;
       if (unit && v !== '--') v += ' ' + unit;
-      if (w.label && w.h >= 14) { ctx.font = PREVIEW_FONT[1][0]; ctx.fillStyle = fg; ctx.fillText(fitLabel(label, w.w - v.length * 6), w.x, w.y); ctx.fillText(v, w.x + w.w - ctx.measureText(v).width, w.y); top += 9; }
+      if (w.label && w.size >= 2 && w.h >= 22) {
+        const vw = tw(v, 2);
+        let lb = label;
+        while (lb && tw(lb, 2) > w.w - vw - 5) { const sp = lb.lastIndexOf(' '); lb = sp > 0 ? lb.slice(0, sp) : ''; }
+        if (lb) printAt(lb, w.x, w.y + 12, 2);
+        printAt(v, w.x + w.w - vw, w.y + 12, 2);
+        top += 17;
+      } else if (w.label && w.h >= 14) { printAt(fitLabel(label, w.w - v.length * 6), w.x, w.y + 7, 1); printAt(v, w.x + w.w - v.length * 6, w.y + 7, 1); top += 9; }
       const bh = Math.max(3, w.y + w.h - top);
-      ctx.strokeRect(w.x + .5, top + .5, w.w - 1, bh - 1);
+      ctx.strokeStyle = fg; ctx.strokeRect(w.x + .5, top + .5, w.w - 1, bh - 1);
       const x = Number(live && live[w.field] != null ? live[w.field] : SAMPLE[w.field]);
-      if (isFinite(x)) { const fr = Math.max(0, Math.min(1, (x - w.mn) / (w.mx - w.mn))); ctx.fillStyle = fg; ctx.fillRect(w.x + 1, top + 1, (w.w - 2) * fr, bh - 2); }
+      if (isFinite(x)) { const fr = Math.max(0, Math.min(1, (x - w.mn) / (w.mx - w.mn))); ctx.fillStyle = fg; ctx.fillRect(w.x + 1, top + 1, Math.floor((w.w - 2) * fr), bh - 2); }
     } else {
       let top = w.y, hh = w.h;
-      if (w.label) { text(label, w.x, w.y, w.w, 8, w.align, 1, fg); top += 9; hh -= 9; }
+      const ls = w.size >= 3 && w.h >= 34 ? 2 : 1;
+      if (w.label) { const lh = ls === 2 ? 15 : 9; const fx = w.frame ? 2 : 0; text(label, w.x + fx, w.y + (w.frame ? 1 : 0), w.w - 2 * fx, lh - 1, w.align, ls); top += lh; hh -= lh; }
       if (unit && v !== '--' && w.size >= 2) {
-        ctx.font = PREVIEW_FONT[1][0];
-        const uw = ctx.measureText(unit).width + 2;
-        const sz = fit(v, w.w - uw, w.size);
-        const tw = ctx.measureText(v).width, th = PREVIEW_FONT[sz][1], total = tw + uw;
-        const cx = Math.max(w.x, w.align === 'c' ? w.x + (w.w - total) / 2 : w.align === 'r' ? w.x + w.w - total : w.x);
-        const cy = top + Math.max(0, (hh - th) / 2);
-        ctx.fillStyle = fg; ctx.fillText(v, cx, cy);
-        ctx.font = PREVIEW_FONT[1][0]; ctx.fillText(unit, cx + tw + 2, cy + th - 8);
-      } else text(unit && v !== '--' ? v + ' ' + unit : v, w.x, top, w.w, hh, w.align, w.size, fg);
+        // the number big, the unit beside it (9 pt beside a size 3 or 4 number, else small), centred as a pair
+        const us = w.size >= 3 ? 2 : 1, uw = tw(unit, us) + 3;
+        const sz = fitSize(v, w.w - uw, w.size), vw = tw(v, sz);
+        const th = sz === 1 ? 8 : CAP(sz) + (/[gjpqy(),]/.test(v) ? PREVIEW_TAIL[sz] : 0), total = vw + uw;
+        const cx = Math.max(w.x, w.align === 'c' ? w.x + Math.floor((w.w - total) / 2) : w.align === 'r' ? w.x + w.w - total : w.x);
+        const cy = top + Math.floor((hh - th) / 2), base = cy + (sz === 1 ? 7 : CAP(sz) - 1);
+        printAt(v, cx, base, sz);
+        if (us === 2 && sz >= 2) printAt(unit, cx + vw + 3, base, 2); else printAt(unit, cx + vw + 2, cy + th - 1, 1);
+      } else text(unit && v !== '--' ? v + ' ' + unit : v, w.x, top, w.w, hh, w.align, w.size);
     }
+    ctx.restore();
     if (i === sel) { ctx.strokeStyle = '#ff9f0a'; ctx.lineWidth = 1 / S2 * 2; ctx.setLineDash([2, 1.5]); ctx.strokeRect(w.x + .25, w.y + .25, w.w - .5, w.h - .5); ctx.setLineDash([]); }
   });
   ctx.restore();
@@ -212,7 +268,31 @@ function scrState() {
   if (s && Array.isArray(s.list) && s.list.length) return s;
   return { list: DEFAULT_SCREENS.slice(), sentHash: null, ackHash: null, ackAt: 0 };
 }
-function scrSave(st) { store.set('t3scr', st); }
+function scrSave(st) {
+  store.set('t3scr', st);
+  const su = setupState(); su.lists[su.active] = st.list.slice(); store.set('t3setups', su);
+}
+// { active: setup id, lists: { id: [screen text...] } } - the screens on this phone for each setup
+function setupState() {
+  const su = store.get('t3setups', null);
+  if (su && su.lists && SETUPS.some(x => x.id === su.active)) return su;
+  const st = store.get('t3scr', null);
+  return { active: 'all', lists: { all: st && Array.isArray(st.list) && st.list.length ? st.list.slice() : DEFAULT_SCREENS.slice() } };
+}
+// switch the phone to another setup (what it had is kept), then send it if the T3 can be reached
+async function useSetup(st, id) {
+  const su = setupState();
+  if (su.active === id) return false;
+  su.lists[su.active] = st.list.slice();
+  su.active = id;
+  const set = SETUPS.find(x => x.id === id);
+  if (!su.lists[id] || !su.lists[id].length) su.lists[id] = set.list();
+  store.set('t3setups', su);
+  st.list = su.lists[id].slice();
+  st.sentHash = null;
+  store.set('t3scr', st);
+  return true;
+}
 function scrStatus(st) {
   const mine = screensHash(st.list);
   const t3 = LIVE.t3 && LIVE.t3.scrh;
@@ -388,7 +468,18 @@ function screensSheet() {
               h('button', { class: 'mini', 'aria-label': 'Move up', onclick: () => move(-1), disabled: i === 0 }, '▲'),
               h('button', { class: 'mini', 'aria-label': 'Move down', onclick: () => move(1), disabled: i === st.list.length - 1 }, '▼'))));
         });
+        const su = setupState(), setup = SETUPS.find(x => x.id === su.active);
+        const tabs = seg(SETUPS.map(x => [x.id, x.name]), su.active, async id => {
+          if (!(await useSetup(st, id))) return;
+          paint();
+          const name = SETUPS.find(x => x.id === id).name;
+          if (t3CanSend()) { await sendScreens(st); paint(); }
+          else toast(name + ' screens', 'Connect to the T3, then tap Send to the T3', 'info');
+        });
+        tabs.classList.add('scr-setups');
         put(b,
+          tabs,
+          h('div', { class: 'foot', text: setup.about + ' Each setup keeps its own changes; tapping one sends it to the T3.' }),
           h('div', { class: 'card list' }, h('div', { class: 'row' }, h('div', { class: 'main' }, h('b', { text: 'Status' }), h('span', { text: words })), h('span', { class: 'pill ' + kind }, h('i')))),
           h('div', { class: 'label', text: 'Screens (the wheel buttons go through the ones that are on, in this order)' }),
           list,
@@ -400,7 +491,7 @@ function screensSheet() {
           h('div', { class: 'label', text: 'Steering wheel buttons (left: the T3)' }), buttonsCard(),
           h('div', { class: 'label', text: 'Nano: right wheel buttons, pedal, headlights' }), nanoCard(),
           h('div', { class: 'label', text: 'Display' }), displayCard(),
-          confirmButton('Go back to the default screens', 'Tap again: the default screens replace yours on this phone', () => { st.list = DEFAULT_SCREENS.slice(); scrSave(st); paint(); toast('Default screens', 'Send them to the T3 to use them'); }));
+          confirmButton('Go back to the default screens', 'Tap again: ' + setup.name + '’s default screens replace yours on this phone', () => { st.list = setup.list(); scrSave(st); paint(); toast(setup.name + ': default screens', 'Send them to the T3 to use them'); }));
       };
       paint();
     },
@@ -442,7 +533,7 @@ function screenEditor(st, idx, after) {
       const paintList = () => {
         wl.textContent = '';
         sc.w.forEach((w, i) => wl.append(h('button', { class: 'chip' + (i === sel ? ' on' : ''), onclick: () => { sel = i; paintAll(); } }, chipText(w))));
-        if (sc.w.length < MAX_WIDGETS) wl.append(h('button', { class: 'chip', onclick: () => { sc.w.push(newWidget({ y: Math.min(56, sc.w.length * 10), h: 8 })); sel = sc.w.length - 1; save(); paintAll(); } }, icon('plus'), 'Add'));
+        if (sc.w.length < MAX_WIDGETS) wl.append(h('button', { class: 'chip', onclick: () => { sc.w.push(newWidget({ type: 'r', size: 2, y: Math.min(48, sc.w.length * 16), h: 16 })); sel = sc.w.length - 1; save(); paintAll(); } }, icon('plus'), 'Add'));
       };
       const paintProps = () => {
         props.textContent = '';
@@ -468,6 +559,10 @@ function screenEditor(st, idx, after) {
           w.type === 'n' ? null : h('div', { class: 'group' }, h('label', { class: 'gr' }, h('span', { text: w.type === 'l' ? 'Text' : 'Label' }), text)),
           w.type === 'v' || w.type === 'l' ? h('div', { class: 'label', text: 'Size (1 small → 4 biggest; shrinks by itself if it doesn’t fit)' }) : null,
           w.type === 'v' || w.type === 'l' ? seg([[1, '1'], [2, '2'], [3, '3'], [4, '4']], w.size, v => set('size', v)) : null,
+          w.type === 'r' ? h('div', { class: 'label', text: 'Text size (1 small, 2 easy to read: rows 16 high, four to a screen; 3 big)' }) : null,
+          w.type === 'r' ? seg([[1, '1'], [2, '2'], [3, '3']], Math.min(3, w.size), v => set('size', v)) : null,
+          w.type === 'b' ? h('div', { class: 'label', text: 'Label size (2 = easy to read, above the bar; needs the bar 22 high)' }) : null,
+          w.type === 'b' ? seg([[1, '1'], [2, '2']], Math.min(2, w.size), v => set('size', v)) : null,
           w.type === 'n' ? null : seg([['l', 'Left'], ['c', 'Centre'], ['r', 'Right']], w.align, v => set('align', v)),
           h('div', { class: 'label', text: 'Position and size, in T3 pixels (128 × 64)' }),
           h('div', { class: 'group' }, numRow('Left', 'x', 0, SCR_W - 1), numRow('Top', 'y', 0, SCR_H - 1), numRow('Width', 'w', 1, SCR_W), numRow('Height', 'h', 1, SCR_H)),
@@ -750,4 +845,4 @@ function displayCard() {
     h('button', { class: 'btn btn-glass glass btn-wide', onclick: () => t3SendSettings() }, icon('bt'), 'Send settings to the T3'));
 }
 
-if (typeof module !== 'undefined') module.exports = { parseBv, FIELDS, DEFAULT_SCREENS, SCREEN_TEMPLATES, screenWireSizes, parseScreen, writeScreen, fnv1a, screensHash, parseBtnMap, fitLabel, parseWheelMap, writeWheelMap, parseNanoCfg, writeNanoCfg, WHEEL_DEFAULT, KENWOOD_NAMES };
+if (typeof module !== 'undefined') module.exports = { parseBv, FIELDS, DEFAULT_SCREENS, SCREEN_TEMPLATES, SETUPS, screenWireSizes, parseScreen, writeScreen, fnv1a, screensHash, parseBtnMap, fitLabel, parseWheelMap, writeWheelMap, parseNanoCfg, writeNanoCfg, WHEEL_DEFAULT, KENWOOD_NAMES };

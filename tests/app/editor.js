@@ -140,6 +140,16 @@ const srv = http.createServer((q, r) => {
   const st2 = await page.evaluate(() => scrState());
   check(T3.hash === screensHash(st2.list) && st2.list[0].split('|')[1] === '0' && st2.list[st2.list.length - 2].startsWith('Ben'), 'reordered, first screen hidden, and the T3 has that set: ' + [T3.hash, screensHash(st2.list), st2.list[0].slice(0, 20), st2.list[st2.list.length - 2].slice(0, 12)].join(' / '));
 
+  // setups: the tabs at the top swap the whole set and send it; each keeps its own changes
+  await page.locator(LIST + ' .scr-setups button', { hasText: 'Daily' }).click(); await page.waitForTimeout(4500);
+  const daily = await page.evaluate(() => ({ list: scrState().list, want: SETUPS.find(x => x.id === 'daily').list() }));
+  check(JSON.stringify(daily.list) === JSON.stringify(daily.want) && T3.hash === screensHash(daily.list), 'Daily tab: its screens, sent to the T3');
+  check(await page.locator(LIST + ' .scr-row').count() === daily.want.length, 'the list shows the Daily screens');
+  await page.screenshot({ path: shots + '/setups-daily.png' });
+  await page.locator(LIST + ' .scr-setups button', { hasText: 'Everything' }).click(); await page.waitForTimeout(4500);
+  const back = await page.evaluate(() => scrState().list);
+  check(JSON.stringify(back) === JSON.stringify(st2.list) && T3.hash === screensHash(back), 'back to Everything: the edited set (with Ben’s screen) again, and sent');
+
   // load them back from the T3
   await page.evaluate(() => { const s = scrState(); s.list = s.list.slice(0, 2); scrSave(s); });
   const got = await page.evaluate(() => loadScreensFromT3());

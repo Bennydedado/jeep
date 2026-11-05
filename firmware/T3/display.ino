@@ -22,6 +22,7 @@ void displaySettingsChanged() {
 
 // ---------------------------------------------------------------- screens kept in flash
 #include "screenstore.h"
+#include "draw.h"   // drawing one widget
 
 // ---------------------------------------------------------------- pages, sleep, brightness
 void pageStep(int dir) {
@@ -102,117 +103,6 @@ void displayStep() {
     oled.setCursor(64 - msg.length() * 3, 28); oled.print(msg);
   }
   oled.display();
-}
-
-// ---------------------------------------------------------------- one widget
-static void useFont(int size) {
-  oled.setTextSize(1);
-  if (size == 4) oled.setFont(&FreeSansBold18pt7b);
-  else if (size == 3) oled.setFont(&FreeSansBold12pt7b);
-  else { oled.setFont(); oled.setTextSize(size == 2 ? 2 : 1); }
-}
-// text width/height in the current font; y for printing so the text sits inside [top, top+h)
-static void measure(const String& s, int16_t& w, int16_t& h, int16_t& yOff, int size) {
-  int16_t x1, y1; uint16_t ww, hh;
-  oled.getTextBounds(s, 0, 0, &x1, &y1, &ww, &hh);
-  w = ww;
-  if (size >= 3) { h = hh; yOff = -y1; }        // proportional fonts print from the baseline
-  else { h = size == 2 ? 16 : 8; yOff = 0; }     // the built-in font prints from the top
-}
-// too wide for its box at this size? one size smaller, until it fits (or it's the smallest)
-static int fitSize(const String& s, int w, int size) {
-  int16_t tw, th, yo;
-  while (size > 1) { useFont(size); measure(s, tw, th, yo, size); if (tw <= w) break; size--; }
-  return size;
-}
-static void drawText(const String& s, int x, int y, int w, int h, char align, int size) {
-  size = fitSize(s, w, size);
-  useFont(size);
-  int16_t tw, th, yo;
-  measure(s, tw, th, yo, size);
-  int cx = align == 'c' ? x + (w - tw) / 2 : align == 'r' ? x + w - tw : x;
-  int cy = y + (h - th) / 2 + yo;
-  if (size >= 3 && th > h) cy = y + yo;
-  oled.setCursor(cx < x ? x : cx, cy);
-  oled.print(s);
-  oled.setFont(); oled.setTextSize(1);
-}
-
-void drawWidget(const Widget& w) {
-  uint16_t fg = SSD1306_WHITE;
-  if (w.invert) { oled.fillRect(w.x, w.y, w.w, w.h, SSD1306_WHITE); fg = SSD1306_BLACK; }
-  oled.setTextColor(fg);
-  if (w.frame) oled.drawRect(w.x, w.y, w.w, w.h, fg);
-  const FieldDef* fd = w.field >= 0 ? &FIELDS[w.field] : nullptr;
-  String label = w.text[0] ? String(w.text) : fd ? String(fd->label) : String("?");
-  String unit = fd && w.unit ? unitFor(w.field) : String("");
-  switch (w.type) {
-    case 'n':
-      if (w.w >= w.h) oled.drawFastHLine(w.x, w.y, w.w, fg); else oled.drawFastVLine(w.x, w.y, w.h, fg);
-      break;
-    case 'l':
-      drawText(String(w.text), w.x, w.y, w.w, w.h, w.align, w.size);
-      break;
-    case 'r': {
-      String v = fd ? fieldText(w.field) : String("?");
-      if (unit.length() && v != "--") v += " " + unit;
-      oled.setFont(); oled.setTextSize(1);
-      int ty = w.y + (w.h - 8) / 2;
-      int vx = w.x + w.w - (int)v.length() * 6 - (w.frame ? 2 : 0);
-      if (w.label) { char lb[24]; fitLabel(label.c_str(), vx - w.x - (w.frame ? 2 : 0), lb, sizeof(lb)); oled.setCursor(w.x + (w.frame ? 2 : 0), ty); oled.print(lb); }
-      oled.setCursor(w.label ? vx : (w.align == 'c' ? w.x + (w.w - (int)v.length() * 6) / 2 : w.align == 'r' ? vx : w.x), ty);
-      oled.print(v);
-      break;
-    }
-    case 'b': {
-      float x = fd ? fieldNumber(w.field) : NAN;
-      String v = fd ? fieldText(w.field) : String("?");
-      if (unit.length() && v != "--") v += " " + unit;
-      int top = w.y;
-      if (w.label && w.h >= 14) {
-        oled.setFont(); oled.setTextSize(1);
-        char lb[24]; fitLabel(label.c_str(), w.w - (int)v.length() * 6, lb, sizeof(lb));
-        oled.setCursor(w.x, w.y); oled.print(lb);
-        oled.setCursor(w.x + w.w - (int)v.length() * 6, w.y); oled.print(v);
-        top += 9;
-      }
-      int bh = w.y + w.h - top;
-      if (bh < 3) bh = 3;
-      oled.drawRect(w.x, top, w.w, bh, fg);
-      if (!isnan(x)) {
-        float f = (x - w.mn) / (w.mx - w.mn);
-        if (f < 0) f = 0; if (f > 1) f = 1;
-        oled.fillRect(w.x + 1, top + 1, (int)((w.w - 2) * f), bh - 2, fg);
-      }
-      break;
-    }
-    default: {   // 'v': label on top (small), the value as big as asked
-      int top = w.y, hh = w.h;
-      if (w.label) {
-        oled.setFont(); oled.setTextSize(1);
-        drawText(label, w.x + (w.frame ? 2 : 0), w.y + (w.frame ? 1 : 0), w.w - (w.frame ? 4 : 0), 8, w.align, 1);
-        top += 9; hh -= 9;
-      }
-      String v = fd ? fieldText(w.field) : String("?");
-      bool smallUnit = unit.length() && v != "--" && w.size >= 2;
-      if (unit.length() && v != "--" && w.size < 2) v += " " + unit;
-      if (smallUnit) {
-        // the number big, the unit small beside it, both centred as a pair
-        int uw = unit.length() * 6 + 2;
-        int sz = fitSize(v, w.w - uw, w.size);
-        useFont(sz);
-        int16_t tw, th, yo; measure(v, tw, th, yo, sz);
-        int total = tw + uw;
-        int cx = w.align == 'c' ? w.x + (w.w - total) / 2 : w.align == 'r' ? w.x + w.w - total : w.x;
-        if (cx < w.x) cx = w.x;
-        int cy = top + (hh - th) / 2;
-        oled.setCursor(cx, cy + yo); oled.print(v);
-        oled.setFont(); oled.setTextSize(1);
-        oled.setCursor(cx + tw + 2, cy + th - 8); oled.print(unit);
-      } else drawText(v, w.x, top, w.w, hh, w.align, w.size);
-    }
-  }
-  oled.setTextColor(SSD1306_WHITE);
 }
 
 // ---------------------------------------------------------------- what each field shows

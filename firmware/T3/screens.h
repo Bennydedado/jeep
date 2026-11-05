@@ -7,10 +7,11 @@
 //
 // Screen text:  <name>|<on 0/1>|<widget>|<widget>|...
 // Widget text:  <type>,<field>,<x>,<y>,<w>,<h>,<size>,<align>,<flags>,<min>,<max>,<text>
-//   type   v value (small label on top, the number below in `size`)   r row (label left, value right)
+//   type   v value (label on top, the number below in `size`)      r row (label left, value right)
 //          b bar (label + value on top, a bar from min to max under it)   l label (just `text`)   n line
 //   field  one of the ids in fields.h (ignored for l and n)
-//   size   1 small 6x8, 2 big 12x16 pixel font, 3 = 12 pt sans, 4 = 18 pt sans (the biggest)
+//   size   1 small 6x8, 2 = 9 pt sans bold (easy to read; rows 16 high), 3 = 12 pt, 4 = 18 pt (the biggest).
+//          Rows use sizes 1-3; bars 1-2 (2 = label and value in 9 pt above the bar, needs h >= 22). draw.h draws them.
 //   align  l c r
 //   flags  any of: l = show the label, u = show the unit, f = frame (box around the widget), i = inverted (white box)
 //   text   replaces the field's own label (no commas or pipes)
@@ -144,16 +145,16 @@ inline uint32_t fnv1a(const char* s, uint32_t h = 2166136261u) { while (*s) { h 
 
 // the screens a new T3 starts with (and "Restore defaults" in Heep goes back to). Keep in step with t3screens.js.
 static const char* const DEFAULT_SCREENS[] = {
-  "Temp & dir|1|l,-,0,0,60,8,1,c,,0,0,HEADING|l,-,66,0,62,8,1,c,,0,0,OUTSIDE|v,hdg,0,10,62,30,4,c,,0,0,|v,otemp,66,10,62,30,4,c,u,0,0,|n,-,63,2,1,46,1,l,,0,0,|r,hdgd,0,48,62,8,1,l,,0,0,|r,gfix,0,56,128,8,1,l,l,0,0,|r,sats,66,48,62,8,1,r,l,0,0,",
-  "Drive|1|v,kmh,0,0,80,40,4,l,lu,0,0,|v,hdg,82,0,46,20,2,r,,0,0,|v,otemp,82,22,46,18,1,r,u,0,0,|r,tavg,0,46,128,8,1,l,lu,0,0,|r,tkm,0,56,128,8,1,l,lu,0,0,",
-  "Boost|1|v,boost,0,0,128,40,4,c,lu,0,0,|b,boost,0,42,128,12,1,l,,0,30,|r,bmax,0,56,64,8,1,l,l,0,0,|r,rpm,66,56,62,8,1,r,l,0,0,",
-  "Economy|1|v,tavg,0,0,128,40,4,c,lu,0,0,|r,econ,0,44,128,8,1,l,lu,0,0,|r,tkm,0,54,128,8,1,l,lu,0,0,",
-  "Trip|1|r,tstate,0,0,128,8,1,l,l,0,0,|r,tkm,0,10,128,8,1,l,lu,0,0,|r,ttime,0,19,128,8,1,l,l,0,0,|r,tl,0,28,128,8,1,l,lu,0,0,|r,tavgs,0,37,128,8,1,l,lu,0,0,|r,tvmax,0,46,128,8,1,l,lu,0,0,|r,tidle,0,55,128,8,1,l,l,0,0,",
-  "Engine|1|r,rpm,0,0,128,8,1,l,l,0,0,|r,boost,0,10,128,8,1,l,lu,0,0,|r,ect,0,20,128,8,1,l,lu,0,0,|r,iat,0,30,128,8,1,l,lu,0,0,|r,volt,0,40,128,8,1,l,lu,0,0,|r,load,0,50,128,8,1,l,lu,0,0,",
-  "GPS|1|r,gfix,0,0,128,8,1,l,l,0,0,|r,sats,0,9,128,8,1,l,l,0,0,|r,hdop,0,18,128,8,1,l,l,0,0,|r,kmhg,0,27,128,8,1,l,lu,0,0,|r,lat,0,36,128,8,1,l,l,0,0,|r,lon,0,45,128,8,1,l,l,0,0,|r,alt,0,54,128,8,1,l,lu,0,0,",
-  "Connections|1|r,obd,0,0,128,8,1,l,l,0,0,|r,ble,0,10,128,8,1,l,l,0,0,|r,wifi,0,20,128,8,1,l,l,0,0,|r,nano,0,30,128,8,1,l,l,0,0,|r,queue,0,40,128,8,1,l,l,0,0,|r,clock,0,50,128,8,1,l,l,0,0,",
-  "Logging|1|r,sd,0,0,128,8,1,l,l,0,0,|r,sdfree,0,10,128,8,1,l,lu,0,0,|r,logn,0,20,128,8,1,l,l,0,0,|r,queue,0,30,128,8,1,l,l,0,0,|r,tstate,0,40,128,8,1,l,l,0,0,",
-  "System|1|r,fw,0,0,128,8,1,l,l,0,0,|r,up,0,10,128,8,1,l,l,0,0,|r,heap,0,20,128,8,1,l,lu,0,0,|r,btn,0,30,128,8,1,l,l,0,0,|r,date,0,40,128,8,1,l,l,0,0,|r,totkm,0,50,128,8,1,l,lu,0,0,",
-  "Trip status|1|r,wifi,0,20,128,12,1,l,l,0,0,|r,upstat,0,40,128,12,1,l,l,0,0,",
+  "Drive|1|v,kmh,0,0,82,46,4,c,,0,0,|v,hdg,84,0,44,22,3,c,,0,0,|v,otemp,84,24,44,22,3,c,,0,0,|r,tavg,0,48,128,16,2,l,lu,0,0,Avg",
+  "Temp & dir|1|v,hdg,0,0,62,48,4,c,l,0,0,Dir|v,otemp,66,0,62,48,4,c,l,0,0,Temp|n,-,63,2,1,44,1,l,,0,0,|r,hdgd,0,48,128,16,2,l,l,0,0,Course",
+  "Boost|1|v,boost,0,0,128,42,4,c,u,0,0,|b,boost,0,42,128,5,1,l,,0,30,|r,bmax,0,48,128,16,2,l,lu,0,0,Peak",
+  "Economy|1|v,tavg,0,0,128,46,4,c,lu,0,0,Trip avg|r,econ,0,48,128,16,2,l,lu,0,0,Now",
+  "Trip|1|r,tkm,0,0,128,16,2,l,lu,0,0,Dist|r,ttime,0,16,128,16,2,l,l,0,0,Time|r,tl,0,32,128,16,2,l,lu,0,0,Diesel|r,tavgs,0,48,128,16,2,l,lu,0,0,Avg",
+  "Trip 2|1|r,tvmax,0,0,128,16,2,l,lu,0,0,Top|r,tidle,0,16,128,16,2,l,l,0,0,Idle|r,tstate,0,32,128,16,2,l,l,0,0,Trip|r,dte,0,48,128,16,2,l,lu,0,0,Range",
+  "Engine|1|r,rpm,0,0,128,16,2,l,l,0,0,|r,ect,0,16,128,16,2,l,lu,0,0,|r,iat,0,32,128,16,2,l,lu,0,0,|r,volt,0,48,128,16,2,l,lu,0,0,",
+  "GPS|1|r,gfix,0,0,128,16,2,l,l,0,0,|r,sats,0,16,128,16,2,l,l,0,0,|r,kmhg,0,32,128,16,2,l,lu,0,0,Speed|r,alt,0,48,128,16,2,l,lu,0,0,Height",
+  "Connections|1|r,obd,0,0,128,16,2,l,l,0,0,|r,ble,0,16,128,16,2,l,l,0,0,|r,wifi,0,32,128,16,2,l,l,0,0,|r,nano,0,48,128,16,2,l,l,0,0,",
+  "System|1|r,fw,0,0,128,16,2,l,l,0,0,|r,sd,0,16,128,16,2,l,l,0,0,|r,queue,0,32,128,16,2,l,l,0,0,|r,totkm,0,48,128,16,2,l,lu,0,0,Total",
+  "Trip status|1|l,-,0,0,128,16,2,c,,0,0,Wi-Fi|r,wifi,0,16,128,16,2,c,,0,0,|l,-,0,32,128,16,2,c,,0,0,Trips|r,upstat,0,48,128,16,2,c,,0,0,",
 };
 static const int DEFAULT_SCREEN_COUNT = sizeof(DEFAULT_SCREENS) / sizeof(DEFAULT_SCREENS[0]);

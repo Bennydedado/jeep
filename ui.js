@@ -68,6 +68,7 @@ const IC = {
   pause: '<path d="M9 6v12M15 6v12"/>',
   download: '<path d="M12 4v11M7.5 10.5L12 15l4.5-4.5M5 19.5h14"/>',
   fit: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
+  full: '<path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7"/>',
   back: '<path d="M15 5.5L8.5 12l6.5 6.5"/>',
   link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
   wifi: '<path d="M2.5 9.2a13.5 13.5 0 0 1 19 0"/><path d="M5.6 12.6a9 9 0 0 1 12.8 0"/><path d="M8.7 15.9a4.5 4.5 0 0 1 6.6 0"/><circle cx="12" cy="19.3" r="1.2" fill="currentColor" stroke="none"/>',

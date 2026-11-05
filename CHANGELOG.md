@@ -1,5 +1,23 @@
 # Changes
 
+## 4 Nov 2026 — T3 2.23, Heep 1.1.28: screens you can read from the seat, setups, full-screen map
+
+- Size 2 text is now a smooth 9 pt bold font (about 13 px tall) instead of the blocky doubled small font. The default
+  screens use it for every row: four rows to a screen, label on the left, value on the right. Labels and units beside
+  a big number are 9 pt too.
+- A row's label stays as big as the value when it fits, otherwise it goes small rather than disappearing; only a value
+  too long for the row drops to the small font. Nothing a widget draws can spill into the next one (the bottom pixel
+  of a g or y at the foot of a row is trimmed).
+- New default screens (11): Drive, Temp & dir, Boost, Economy, Trip, Trip 2, Engine, GPS, Connections, System, Trip
+  status. A course in degrees shows its degree sign in the big fonts.
+- Heep: **setups** at the top of Live → Screens: Everything, Daily, Towing and Road trip. Tap one and its screens go
+  to the T3; each keeps its own changes. Rows and bars have a size choice in the editor, and the preview draws the T3's
+  big fonts at their real size.
+- Heep: the map has a **full screen** button.
+- Tests: `tests/firmware/test_draw.cpp` draws every default screen, template and setup with the T3's own drawing code
+  (`firmware/T3/draw.h`) and the real Adafruit GFX fonts, with ordinary and widest values, and checks nothing leaves
+  its box.
+
 ## 4 Nov 2026 — T3 2.22, Heep 1.1.27: GPS tracks upload when you get home, with a progress bar
 
 - Getting home: once the T3 is on one of your Wi-Fi networks (not a phone hotspot) and the Jeep has stopped for 5 s
