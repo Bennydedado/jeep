@@ -88,6 +88,8 @@ extern String liveTopic, cmdTopic;   // relay channels (settings.ino)
 extern String bootUpdNote;           // how an update at start-up went (update.ino)
 extern int menuChanges;              // settings changed from the wheel menu (menu.ino)
 extern String bootNote;              // how sending trips at start-up went (update.ino)
+extern String uplNote;               // how an upload asked for from Heep / the wheel went (update.ino, in "hi")
+String uploadNow(const char* from, int& nTrips, int& nTracks);
 
 // ---------------------------------------------------------------- the clock
 // Best source wins: GPS ('g') over internet time ('n') over the phone ('a'). 0 = unknown.

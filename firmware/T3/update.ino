@@ -12,6 +12,7 @@
 static uint32_t bootUpdAt = 0;   // restart for the update at this millis() (0 = not asked)
 String bootUpdNote;               // how the update at start-up went, for the event log
 String bootNote;                  // how sending trips at start-up went, for the event log
+String uplNote;                   // how an upload you asked for went (Heep's "Upload now", the wheel's Send trips): in "hi"
 
 // remember to update at the next start, save the trip so far and the card, and restart in 2 s (time to tell Heep)
 void bootUpdateSoon(bool manual) {
@@ -42,11 +43,27 @@ void restartToSend(const char* why) {
   flushReq = true;
   sendRestartAt = millis() + 1500;
 }
-void sendTripsNow(const char* from) {
+// Upload now (Heep's button, 2.24, and the wheel menu's Send trips): ends the trip if there is one, then restarts and
+// sends every trip and GPS track that's waiting, however long it takes, with the bar on the screen. It joins any of
+// your saved networks, hotspots that hide from a scan included. Returns why it can't, or "" when it's on its way.
+String uploadNow(const char* from, int& nTrips, int& nTracks) {
+  nTrips = nTracks = 0;
+  if (speedNow() > 3) return "not while driving: stop first";
+  if (!cfg.netCount) return "no Wi-Fi saved: add one in T3 settings";
+  if (!cfg.sheetUrl.length() && !cfg.trkUrl.length()) return "no trip sheet or track storage set up";
   if (trip.km >= 0.2 || trip.gpsKm >= 0.2) tripCommand("end", from);
-  if (!cfg.sheetUrl.length()) { flash("No sheet set up"); return; }
-  if (queued <= 0) { flash("No trips waiting"); return; }
+  if (sd.ok) sdCountWaiting();
+  nTrips = cfg.sheetUrl.length() ? queued : 0;
+  nTracks = (sd.ok && cfg.trkUrl.length()) ? sd.tracksWaiting : 0;
+  if (nTrips <= 0 && nTracks <= 0) return "nothing waiting: every trip and track is sent";
+  Preferences p; p.begin("t3", false); p.putUChar("hsend", 2); p.end();   // 2 = asked for: no time limit, report back
   restartToSend(from);
+  return "";
+}
+void sendTripsNow(const char* from) {
+  int a, b;
+  String why = uploadNow(from, a, b);
+  flash(why.length() ? why.substring(0, 17) : String("Uploading..."));
 }
 void parkedTripEnded() { parkSendAt = millis() + 20000; }   // trip.ino: the trip ended because the Jeep was parked
 // Got home: on one of your Wi-Fi networks that isn't a phone's hotspot, stopped for 5 s, with trips or tracks waiting.
@@ -219,18 +236,22 @@ static void upPart(uint32_t bytes) {
 }
 void bootSend() {
   Preferences pr; pr.begin("t3", false);
-  bool home = pr.getUChar("hsend", 0);                 // sendStep: restarted because the Jeep got home
-  if (home) pr.remove("hsend");
+  uint8_t hs = pr.getUChar("hsend", 0);                // 1: got home (sendStep), 2: asked for (uploadNow)
+  if (hs) pr.remove("hsend");
   pr.end();
+  bool home = hs > 0, asked = hs == 2;
   bool trips = queued > 0 && cfg.sheetUrl.length();
   bool tracks = sd.ok && sd.tracksWaiting > 0 && cfg.trkUrl.length();
-  if ((!trips && !tracks) || !cfg.netCount) return;
-  String joined = bootJoin(false);
+  if ((!trips && !tracks) || !cfg.netCount) { if (asked) uplNote = "nothing was waiting"; return; }
+  if (asked) bootShowAs("Uploading", "joining Wi-Fi...", "", -1);
+  String joined = bootJoin(asked);                     // asked for: hotspots that hide from a scan are tried too
   if (!joined.length()) {
     bootNote = "uploads at start: no Wi-Fi in sight";
+    if (asked) { uplNote = "couldn't join your Wi-Fi: nothing was sent"; bootShowAs("Upload failed", "couldn't join Wi-Fi", "nothing was sent", -1); delay(2500); }
     WiFi.disconnect(true); WiFi.mode(WIFI_OFF);
     return;
   }
+  int tripsBefore = queued;
   if (!timeSrc) {   // the trip times are kept; this is only for a trip that never had a clock
     configTime(0, 0, "pool.ntp.org", "time.google.com");
     struct tm tmv; if (getLocalTime(&tmv, 3000)) { struct timeval tv; gettimeofday(&tv, nullptr); setClock((int64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000, 'n'); }
@@ -256,6 +277,13 @@ void bootSend() {
                 " waiting (" + String(trkStatus) + ")" + (home ? " [home]" : "");
   }
   bool allDone = (!trips || queued == 0) && (!tracks || sd.tracksWaiting == 0);
+  if (asked) {
+    int tripsSent = trips ? tripsBefore - queued : 0;
+    String s = "sent " + String(tripsSent) + (tripsSent == 1 ? " trip" : " trips") + " and " + String(upSent) + (upSent == 1 ? " track" : " tracks");
+    if (!allDone) s += "; still waiting: " + String(trips ? queued : 0) + " trips, " + String(tracks ? sd.tracksWaiting : 0) + " tracks (" +
+                       (trips && queued ? String(lastUpload) : String(trkStatus)) + ")";
+    uplNote = s;
+  }
   if (allDone) bootShowAs("Upload done", String(upSent ? String(upSent) + (upSent == 1 ? " trip's track" : " trips' tracks") : String("trips")) + " sent", "", 100);
   else bootShowAs("Upload paused", tracks ? String(sd.tracksWaiting) + " track" + (sd.tracksWaiting == 1 ? "" : "s") + " to go" : String("trips to go"),
                   "rest goes next time", -1);

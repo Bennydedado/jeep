@@ -1,5 +1,15 @@
 # Changes
 
+## 5 Nov 2026 — T3 2.24, Heep 1.1.30: Upload trips and tracks now
+
+- Heep: T3 settings has **Upload trips and tracks now** and shows what's waiting. The T3 answers straight away (what
+  it's sending, or why it can't: driving, no Wi-Fi saved, nothing waiting), ends the trip, restarts and sends every trip
+  and GPS track with no time limit, the bar on its screen. It tries all your saved networks, hotspots included. When
+  Heep is back in touch it says how it went ("sent 2 trips and 3 tracks"). The old "Try Wi-Fi and update now" button is
+  now "Check for a T3 update now", since that's all it does.
+- The wheel menu's "Send trips" is now "Upload now" and does the same (tracks too; it used to stop at "No trips waiting"
+  even with tracks to send).
+
 ## 5 Nov 2026 — Heep 1.1.29: a Mix tab for your own screen set
 
 - Live → Screens has a fifth tab, **Mix**. "Add a screen" now lists every screen from your other tabs (with your

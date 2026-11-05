@@ -15,6 +15,12 @@ function t3Message(m, via) {
     updateLive();
   } else if (m.t === 'hi') {
     LIVE.fw = String(m.fw || ''); LIVE.t3 = m; LIVE.t3At = Date.now();
+    // after "Upload trips and tracks now": the T3 restarted to send, and says how it went once (per start)
+    if (m.upl && m.uplb != null && store.get('uplSeen', null) !== String(m.uplb)) {
+      store.set('uplSeen', String(m.uplb));
+      const good = /^sent/.test(m.upl) && !/still waiting/.test(m.upl);
+      toast(good ? 'Upload done' : 'Upload', m.upl.charAt(0).toUpperCase() + m.upl.slice(1), good ? 'ok' : 'bad');
+    }
     // settings changed on the T3 with the wheel menu: take them, so "Send settings" doesn't put the old ones back
     const mine = store.get('t3', {});
     if (m.mc != null && Number(m.mc) !== Number(mine.mc || 0)) {
@@ -41,6 +47,7 @@ function t3Message(m, via) {
   else if (m.t === 'ota') { if (LIVE.onOta) LIVE.onOta(m); }
   else if (m.t === 'obdscan') { obdScanMsg(m); }
   else if (m.t === 'codes') { codesMsg(m); }
+  else if (m.t === 'upl') { if (LIVE.onUpl) LIVE.onUpl(m); }
   else if (m.t === 'upd') { LIVE.upd = m; LIVE.updAt = Date.now(); if (m.fw) LIVE.fw = String(m.fw); if (LIVE.onUpd) LIVE.onUpd(m); }
 }
 
@@ -124,6 +131,32 @@ function t3Act(a) { return t3Send({ c: 'act', a }); }
 const T3_DEFAULTS = { fc: 100, dc: 100, ss: 60, pk: 90, br: 2, bn: 0, nf: -1, nt: 7, tz: -420, sp: 0, lw: 1, spd: 0, hm: 5, h16: 0, hh: 1, tf: 0, to: 0,
   gb: 0, li: 1, lis: 10, lfl: 5, sdm: 90, rot: 0, rf: 250, bv: '1,70,255', bm: 'prev,home;mark,menu;next,end', wb: 'V+,V+;AN,HU;V-,V-|PP,NX,PV,SI|11|FFFF', io4: 0, obd: '', opr: 0, etf: 1 };
 function t3Cfg() { return Object.assign({}, T3_DEFAULTS, store.get('t3', {})); }
+// what's waiting on the T3 to go up (from its last "hi")
+function waitingText() {
+  const m = LIVE.t3;
+  if (!m) return 'Connect to the T3 to see what’s waiting. It sends everything by itself at home on Wi-Fi too.';
+  const n = (x, one, many) => x + ' ' + (x === 1 ? one : many);
+  const tw = m.trkw != null && m.trkw >= 0 ? n(Number(m.trkw), 'GPS track', 'GPS tracks') : null;
+  return 'Waiting on the T3: ' + n(Number(m.queued || 0), 'trip', 'trips') + (tw ? ', ' + tw : '') +
+    '. Stopped, it restarts and sends them all on any of your Wi-Fi networks or your hotspot; the T3 screen shows the bar.';
+}
+// "Upload trips and tracks now" (T3 2.24): the T3 answers at once (going, or why not), then restarts to send. How it
+// went comes in the next "hi" (upl), when Heep is back in touch.
+function t3UploadNow() {
+  if (!t3CanSend()) { toast('Not connected to the T3', 'Connect in Live first', 'bad'); return; }
+  if (!verAtLeast(LIVE.fw, '2.24')) { toast('Update the T3 first', 'Upload now needs T3 2.24: tap Update in Live', 'bad'); return; }
+  let answered = false;
+  const timer = setTimeout(() => { if (!answered) { LIVE.onUpl = null; toast('The T3 didn’t answer', 'Check it’s connected, then try again', 'bad'); } }, 6000);
+  LIVE.onUpl = m => {
+    answered = true; clearTimeout(timer); LIVE.onUpl = null;
+    if (!m.ok) { toast('Nothing to upload', m.why ? m.why.charAt(0).toUpperCase() + m.why.slice(1) : '', m.why && /nothing waiting/.test(m.why) ? 'ok' : 'bad'); return; }
+    const parts = [];
+    if (m.trips) parts.push(m.trips + (m.trips === 1 ? ' trip' : ' trips'));
+    if (m.tracks) parts.push(m.tracks + (m.tracks === 1 ? ' GPS track' : ' GPS tracks'));
+    toast('Uploading ' + parts.join(' and '), 'The T3 restarts to send them (watch its screen); Heep reconnects and says how it went', 'info');
+  };
+  t3Send({ c: 'upload' });
+}
 async function t3SendSettings() {
   const v = t3Cfg();
   if (!(await t3Ready())) { toast('Saved on this phone', 'Connect to the T3 (Bluetooth, or the T3 on your hotspot) and send again', 'info'); return false; }
@@ -226,7 +259,9 @@ function t3Setup() {
           h('label', { class: 'gr' }, h('span', { text: 'Talk to the Jeep on' }), selectNum('opr', SCAN_PROTOS.map(([p, n]) => [Number(p), n]), v, keep))),
         h('div', { class: 'foot', text: 'Auto uses the first protocol that answers. Diagnostics > Scan the Jeep shows which computer answers on which, and what each offers.' }),
         h('button', { class: 'btn btn-primary btn-wide', onclick: () => t3SendSettings() }, icon('bt'), 'Send settings to the T3'),
-        h('button', { class: 'btn btn-glass glass btn-wide', onclick: () => { if (!t3CanSend()) { toast('Not connected to the T3', '', 'bad'); return; } t3Send({ c: 'update' }); toast('Checking for a T3 update', 'It installs over Wi-Fi when the Jeep is stopped', 'info'); } }, icon('sync'), 'Try Wi-Fi and update now'),
+        h('button', { class: 'btn btn-glass glass btn-wide', onclick: () => t3UploadNow() }, icon('sync'), 'Upload trips and tracks now'),
+        h('div', { class: 'foot', text: waitingText() }),
+        h('button', { class: 'btn btn-glass glass btn-wide', onclick: () => { if (!t3CanSend()) { toast('Not connected to the T3', '', 'bad'); return; } t3Send({ c: 'update' }); toast('Checking for a T3 update', 'It installs over Wi-Fi when the Jeep is stopped', 'info'); } }, icon('sync'), 'Check for a T3 update now'),
         confirmButton('Put T3 settings back to new', 'Tap again: screens, units and logging go back to new; Wi-Fi and links stay', () => { const s = store.get('t3', {}); store.set('t3', { nets: s.nets }); t3Send({ c: 'cfgreset' }); }));
       paint();
       if (t3CanSend()) t3Send({ c: 'status' });
