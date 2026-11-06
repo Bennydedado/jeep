@@ -564,6 +564,14 @@ body.map-full { overflow: hidden; }
 .map-wait { display: grid; place-items: center; height: 100%; color: var(--ink-2); font-size: 15px; padding: 20px; text-align: center; }
 .map-tools { position: absolute; left: 10px; top: 10px; display: grid; gap: 8px; z-index: 500; }
 .map-tools .circle { width: 40px; height: 40px; }
+.map-tools .circle.on { background: #ff9f0a; color: #fff; }
+/* heat map: the streets dimmed so the trips glow */
+.mapbox.heat .leaflet-tile-pane { filter: brightness(.42) saturate(.35) contrast(1.1); }
+.heat-canvas { position: absolute; left: 0; top: 0; pointer-events: none; }
+.heat-scale { display: inline-flex; align-items: center; gap: 6px; margin-right: 10px; font-size: 12px; color: var(--ink-2); }
+.heat-scale i, .heat-scale b { display: inline-block; width: 36px; height: 6px; border-radius: 3px; }
+.heat-scale i { background: linear-gradient(90deg, rgba(255,69,58,.4), #ff453a); width: 18px; }
+.heat-scale b { background: linear-gradient(90deg, #ff453a, #ff9f0a, #ffd60a, #fff); }
 .map-legend { padding: 10px 14px 12px; font-size: 13px; color: var(--ink-2); }
 .map-legend .lg { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; background: var(--ink-3); }
 .map-legend .lg.live { background: var(--good); box-shadow: 0 0 0 3px rgba(48, 209, 88, .3); }

@@ -1,5 +1,11 @@
 # Changes
 
+## 5 Nov 2026 — Heep 1.1.34: every trip at once (heat map)
+
+- Trips has a flame button: every GPS track drawn together on dimmed streets, like Strava's heat map. Each trip adds
+  the same amount, so a road glows red after one trip, then orange, yellow and white the more often it's driven.
+  It follows the month picked in the list, tracks download once and stay on the phone, and opening a trip hides it.
+
 ## 5 Nov 2026 — T3 2.32: tracks through the house receiver, and Google's 400 fixed
 
 - 2.31 got through to Google, which answered "400". The HTTP library follows Apps Script's redirect with a GET that
