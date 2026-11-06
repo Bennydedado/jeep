@@ -112,6 +112,7 @@ function mapBox() {
     MAP.map.on('click', e => { if (MAP.rows) pickPoint(nearestRow(MAP.rows, e.latlng.lat, e.latlng.lng), true); });
     drawSelection();
     drawLive();
+    heatSync();
   }).catch(() => { MAP.el.textContent = ''; MAP.el.append(h('div', { class: 'map-wait', text: 'The map code couldn’t load (no signal the first time?). Trips and numbers still work below.' })); });
   return MAP.el;
 }
@@ -166,15 +167,18 @@ function renderMap(v) {
   const fullBtn = h('button', { class: 'circle glass', 'aria-label': MAP.full ? 'Close full screen' : 'Full screen', onclick: () => setFull(!MAP.full) }, icon(MAP.full ? 'x' : 'full'));
   const tools = h('div', { class: 'map-tools' },
     fullBtn,
-    h('button', { class: 'circle glass', 'aria-label': 'Fit the trip', onclick: fitSelection }, icon('fit')),
-    h('button', { class: 'circle glass', 'aria-label': 'Where the Jeep is', onclick: () => showLive(true) }, icon('pin')));
-  wrap.append(box, tools, h('div', { class: 'map-legend' }, MAP.sel ? colorLegend() : liveLegend()));
+    h('button', { class: 'circle glass', 'aria-label': MAP.sel ? 'Fit the trip' : 'Fit', onclick: () => (!MAP.sel && HEAT.on ? heatFit() : fitSelection()) }, icon('fit')),
+    h('button', { class: 'circle glass', 'aria-label': 'Where the Jeep is', onclick: () => showLive(true) }, icon('pin')),
+    MAP.sel ? null : h('button', { class: 'circle glass' + (HEAT.on ? ' on' : ''), 'aria-label': HEAT.on ? 'Hide every trip' : 'Every trip at once (heat map)', 'aria-pressed': String(HEAT.on), onclick: heatToggle }, icon('heat')));
+  HEAT.legend = h('div', { class: 'map-legend' }, MAP.sel ? colorLegend() : HEAT.on ? heatLegend() : liveLegend());
+  wrap.append(box, tools, HEAT.legend);
   v.append(wrap);
   document.body.classList.toggle('map-full', !!MAP.full);
   if (MAP.map) setTimeout(() => { MAP.map.invalidateSize(); }, 0);
   if (MAP.sel) renderTrip(v);
   else renderTripList(v, list);
   drawLive();
+  heatSync();
   if (conf) trkRefresh(false);
 }
 
@@ -205,6 +209,134 @@ function showLive(pan) {
   if (pan && MAP.map) MAP.map.setView([p.lat, p.lon], Math.max(MAP.map.getZoom(), 14));
 }
 setInterval(() => { if (S.tab === 'map' && !document.hidden) drawLive(); }, 2000);
+
+// ---------------------------------------------------------------- every trip at once: a heat map
+// Like Strava's: every GPS track drawn together, and the more trips go along a road the brighter it glows (red, then
+// orange, yellow and white). The tracks are added up on a hidden canvas ("lighter": each trip adds the same amount),
+// then the totals are coloured. Tracks download once and stay on the phone; the month picked in the list applies.
+const HEAT = { on: !!store.get('heatOn', false), lines: new Map(), done: 0, total: 0, busy: false, layer: null, legend: null, fitNext: false };
+const HEAT_STEP = 24;                                    // what one trip adds (of 255): white after about 10 trips
+const HEAT_LUT = (() => {
+  const stops = [[0, [255, 69, 58]], [0.35, [255, 159, 10]], [0.7, [255, 214, 10]], [1, [255, 255, 255]]];
+  const lut = new Uint8ClampedArray(256 * 4);
+  for (let v = 1; v < 256; v++) {
+    const n = v / HEAT_STEP;                             // trips along this pixel (fractions at a line's soft edge)
+    const t = Math.min(1, Math.log(1 + Math.max(0, n - 1)) / Math.log(10));
+    let k = 0; while (k < stops.length - 2 && t > stops[k + 1][0]) k++;
+    const [ta, ca] = stops[k], [tb, cb] = stops[k + 1], f = (t - ta) / (tb - ta || 1);
+    for (let c = 0; c < 3; c++) lut[v * 4 + c] = Math.round(ca[c] + (cb[c] - ca[c]) * f);
+    lut[v * 4 + 3] = Math.round(Math.min(1, n) * 235);
+  }
+  return lut;
+})();
+function heatTrips() {
+  const list = tripList(), m = (store.get('mapFilter', {}) || {}).month || 'all';
+  const ym = t => { const d = new Date(t.t0); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); };
+  return list.filter(t => m === 'all' ? true : m === 'none' ? !t.t0 : t.t0 && ym(t) === m);
+}
+function heatToggle() {
+  HEAT.on = !HEAT.on; store.set('heatOn', HEAT.on);
+  HEAT.fitNext = HEAT.on;
+  render();
+}
+function heatLegend() {
+  const n = heatTrips().length;
+  const loading = HEAT.busy && HEAT.total ? ' · loading ' + HEAT.done + ' of ' + HEAT.total + '…' : '';
+  return h('div', { class: 'legend-row' },
+    h('span', { class: 'heat-scale' }, h('i'), h('span', { text: 'once' }), h('b'), h('span', { text: 'often' })),
+    h('span', { class: 'small muted', text: 'Every trip at once (' + n + ')' + loading + ' · brighter = driven more' }));
+}
+function heatLegendPaint() { if (HEAT.legend && !MAP.sel && HEAT.on) { HEAT.legend.textContent = ''; HEAT.legend.append(heatLegend()); } }
+// the heat layer is on the map exactly when it's switched on and no single trip is open
+function heatSync() {
+  if (!MAP.map) return;
+  const want = HEAT.on && !MAP.sel;
+  if (MAP.el) MAP.el.classList.toggle('heat', want);
+  if (!want) { if (HEAT.layer) { HEAT.layer.remove(); HEAT.layer = null; } return; }
+  if (!HEAT.layer) HEAT.layer = new (heatLayerClass(MAP.L))().addTo(MAP.map);
+  else HEAT.layer.redraw();
+  heatLoad();
+}
+async function heatLoad() {
+  if (HEAT.busy) return;
+  const need = heatTrips().filter(t => !HEAT.lines.has(t.id));
+  if (!need.length) { if (HEAT.fitNext) heatFit(); return; }
+  HEAT.busy = true; HEAT.total = need.length; HEAT.done = 0; heatLegendPaint();
+  for (const t of need) {
+    if (!HEAT.on || MAP.sel) break;
+    try {
+      const { rows } = parseTrack(await trackCsv(t.id));
+      const st = tripStats(rows);
+      // a few metres' detail is plenty when everything is on screen at once
+      HEAT.lines.set(t.id, st.segs.map(sg => simplify(rows, sg, 6).map(i => [rows[i].lat, rows[i].lon])).filter(p => p.length > 1));
+    } catch (e) { /* not downloadable now: tried again next time */ }
+    HEAT.done++;
+    if (HEAT.done % 4 === 0) { if (HEAT.layer) HEAT.layer.redraw(); heatLegendPaint(); }
+  }
+  HEAT.busy = false;
+  if (HEAT.layer) HEAT.layer.redraw();
+  heatLegendPaint();
+  if (HEAT.fitNext) heatFit();
+}
+function heatFit() {
+  if (!MAP.map) return;
+  const ids = new Set(heatTrips().map(t => t.id)), pts = [];
+  for (const [id, segs] of HEAT.lines) if (ids.has(id)) for (const sg of segs) { pts.push(sg[0], sg[sg.length - 1], sg[sg.length >> 1]); }
+  HEAT.fitNext = false;
+  if (pts.length) MAP.map.fitBounds(MAP.L.latLngBounds(pts), { padding: [28, 28], maxZoom: 15 });
+}
+let HeatLayer = null;
+function heatLayerClass(L) {
+  if (HeatLayer) return HeatLayer;
+  HeatLayer = L.Layer.extend({
+    onAdd(map) {
+      this._map = map;
+      this._c = L.DomUtil.create('canvas', 'heat-canvas leaflet-zoom-hide');   // hidden while zooming, redrawn after
+      map.getPanes().overlayPane.appendChild(this._c);
+      map.on('moveend zoomend resize viewreset', this.redraw, this);
+      this.redraw();
+    },
+    onRemove(map) { map.off('moveend zoomend resize viewreset', this.redraw, this); this._c.remove(); },
+    redraw() {
+      const map = this._map, c = this._c;
+      if (!map || !c) return;
+      const size = map.getSize(), dpr = Math.min(2, window.devicePixelRatio || 1);
+      const w = Math.max(1, Math.round(size.x * dpr)), ht = Math.max(1, Math.round(size.y * dpr));
+      L.DomUtil.setPosition(c, map.containerPointToLayerPoint([0, 0]));
+      c.style.width = size.x + 'px'; c.style.height = size.y + 'px'; c.width = w; c.height = ht;
+      const off = document.createElement('canvas'); off.width = w; off.height = ht;
+      const o = off.getContext('2d');
+      o.globalCompositeOperation = 'lighter';
+      o.lineCap = 'round'; o.lineJoin = 'round';
+      o.lineWidth = (map.getZoom() >= 15 ? 4 : map.getZoom() >= 12 ? 3 : 2) * dpr;
+      o.strokeStyle = 'rgb(' + HEAT_STEP + ',' + HEAT_STEP + ',' + HEAT_STEP + ')';
+      const view = map.getBounds().pad(0.2), ids = new Set(heatTrips().map(t => t.id));
+      for (const [id, segs] of HEAT.lines) {
+        if (!ids.has(id)) continue;
+        o.beginPath();
+        let any = false;
+        for (const sg of segs) {
+          let inView = false;
+          for (let k = 0; k < sg.length && !inView; k += 8) inView = view.contains(sg[k]);
+          if (!inView && !view.contains(sg[sg.length - 1])) continue;
+          for (let k = 0; k < sg.length; k++) {
+            const q = map.latLngToContainerPoint(sg[k]);
+            if (k) o.lineTo(q.x * dpr, q.y * dpr); else o.moveTo(q.x * dpr, q.y * dpr);
+          }
+          any = true;
+        }
+        if (any) o.stroke();                             // one trip = one stroke: it adds once, even where it crosses itself
+      }
+      const img = o.getImageData(0, 0, w, ht), d = img.data;
+      for (let i = 0; i < d.length; i += 4) {
+        const v = d[i] * 4;
+        d[i] = HEAT_LUT[v]; d[i + 1] = HEAT_LUT[v + 1]; d[i + 2] = HEAT_LUT[v + 2]; d[i + 3] = HEAT_LUT[v + 3];
+      }
+      c.getContext('2d').putImageData(img, 0, 0);
+    },
+  });
+  return HeatLayer;
+}
 
 // ---------------------------------------------------------------- trip list
 // a trip's distance: the GPS track's, or the T3's trip meter when there was no GPS
