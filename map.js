@@ -13,6 +13,35 @@
 const MAP = { el: null, map: null, L: null, layer: null, live: null, sel: null, rows: null, stats: null, play: null, playMk: null, color: 'speed', infoEl: null };
 const TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 const TILE_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+// the pictures under the map (1.1.35): streets, dark streets, satellite, or satellite with road names on top.
+// dark: whether the heat map uses its glowing colours (dark pictures) or its deep ones (light streets)
+const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services/';
+const ESRI_ATTR = 'Imagery &copy; Esri, Maxar, Earthstar Geographics';
+const MAP_STYLES = {
+  map: { name: 'Map', dark: false, layers: [{ url: TILE_URL, attr: TILE_ATTR, max: 19 }] },
+  dark: { name: 'Dark', dark: true, layers: [{ url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', attr: TILE_ATTR + ' &copy; <a href="https://carto.com/attributions">CARTO</a>', max: 19, sub: 'abcd' }] },
+  sat: { name: 'Satellite', dark: true, layers: [{ url: ESRI + 'World_Imagery/MapServer/tile/{z}/{y}/{x}', attr: ESRI_ATTR, max: 19, native: 18 }] },
+  hybrid: { name: 'Hybrid', dark: true, layers: [{ url: ESRI + 'World_Imagery/MapServer/tile/{z}/{y}/{x}', attr: ESRI_ATTR, max: 19, native: 18 },
+    { url: ESRI + 'Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}', attr: '', max: 19, native: 18 },
+    { url: ESRI + 'Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', attr: '', max: 19, native: 18 }] },
+};
+const mapStyle = () => (MAP_STYLES[store.get('mapStyle', 'map')] ? store.get('mapStyle', 'map') : 'map');
+function mapStyleApply() {
+  if (!MAP.map) return;
+  const L = MAP.L, st = MAP_STYLES[mapStyle()];
+  for (const t of MAP.base || []) t.remove();
+  MAP.base = st.layers.map((ly, k) => {
+    const t = L.tileLayer(ly.url, { maxZoom: ly.max, maxNativeZoom: ly.native || ly.max, attribution: ly.attr, crossOrigin: true, subdomains: ly.sub || 'abc' });
+    if (k === 0) {
+      t.on('tileerror', () => MAP.el.classList.add('offline'));
+      t.on('tileload', () => MAP.el.classList.remove('offline'));
+    }
+    return t.addTo(MAP.map);
+  });
+  MAP.el.dataset.style = mapStyle();
+  MAP.el.classList.toggle('dark-base', st.dark);
+  if (HEAT.layer) HEAT.layer.redraw();
+}
 
 // ---------------------------------------------------------------- the track store (your own Apps Script)
 const trkConf = () => store.get('trk', null);
@@ -105,10 +134,7 @@ function mapBox() {
     MAP.el.textContent = '';
     MAP.map = L.map(MAP.el, { zoomControl: false, attributionControl: true, preferCanvas: true }).setView([56.2, -120.7], 9);
     L.control.zoom({ position: 'topright' }).addTo(MAP.map);
-    const tiles = L.tileLayer(TILE_URL, { maxZoom: 19, attribution: TILE_ATTR, crossOrigin: true });
-    tiles.on('tileerror', () => MAP.el.classList.add('offline'));
-    tiles.on('tileload', () => MAP.el.classList.remove('offline'));
-    tiles.addTo(MAP.map);
+    mapStyleApply();
     MAP.map.on('click', e => { if (MAP.rows) pickPoint(nearestRow(MAP.rows, e.latlng.lat, e.latlng.lng), true); });
     drawSelection();
     drawLive();
@@ -169,7 +195,8 @@ function renderMap(v) {
     fullBtn,
     h('button', { class: 'circle glass', 'aria-label': MAP.sel ? 'Fit the trip' : 'Fit', onclick: () => (!MAP.sel && HEAT.on ? heatFit() : fitSelection()) }, icon('fit')),
     h('button', { class: 'circle glass', 'aria-label': 'Where the Jeep is', onclick: () => showLive(true) }, icon('pin')),
-    MAP.sel ? null : h('button', { class: 'circle glass' + (HEAT.on ? ' on' : ''), 'aria-label': HEAT.on ? 'Hide every trip' : 'Every trip at once (heat map)', 'aria-pressed': String(HEAT.on), onclick: heatToggle }, icon('heat')));
+    h('button', { class: 'circle glass' + (HEAT.on ? ' on' : ''), 'aria-label': HEAT.on ? 'Hide every trip' : 'Every trip at once (heat map)', 'aria-pressed': String(HEAT.on), onclick: heatToggle }, icon('heat')),
+    h('button', { class: 'circle glass', 'aria-label': 'Map style', onclick: mapStyleSheet }, icon('layers')));
   HEAT.legend = h('div', { class: 'map-legend' }, MAP.sel ? colorLegend() : HEAT.on ? heatLegend() : liveLegend());
   wrap.append(box, tools, HEAT.legend);
   v.append(wrap);
@@ -211,13 +238,15 @@ function showLive(pan) {
 setInterval(() => { if (S.tab === 'map' && !document.hidden) drawLive(); }, 2000);
 
 // ---------------------------------------------------------------- every trip at once: a heat map
-// Like Strava's: every GPS track drawn together, and the more trips go along a road the brighter it glows (red, then
-// orange, yellow and white). The tracks are added up on a hidden canvas ("lighter": each trip adds the same amount),
-// then the totals are coloured. Tracks download once and stay on the phone; the month picked in the list applies.
+// Like Strava's: every GPS track drawn together, and the more trips go along a road the stronger it glows. The
+// tracks are added up on a hidden canvas ("lighter": each trip adds the same amount), then the totals are coloured:
+// on dark pictures (Dark, Satellite) red to orange, yellow and white with a glow; on the light street map orange to
+// red, crimson and purple with a thin shadow so it stands out without darkening the map (1.1.35). It can stay on:
+// with a trip open it stays underneath, faint. Tracks download once and stay on the phone; the month picked in the
+// list applies.
 const HEAT = { on: !!store.get('heatOn', false), lines: new Map(), done: 0, total: 0, busy: false, layer: null, legend: null, fitNext: false };
-const HEAT_STEP = 24;                                    // what one trip adds (of 255): white after about 10 trips
-const HEAT_LUT = (() => {
-  const stops = [[0, [255, 69, 58]], [0.35, [255, 159, 10]], [0.7, [255, 214, 10]], [1, [255, 255, 255]]];
+const HEAT_STEP = 24;                                    // what one trip adds (of 255): the top colour after about 10 trips
+function heatLut(stops, a0) {
   const lut = new Uint8ClampedArray(256 * 4);
   for (let v = 1; v < 256; v++) {
     const n = v / HEAT_STEP;                             // trips along this pixel (fractions at a line's soft edge)
@@ -225,10 +254,12 @@ const HEAT_LUT = (() => {
     let k = 0; while (k < stops.length - 2 && t > stops[k + 1][0]) k++;
     const [ta, ca] = stops[k], [tb, cb] = stops[k + 1], f = (t - ta) / (tb - ta || 1);
     for (let c = 0; c < 3; c++) lut[v * 4 + c] = Math.round(ca[c] + (cb[c] - ca[c]) * f);
-    lut[v * 4 + 3] = Math.round(Math.min(1, n) * 235);
+    lut[v * 4 + 3] = Math.round(Math.min(1, n) * 255 * (a0 + (1 - a0) * t));
   }
   return lut;
-})();
+}
+const HEAT_LUT_DARK = heatLut([[0, [255, 59, 48]], [0.35, [255, 149, 0]], [0.7, [255, 214, 10]], [1, [255, 255, 235]]], 0.7);
+const HEAT_LUT_LIGHT = heatLut([[0, [255, 120, 0]], [0.4, [235, 40, 40]], [0.75, [180, 0, 80]], [1, [110, 0, 130]]], 0.8);
 function heatTrips() {
   const list = tripList(), m = (store.get('mapFilter', {}) || {}).month || 'all';
   const ym = t => { const d = new Date(t.t0); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); };
@@ -236,23 +267,36 @@ function heatTrips() {
 }
 function heatToggle() {
   HEAT.on = !HEAT.on; store.set('heatOn', HEAT.on);
-  HEAT.fitNext = HEAT.on;
+  HEAT.fitNext = HEAT.on && !MAP.sel;
   render();
+}
+function mapStyleSheet() {
+  openSheet({
+    title: 'Map',
+    build(body, api) {
+      const styleSeg = seg(Object.entries(MAP_STYLES).map(([k, v]) => [k, v.name]), mapStyle(), k => { store.set('mapStyle', k); mapStyleApply(); render(); });
+      const heatSw = switchEl(HEAT.on, on => { if (on !== HEAT.on) heatToggle(); });
+      body.append(
+        h('div', { class: 'label', style: 'margin:4px 4px 8px', text: 'Pictures' }), styleSeg,
+        h('div', { class: 'foot', style: 'margin:8px 4px 18px', text: 'Satellite pictures are Esri’s; Hybrid adds road names. Out of signal the map keeps what it has already shown.' }),
+        h('div', { class: 'label', style: 'margin:4px 4px 8px', text: 'Heat map' }),
+        h('div', { class: 'card list' }, h('label', { class: 'row' }, h('div', { class: 'main' }, h('b', { text: 'Every trip at once' }), h('span', { text: 'Brighter where you drive more. Stays faint under an open trip.' })), heatSw)));
+    },
+  });
 }
 function heatLegend() {
   const n = heatTrips().length;
   const loading = HEAT.busy && HEAT.total ? ' · loading ' + HEAT.done + ' of ' + HEAT.total + '…' : '';
   return h('div', { class: 'legend-row' },
-    h('span', { class: 'heat-scale' }, h('i'), h('span', { text: 'once' }), h('b'), h('span', { text: 'often' })),
-    h('span', { class: 'small muted', text: 'Every trip at once (' + n + ')' + loading + ' · brighter = driven more' }));
+    h('span', { class: 'heat-scale' + (MAP_STYLES[mapStyle()].dark ? '' : ' light') }, h('span', { text: 'once' }), h('b'), h('span', { text: 'often' })),
+    h('span', { class: 'small muted', text: 'Every trip (' + n + ')' + loading }));
 }
 function heatLegendPaint() { if (HEAT.legend && !MAP.sel && HEAT.on) { HEAT.legend.textContent = ''; HEAT.legend.append(heatLegend()); } }
-// the heat layer is on the map exactly when it's switched on and no single trip is open
+// the heat layer is on the map whenever it's switched on (faint under an open trip)
 function heatSync() {
   if (!MAP.map) return;
-  const want = HEAT.on && !MAP.sel;
-  if (MAP.el) MAP.el.classList.toggle('heat', want);
-  if (!want) { if (HEAT.layer) { HEAT.layer.remove(); HEAT.layer = null; } return; }
+  if (MAP.el) MAP.el.classList.toggle('heat-under', HEAT.on && !!MAP.sel);
+  if (!HEAT.on) { if (HEAT.layer) { HEAT.layer.remove(); HEAT.layer = null; } return; }
   if (!HEAT.layer) HEAT.layer = new (heatLayerClass(MAP.L))().addTo(MAP.map);
   else HEAT.layer.redraw();
   heatLoad();
@@ -263,7 +307,7 @@ async function heatLoad() {
   if (!need.length) { if (HEAT.fitNext) heatFit(); return; }
   HEAT.busy = true; HEAT.total = need.length; HEAT.done = 0; heatLegendPaint();
   for (const t of need) {
-    if (!HEAT.on || MAP.sel) break;
+    if (!HEAT.on) break;
     try {
       const { rows } = parseTrack(await trackCsv(t.id));
       const st = tripStats(rows);
@@ -300,15 +344,16 @@ function heatLayerClass(L) {
     redraw() {
       const map = this._map, c = this._c;
       if (!map || !c) return;
-      const size = map.getSize(), dpr = Math.min(2, window.devicePixelRatio || 1);
+      const size = map.getSize(), dpr = Math.min(2, window.devicePixelRatio || 1), z = map.getZoom();
       const w = Math.max(1, Math.round(size.x * dpr)), ht = Math.max(1, Math.round(size.y * dpr));
       L.DomUtil.setPosition(c, map.containerPointToLayerPoint([0, 0]));
       c.style.width = size.x + 'px'; c.style.height = size.y + 'px'; c.width = w; c.height = ht;
+      // 1. add the trips up
       const off = document.createElement('canvas'); off.width = w; off.height = ht;
       const o = off.getContext('2d');
       o.globalCompositeOperation = 'lighter';
       o.lineCap = 'round'; o.lineJoin = 'round';
-      o.lineWidth = (map.getZoom() >= 15 ? 4 : map.getZoom() >= 12 ? 3 : 2) * dpr;
+      o.lineWidth = (z >= 16 ? 5 : z >= 14 ? 3.5 : z >= 12 ? 2.6 : z >= 10 ? 2 : 1.5) * dpr;
       o.strokeStyle = 'rgb(' + HEAT_STEP + ',' + HEAT_STEP + ',' + HEAT_STEP + ')';
       const view = map.getBounds().pad(0.2), ids = new Set(heatTrips().map(t => t.id));
       for (const [id, segs] of HEAT.lines) {
@@ -327,12 +372,20 @@ function heatLayerClass(L) {
         }
         if (any) o.stroke();                             // one trip = one stroke: it adds once, even where it crosses itself
       }
+      // 2. colour the totals
+      const dark = MAP_STYLES[mapStyle()].dark, lut = dark ? HEAT_LUT_DARK : HEAT_LUT_LIGHT;
       const img = o.getImageData(0, 0, w, ht), d = img.data;
       for (let i = 0; i < d.length; i += 4) {
         const v = d[i] * 4;
-        d[i] = HEAT_LUT[v]; d[i + 1] = HEAT_LUT[v + 1]; d[i + 2] = HEAT_LUT[v + 2]; d[i + 3] = HEAT_LUT[v + 3];
+        d[i] = lut[v]; d[i + 1] = lut[v + 1]; d[i + 2] = lut[v + 2]; d[i + 3] = lut[v + 3];
       }
-      c.getContext('2d').putImageData(img, 0, 0);
+      o.globalCompositeOperation = 'copy';
+      o.putImageData(img, 0, 0);
+      // 3. onto the map with a glow (dark pictures) or a thin shadow (light streets)
+      const g = c.getContext('2d');
+      g.shadowColor = dark ? 'rgba(255, 110, 0, .65)' : 'rgba(0, 0, 0, .35)';
+      g.shadowBlur = (dark ? 7 : 2.5) * dpr;
+      g.drawImage(off, 0, 0);
     },
   });
   return HeatLayer;

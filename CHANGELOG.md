@@ -1,5 +1,13 @@
 # Changes
 
+## 6 Nov 2026 — Heep 1.1.35: map styles, and a heat map to leave on
+
+- A layers button on the map picks the pictures: Map (streets), Dark, Satellite (Esri) or Hybrid (satellite with
+  road names). Remembered on the phone.
+- The heat map no longer darkens the streets. Its colours suit the pictures: on the street map orange to red,
+  crimson and purple with a thin shadow; on Dark and Satellite red to orange, yellow and white with a glow. Lines get
+  wider as you zoom in. It stays on, faint, under an open trip.
+
 ## 5 Nov 2026 — Heep 1.1.34: every trip at once (heat map)
 
 - Trips has a flame button: every GPS track drawn together on dimmed streets, like Strava's heat map. Each trip adds

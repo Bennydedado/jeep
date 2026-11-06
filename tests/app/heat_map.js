@@ -20,6 +20,8 @@ const check = (ok, what) => { n++; if (!ok) { fails++; console.log('FAIL ' + wha
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   await page.route('https://tile.openstreetmap.org/**', r => r.abort());
+  await page.route('https://server.arcgisonline.com/**', r => r.abort());
+  await page.route('https://*.basemaps.cartocdn.com/**', r => r.abort());
   await page.goto('http://localhost:' + srv.address().port + '/index.html');
   await page.waitForTimeout(600);
   await page.evaluate(() => { go('map'); });
@@ -33,24 +35,41 @@ const check = (ok, what) => { n++; if (!ok) { fails++; console.log('FAIL ' + wha
     if (!c) return { canvas: false };
     const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
     let on = 0, max = 0;
-    for (let i = 3; i < d.length; i += 4) if (d[i]) { on++; if (d[i - 1] > max) max = d[i - 1]; }
+    for (let i = 3; i < d.length; i += 4) if (d[i]) { on++; if (d[i] > 200 && d[i - 2] < 60) max++; }
     return { canvas: true, on, max, lines: HEAT.lines.size, trips: heatTrips().length, stored: store.get('heatOn', false) };
   });
   check(lit.canvas, 'heat canvas on the map');
   check(lit.lines === lit.trips && lit.trips === 3, 'every sample trip loaded: ' + JSON.stringify(lit));
   check(lit.on > 2000, 'tracks drawn: ' + lit.on + ' pixels');
-  check(lit.max > 150, 'overlapping roads brighter (blue channel reaches yellow/white): ' + lit.max);
+  check(lit.max > 50, 'where trips overlap the colour moves on from orange to red (light streets): ' + lit.max);
   check(lit.stored === true, 'remembered on this phone');
-  check(/Every trip at once \(3\)/.test(await page.textContent('.map-legend')), 'legend says how many');
-  check(await page.evaluate(() => document.querySelector('.mapbox').classList.contains('heat')), 'streets dimmed');
+  check(/Every trip \(3\)/.test(await page.textContent('.map-legend')), 'legend says how many');
+  check(await page.evaluate(() => getComputedStyle(document.querySelector('.leaflet-tile-pane')).filter === 'none'), 'streets not darkened');
   await page.screenshot({ path: shots + '/trips_heat.png' });
-  // opening a trip hides it, closing brings it back
+  // the Map sheet: satellite pictures, then back to the street map
+  await page.locator('.map-tools button[aria-label="Map style"]').click();
+  await page.waitForTimeout(500);
+  await page.locator('.sheet.on .seg button', { hasText: 'Satellite' }).click();
+  await page.waitForTimeout(500);
+  const sat = await page.evaluate(() => ({ style: MAP.el.dataset.style, dark: MAP.el.classList.contains('dark-base'), url: MAP.base[0]._url, stored: store.get('mapStyle') }));
+  check(sat.style === 'sat' && sat.dark && /World_Imagery/.test(sat.url) && sat.stored === 'sat', 'satellite pictures: ' + JSON.stringify(sat));
+  await page.locator('.sheet.on .seg button', { hasText: 'Hybrid' }).click();
+  await page.waitForTimeout(300);
+  check(await page.evaluate(() => MAP.base.length === 3), 'hybrid: pictures plus road names');
+  await page.locator('.sheet.on .sheet-head button[aria-label="Close"]').click();
+  await page.waitForTimeout(600);
+  await page.screenshot({ path: shots + '/trips_heat_sat.png' });
+  const glow = await page.evaluate(() => { const c = document.querySelector('.heat-canvas'); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let on = 0; for (let i = 3; i < d.length; i += 4) if (d[i]) on++; return on; });
+  check(glow > lit.on, 'glow on dark pictures spreads wider: ' + glow + ' > ' + lit.on);
+  await page.evaluate(() => { store.set('mapStyle', 'map'); mapStyleApply(); });
+  // opening a trip keeps it faint underneath, closing brings it back
   await page.evaluate(() => openTrip('sample-1'));
   await page.waitForTimeout(800);
-  check(await page.locator('.heat-canvas').count() === 0, 'hidden while a trip is open');
+  check(await page.locator('.heat-canvas').count() === 1 && await page.evaluate(() => MAP.el.classList.contains('heat-under')), 'faint under an open trip');
+  await page.screenshot({ path: shots + '/trips_heat_trip.png' });
   await page.evaluate(() => closeTrip());
   await page.waitForTimeout(800);
-  check(await page.locator('.heat-canvas').count() === 1, 'back after closing the trip');
+  check(await page.locator('.heat-canvas').count() === 1 && !(await page.evaluate(() => MAP.el.classList.contains('heat-under'))), 'full again after closing the trip');
   await page.locator('.map-tools button[aria-label="Hide every trip"]').click();
   await page.waitForTimeout(500);
   check(await page.locator('.heat-canvas').count() === 0, 'off again');
