@@ -308,16 +308,19 @@ static void bootSendTask(void*) {
     bootNote = "trips at start: " + String(lastUpload);
   }
   if (tracks) {
+    upShow("finding the house receiver");
+    bool viaHouse = findHouseReceiver();                 // 2.32: hand the tracks to it if it's there
     upPart(0);
     while (WiFi.status() == WL_CONNECTED && sd.tracksWaiting > 0) {
-      int sent = uploadTracks(cfg.trkUrl, cfg.trkKey, 0, 120, upPart);
+      int sent = uploadTracks(cfg.trkUrl, cfg.trkKey, 0, viaHouse ? 250 : 120, upPart);
       upSent += sent;
       sdCountWaiting();
       if (!sent) break;                                   // refused, or the Wi-Fi went: the rest next time
     }
     bootNote += String(bootNote.length() ? "; " : "") + "tracks at start: " + String(upSent) + " sent, " + String(sd.tracksWaiting) +
                 " waiting (" + String(trkStatus) + ")" + (upHome ? " [home]" : "") + (upAsked ? " [asked]" : "") +
-                " [" + String(heapAtStart) + " KB free, " + String(blockAtStart) + " KB block on Wi-Fi]";
+                " [" + String(heapAtStart) + " KB free, " + String(blockAtStart) + " KB block on Wi-Fi" + (viaHouse ? ", via the house receiver" : "") + "]";
+    trkGateway = IPAddress();                            // only at start: driving tries go straight to Google
   }
   bool allDone = (!trips || queued == 0) && (!tracks || sd.tracksWaiting == 0);
   if (upAsked) {
