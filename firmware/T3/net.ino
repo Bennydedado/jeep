@@ -205,18 +205,87 @@ bool relayUnseal(const String& b64, String& out) {
 
 // ---------------------------------------------------------------- https POST (Apps Script answers from a second address)
 int httpPost(const String& url, const String& body, String& out) {
+  // Apps Script answers a POST with a redirect to a second address that has the answer. 2.32: that second request
+  // is made by hand, on a fresh connection, as a plain GET. Left to the HTTP library, the GET kept the POST's
+  // Content-Length header with no body, and Google answered tracks with 400 or never answered (-11).
+  String next;
+  int code;
+  {
+    WiFiClientSecure tls;
+    tls.setInsecure();
+    HTTPClient http;
+    http.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
+    http.setTimeout(25000);
+    const char* keep[] = { "Location" };
+    if (!http.begin(tls, url)) return -100;
+    http.collectHeaders(keep, 1);
+    http.addHeader("Content-Type", "text/plain");
+    code = http.POST(body);
+    if (code == 301 || code == 302 || code == 303 || code == 307 || code == 308) next = http.header("Location");
+    out = (code > 0 && !next.length()) ? http.getString() : "";
+    http.end();
+  }
+  if (!next.length()) return code;
   WiFiClientSecure tls;
   tls.setInsecure();
   HTTPClient http;
-  http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
   http.setTimeout(25000);
-  if (!http.begin(tls, url)) return -100;
+  if (!http.begin(tls, next)) return -100;
+  code = http.GET();
+  out = code > 0 ? http.getString() : "";
+  http.end();
+  return code;
+}
+
+// ---------------------------------------------------------------- the house receiver as a go-between (2.32)
+// At home the T3 hands tracks to the house receiver (the Heltec that runs the thermostat, always on, "jeep-house" on
+// your Wi-Fi) over plain HTTP, which needs almost no memory; the receiver sends them on to your track store over the
+// secure connection, with its own copy of the track key. The key never goes over Wi-Fi: each request is signed with
+// it (HMAC-SHA256), so the receiver only passes on what this T3 sent.
+IPAddress trkGateway;                 // 0.0.0.0: none found, send straight to Google
+bool findHouseReceiver() {
+  trkGateway = IPAddress();
+  if (WiFi.status() != WL_CONNECTED) return false;
+  if (!MDNS.begin("jeep-t3")) return false;
+  IPAddress ip = MDNS.queryHost("jeep-house", 2500);
+  MDNS.end();
+  if (ip == IPAddress() || ip == IPAddress(0, 0, 0, 0)) return false;
+  // is it really the receiver, with a track store set up? (an old receiver sketch answers 404)
+  WiFiClient c;
+  HTTPClient http;
+  http.setTimeout(4000);
+  if (!http.begin(c, "http://" + ip.toString() + "/trk")) return false;
+  int code = http.GET();
+  String ans = code == 200 ? http.getString() : "";
+  http.end();
+  if (ans.indexOf("\"ok\":true") < 0) return false;
+  trkGateway = ip;
+  return true;
+}
+static String hmacHex(const String& key, const String& msg) {
+  unsigned char mac[32];
+  mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), (const unsigned char*)key.c_str(), key.length(),
+                  (const unsigned char*)msg.c_str(), msg.length(), mac);
+  char hex[65];
+  for (int i = 0; i < 32; i++) sprintf(hex + 2 * i, "%02x", mac[i]);
+  return String(hex);
+}
+// one request to the track store: through the house receiver when there is one (body without the key, signed),
+// otherwise straight to Google (`body` must then start with the key: see trkBodyStart)
+static int trkSend(const String& url, const String& key, const String& body, String& out) {
+  if (trkGateway == IPAddress()) return httpPost(url, body, out);
+  WiFiClient c;
+  HTTPClient http;
+  http.setTimeout(40000);                                // the receiver waits for Google's answer
+  if (!http.begin(c, "http://" + trkGateway.toString() + "/trk?s=" + hmacHex(key, body))) return -100;
   http.addHeader("Content-Type", "text/plain");
   int code = http.POST(body);
   out = code > 0 ? http.getString() : "";
   http.end();
   return code;
 }
+// the start of a request body: {"k":"<key>",  or just {  through the receiver
+static String trkBodyStart(const String& key) { return trkGateway == IPAddress() ? "{\"k\":\"" + jsonEsc(key) + "\"," : String("{"); }
 
 // "2.1" newer than "2.0.3"? (numbers compared part by part)
 bool verNewer(const String& a, const String& b) {
@@ -283,13 +352,13 @@ void uploadTrips(const String& url, const String& key) {
 static String partBody(const String& key, const String& id, int part, int got, const String& rows) {
   String b;
   b.reserve(rows.length() + rows.length() / 20 + key.length() + id.length() + 96);
-  b += "{\"k\":\""; b += jsonEsc(key); b += "\",\"op\":\"part\",\"id\":\""; b += id; b += "\",\"p\":"; b += String(part);
+  b += trkBodyStart(key); b += "\"op\":\"part\",\"id\":\""; b += id; b += "\",\"p\":"; b += String(part);
   b += ",\"rows\":"; b += String(got); b += ",\"csv\":\"";
   for (size_t i = 0; i < rows.length(); i++) {
     char c = rows[i];
     if (c == '"' || c == '\\') { b += '\\'; b += c; }
     else if (c == '\n') b += "\\n";
-    else if ((uint8_t)c >= 32) b += c;
+    else if ((uint8_t)c >= 32 && (uint8_t)c < 127) b += c;   // a track is plain text; anything else is card damage
   }
   b += "\"}";
   return b;
@@ -322,7 +391,7 @@ int uploadTracks(const String& url, const String& key, uint32_t budgetMs, int pa
         body = partBody(key, id, part, got, rows);
       }                                                    // the rows are freed here: only the body is held
       String answer;
-      code = httpPost(url, body, answer);
+      code = trkSend(url, key, body, answer);
       body = String();
       ok = code == 200 && answer.indexOf("\"ok\":true") >= 0;
       if (!ok && code < 0 && rowsNow > 20) {               // couldn't connect: try again at once with a smaller part
@@ -334,8 +403,10 @@ int uploadTracks(const String& url, const String& key, uint32_t budgetMs, int pa
       if (!ok) {
         pos = at;
         extern volatile bool bootUp;
+        String said = answer; said.replace("\"", ""); said.replace("\n", " "); said = said.substring(0, 40);
         trkStatus.set(answer.indexOf("\"key\"") >= 0 ? String("track store key wrong") :
-                      String(bootUp ? "at start: " : "driving: ") + "track send failed (" + String(code) + ", " + String(ESP.getFreeHeap() / 1024) + " KB free, " +
+                      String(bootUp ? "at start" : "driving") + (trkGateway == IPAddress() ? ": " : " via house: ") +
+                      (said.length() && code > 0 ? said + " " : String("")) + "track send failed (" + String(code) + ", " + String(ESP.getFreeHeap() / 1024) + " KB free, " +
                       String(ESP.getMaxAllocHeap() / 1024) + " KB block, " + String(rowsNow) + " rows)");
         break;
       }
@@ -346,7 +417,7 @@ int uploadTracks(const String& url, const String& key, uint32_t budgetMs, int pa
     }
     if (!ok || more) { anyFail = true; break; }          // (one track at a time: the next one waits for this one)
     String body;
-    code = httpPost(url, "{\"k\":\"" + jsonEsc(key) + "\",\"op\":\"fin\",\"id\":\"" + id + "\",\"parts\":" + String(part) + ",\"rows\":" + String(total) +
+    code = trkSend(url, key, trkBodyStart(key) + "\"op\":\"fin\",\"id\":\"" + id + "\",\"parts\":" + String(part) + ",\"rows\":" + String(total) +
                         ",\"head\":\"" + jsonEsc(String(TRACK_HEADER)) + "\",\"idx\":\"" + jsonEsc(sdIndexLine(id)) + "\"}", body);
     if (code == 200 && body.indexOf("\"ok\":true") >= 0 && (long)numField(body, "rows") == total) {
       sdMarkUploaded(id);

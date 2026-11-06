@@ -1,5 +1,15 @@
 # Changes
 
+## 5 Nov 2026 — T3 2.32: tracks through the house receiver, and Google's 400 fixed
+
+- 2.31 got through to Google, which answered "400". The HTTP library follows Apps Script's redirect with a GET that
+  still carries the POST's Content-Length; the T3 now makes that second request itself, cleanly.
+- At key-on at home the T3 looks for the house receiver (the thermostat Heltec, `jeep-house` on the Wi-Fi) and hands
+  it the tracks over plain HTTP, signed with the track key; the receiver sends them on to the track store. The T3
+  no longer needs memory for Google's secure connection for tracks at home. Needs the updated receiver sketch
+  (flashed over USB once); without it the T3 sends straight to Google as before.
+- Track rows only carry plain characters (a damaged byte on the card can't spoil a part any more).
+
 ## 5 Nov 2026 — T3 2.31: give back the Bluetooth Classic memory at start
 
 - 2.30 showed the start-up try failing too: "at start: -11, 54 KB free, 33 KB block". The NimBLE library includes a
