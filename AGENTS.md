@@ -3,6 +3,14 @@
 This file is the map. Read it first, then only the files a change needs. Ben isn't a programmer by trade: keep code
 comments in plain English, explain changes in plain words, and never leave him with something half-working.
 
+## Heep Life hosting (November 2026)
+
+The live website and firmware downloads are at https://heeplife.ca. GitHub is retained for source and checks.
+firmware/t3.json is a compatibility manifest for older T3s: keep it pointing at the verified Heep Life migration
+firmware, so devices can switch without USB. The workflow builds/tests but does not overwrite this manifest or
+publish binaries. Firmware source config.h uses the Heep Life update endpoint. See firmware/MIGRATION.md.
+Do not publish private connections, settings, logs, GPS records or credentials.
+
 ## What's here
 
 | Path | What | Runs on |
@@ -23,7 +31,7 @@ comments in plain English, explain changes in plain words, and never leave him w
 | `sw.js`, `manifest.webmanifest` | Offline copy of the app | browser |
 | `firmware/T3/` | The T3 program (ESP32). `T3.ino` + tabs; `t3.h` explains them; pins in `config.h` | LilyGo T3 |
 | `firmware/T3/screenstore.h` | Screen preparation and durable flash saving, shared with the PC storage tests; keep temporary screen sets off the loop stack | T3 / PC tests |
-| `firmware/T3.bin` etc. | **Built by GitHub Actions. Never edit or commit these by hand.** | |
+| `firmware/T3.bin` etc. | **Legacy GitHub build files. Do not relabel or edit binaries; current downloads are on Heep Life.** | |
 | `nano/` | Nano add-on (`T3Link.h`, `WheelButtons.h`, `WheelMap.h` right-button map) and the button calibration sketch | Arduino Nano |
 | `tracks/TrackStore.gs` | Ben's track store (Apps Script in his Drive) | Google |
 | `tests/` | PC tests: `bash tests/run.sh` | PC |

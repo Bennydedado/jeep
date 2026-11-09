@@ -1,14 +1,15 @@
 # T3 firmware
 
+**Downloads and updates now come from [Heep Life](https://heeplife.ca/firmware/).** The old GitHub update manifest is kept only to move existing T3s to firmware 2.33 over Wi-Fi. See [MIGRATION.md](MIGRATION.md).
+
 The Jeep's trip computer for a LilyGo T3 V1.6.1. Start reading at `T3/T3.ino`; `T3/t3.h` lists every tab and its job;
 pins are in `T3/config.h`. Wiring and setup: `../docs/HARDWARE.md`. Messages: `../T3.md`.
 
 ## Normal use: nothing to build
 
-Push a change to `firmware/T3/` on GitHub and **Build the T3** (`.github/workflows/t3.yml`) runs the PC tests, compiles,
-and publishes `T3.bin`, `t3.json` and the USB install files here. T3s in the field fetch it over Wi-Fi (newer versions
-only, only when stopped). **Bump `FW` in `config.h` every time**, or the T3s won't take it.
-`build.log` shows the last result; if it says the build failed, nothing was published and the T3s keep what they have.
+The live website remains on Heep Life. GitHub runs build and test checks, but no longer publishes firmware or rewrites the migration manifest. A T3 on 2.31 or 2.32 can still use its existing Update over Wi-Fi button: the old GitHub JSON points at the verified Heep Life 2.33 binary. After that installation, future requested updates use Heep Life directly.
+
+New firmware must be built, tested and published on Heep Life using the existing partition layout. Bump the firmware version for code changes. Never edit or relabel a binary.
 
 ## Building yourself
 

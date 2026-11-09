@@ -1,9 +1,9 @@
 // update.ino - "Update over Wi-Fi", done from a fresh start.
 //
-// Downloading from GitHub needs a secure connection, and that needs about 50 KB of memory in one piece. With
+// Downloading from Heep update server needs a secure connection, and that needs about 50 KB of memory in one piece. With
 // Bluetooth (the iCar and Heep), Wi-Fi and the relay all running, the T3 often hasn't got that, and the update
-// stops with "couldn't reach GitHub: connection refused". So an update over Wi-Fi restarts the T3 first and does
-// the whole thing before Bluetooth and everything else start: join your Wi-Fi, ask GitHub for t3.json, download
+// stops with "couldn't reach Heep update server: connection refused". So an update over Wi-Fi restarts the T3 first and does
+// the whole thing before Bluetooth and everything else start: join your Wi-Fi, ask Heep update server for t3.json, download
 // the new program, restart into it. The screen shows how far it is. If it can't, the T3 starts up as usual with the
 // program it has and tells Heep why (the "upd" text in "hi").
 //
@@ -160,10 +160,10 @@ static String bootUpdateRun() {
   bootShow("looking for Wi-Fi...", "", -1);
   String joined = bootJoin(true);
   if (!joined.length()) return "couldn't join your Wi-Fi";
-  bootShow("on " + joined, "asking GitHub...", -1);
+  bootShow("on " + joined, "asking Heep update server...", -1);
   String body, why;
   for (int attempt = 0; attempt < 3 && !body.length(); attempt++) {
-    if (attempt) { bootShow("on " + joined, "asking GitHub (" + String(attempt + 1) + "/3)", -1); delay(2000); }
+    if (attempt) { bootShow("on " + joined, "asking Heep update server (" + String(attempt + 1) + "/3)", -1); delay(2000); }
     WiFiClientSecure tls;
     tls.setInsecure();
     tls.setHandshakeTimeout(20);
@@ -173,12 +173,12 @@ static String bootUpdateRun() {
     if (!http.begin(tls, String(UPDATE_JSON) + "?t=" + String(millis()))) { why = "bad address"; continue; }
     int code = http.GET();
     if (code == 200) body = http.getString();
-    else why = code < 0 ? HTTPClient::errorToString(code) : "GitHub said " + String(code);
+    else why = code < 0 ? HTTPClient::errorToString(code) : "Heep update server said " + String(code);
     http.end();
   }
   String v = jStr(body, "v"), url = jStr(body, "url");
   if (!v.length() || !url.length())
-    return "couldn't reach GitHub: " + (why.length() ? why : String("no answer")) + " (" + String(WiFi.RSSI()) + " dBm, " + String(ESP.getFreeHeap() / 1024) + " KB free)";
+    return "couldn't reach Heep update server: " + (why.length() ? why : String("no answer")) + " (" + String(WiFi.RSSI()) + " dBm, " + String(ESP.getFreeHeap() / 1024) + " KB free)";
   if (!verNewer(v, FW)) return "up to date (" FW ")";
   if (v == badVersion) return v + " failed before; waiting for a newer one";
   bootShow("downloading " + v, "keep the key on", 0);

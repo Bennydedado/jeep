@@ -8,11 +8,11 @@
 // [ours] are choices made for the Jeep wiring; see docs/HARDWARE.md before wiring anything.
 #pragma once
 
-#define FW "2.32"                 // bump this on every change: the T3 only installs a version that differs from its own
+#define FW "2.33"                 // bump this on every change: the T3 only installs a version that differs from its own
 #define PROTO 2                  // the Heep <-> T3 message version (T3.md)
 
 // ---------------------------------------------------------------- where updates and the live relay live
-#define UPDATE_JSON "https://bennydedado.github.io/jeep/firmware/t3.json"
+#define UPDATE_JSON "https://heeplife.ca/firmware/t3.json"
 #define RELAY_HOST "broker.emqx.io"
 #define RELAY_PORT 1883              // plain MQTT: what goes over it is sealed end to end (net.ino)
 #define RELAY_PORT_TLS 8883

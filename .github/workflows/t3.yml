@@ -1,12 +1,12 @@
-# Builds the T3 program whenever its code changes. Only main publishes firmware files to the website.
-# The T3 fetches firmware/T3.bin over Wi-Fi, and firmware/ has the one-time USB install.
+# Builds and tests the T3. Heep Life is the firmware host.
+# Keep firmware/t3.json as the one-time bridge for T3s still checking GitHub.
 name: Build the T3
 on:
   push:
     paths: ['firmware/T3/**', 'tests/**', '*.js', '*.html', '*.css', '.github/workflows/t3.yml']
   workflow_dispatch:
 permissions:
-  contents: write
+  contents: read
 concurrency: t3-build
 jobs:
   build:
@@ -38,32 +38,6 @@ jobs:
         run: |
           set -o pipefail
           arduino-cli compile --fqbn "esp32:esp32:esp32:PartitionScheme=min_spiffs" --export-binaries --output-dir out firmware/T3 2>&1 | tee build.log
-      - name: Publish
-        if: github.ref == 'refs/heads/main'
-        run: |
-          cp build.log firmware/build.log
-          ls out >> firmware/build.log 2>/dev/null || true
-          # the version lives in config.h (T3.ino before 2.0); an empty one would stop every T3 updating, so it must be there
-          V=$(cat firmware/T3/config.h firmware/T3/T3.ino 2>/dev/null | grep -o '#define FW "[^"]*"' | head -1 | cut -d'"' -f2)
-          if [ -z "$V" ]; then echo "No #define FW version found: not publishing" >> firmware/build.log; exit 1; fi
-          # safe updates need the bootloader's rollback switched on in this core: say so in the log
-          R=$(grep -rhs --include=sdkconfig --include=sdkconfig.h "APP_ROLLBACK_ENABLE" ~/.arduino15/packages/esp32 | sort -u | head -2 | tr '\n' ' ')
-          echo "rollback: ${R:-not found in this core}" >> firmware/build.log
-          if [ "${{ steps.build.outcome }}" = "success" ]; then
-            cp out/T3.ino.bin firmware/T3.bin
-            # the USB install writes four small pieces (no 4 MB image, no erase step)
-            cp out/T3.ino.bootloader.bin firmware/bootloader.bin
-            cp out/T3.ino.partitions.bin firmware/partitions.bin
-            cp "$(find ~/.arduino15 -name boot_app0.bin | head -1)" firmware/boot_app0.bin
-            rm -f firmware/T3-full.bin
-            printf '{"v":"%s","url":"https://bennydedado.github.io/jeep/firmware/T3.bin"}\n' "$V" > firmware/t3.json
-            printf '{"name":"Jeep T3","version":"%s","new_install_prompt_erase":false,"builds":[{"chipFamily":"ESP32","parts":[{"path":"bootloader.bin?v=%s","offset":4096},{"path":"partitions.bin?v=%s","offset":32768},{"path":"boot_app0.bin?v=%s","offset":57344},{"path":"T3.bin?v=%s","offset":65536}]}]}\n' "$V" "$V" "$V" "$V" "$V" > firmware/manifest.json
-          fi
-          git config user.name "github-actions"
-          git config user.email "github-actions@users.noreply.github.com"
-          git add firmware
-          git commit -m "T3 build: ${{ steps.build.outcome }}" || exit 0
-          git push
       - name: Fail if firmware build failed
         if: steps.build.outcome != 'success'
         run: exit 1

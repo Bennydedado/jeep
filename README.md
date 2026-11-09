@@ -1,5 +1,11 @@
 # Jeep
 
+**The website and firmware hosting have moved to [Heep Life](https://heeplife.ca).**
+
+For a T3 still on 2.31 or 2.32, use Heep Life → Live → Wi-Fi & update → Update over Wi-Fi, while parked with steady power and a saved Wi-Fi network in reach. The old GitHub update address now offers the verified 2.33 firmware from Heep Life. Once installed, the T3 checks Heep Life directly for future updates, only when you request them. Confirm that the T3 reports 2.33 after it restarts.
+
+GitHub remains a source/checks repository and a compatibility update address. It does not publish or change the private Heep Life website. The migration changes no hardware pins, partitions, stored Wi-Fi networks or log/track credentials. See [firmware/MIGRATION.md](firmware/MIGRATION.md).
+
 **Heep**, a Home Screen web app for a 2006 Jeep Liberty CRD: log fill-ups at the pump, see fuel economy, costs and
 service reminders, watch live engine, GPS and outside-temperature data from the T3, design the T3's screens, and
 look back at every drive on the **Trips** tab (Map & Trip History).
