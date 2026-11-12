@@ -137,12 +137,12 @@ float fieldNumber(int f) {
   if (!strcmp(id, "econ")) { float v = speedNow(); return engineOn() && v > 3 ? fuelNow() / v * 100 : NAN; }
   if (!strcmp(id, "tkm")) return trip.km;
   if (!strcmp(id, "tl")) return trip.l;
-  if (!strcmp(id, "tavg")) return trip.km >= 0.5 && trip.l > 0 ? trip.l / trip.km * 100 : NAN;
+  if (!strcmp(id, "tavg")) { float k = trip.km - trip.nkm; return k >= 0.5 && trip.l > 0 ? trip.l / k * 100 : NAN; }   // (2.35: km with no fuel known left out)
   if (!strcmp(id, "tavgs")) return trip.s > 30 ? trip.km / (trip.s / 3600) : NAN;
   if (!strcmp(id, "tvmax")) return trip.vmax;
   if (!strcmp(id, "totkm")) return totalKm + trip.km;
   if (!strcmp(id, "totl")) return totalL + trip.l;
-  if (!strcmp(id, "totavg")) return totalKm + trip.km >= 1 ? (totalL + trip.l) / (totalKm + trip.km) * 100 : NAN;
+  if (!strcmp(id, "totavg")) { float k = totalKm + trip.km - totalNkm - trip.nkm; return k >= 1 ? (totalL + trip.l) / k * 100 : NAN; }
   if (!strcmp(id, "fuel")) return fuelLeft();
   if (!strcmp(id, "dte")) return fuelToEmpty();
   if (!strcmp(id, "hdop")) return gps.hdop;

@@ -20,6 +20,7 @@ void loadSettings() {
   cfg.distCal = p.getFloat("dc", 1.0);
   totalKm = p.getFloat("tk", 0);
   totalL = p.getFloat("tl", 0);
+  totalNkm = p.getFloat("tn", 0);
   cfg.screenSecs = p.getInt("ss", 60);
   cfg.parkSecs = p.getInt("pk", 90);
   cfg.bright = p.getInt("br", 2);
