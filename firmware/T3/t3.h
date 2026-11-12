@@ -89,7 +89,9 @@ extern String liveTopic, cmdTopic;   // relay channels (settings.ino)
 extern String bootUpdNote;           // how an update at start-up went (update.ino)
 extern volatile bool bootUp;         // the start-up upload is running in the background (update.ino, 2.26)
 extern volatile bool upScreen;       // its screen is showing
-bool bootSend(); void bootSendStep(); bool upScreenDraw(); bool upScreenHide();
+bool bootSend(); void bootSendStep(); bool upScreenDraw(); bool upScreenButton(char press);
+extern volatile bool upStop;          // 2.34: stop the start-up upload (held button, wheel menu, driving off)
+void upStopNow(const char* why);
 extern int menuChanges;              // settings changed from the wheel menu (menu.ino)
 extern String bootNote;              // how sending trips at start-up went (update.ino)
 extern String uplNote;               // how an upload asked for from Heep / the wheel went (update.ino, in "hi")

@@ -9,8 +9,15 @@
 //     every 4th try searches again, in case it changed
 //   - while the iCar is reconnecting during a drive, Wi-Fi waits (up to 2 minutes): the engine numbers come first
 //   - every drop and reconnect goes into events.log on the SD card, and Diagnostics counts them
+// 2.34, fewer drops and a faster start:
+//   - the link now waits up to 20 s before giving up (was 8 s): looking for the hotspot can hold the radio longer
+//   - while the iCar is linked, the radio favours Bluetooth over Wi-Fi when both want it
+//   - while driving with the iCar linked, Wi-Fi looks for a missing network less often (net.ino icarDriving)
+//   - the iCar's address is kept in flash: after any restart (even while driving) the T3 goes straight to it
+//     instead of searching first (still searching every 4th try, in case it changed)
 #include "obdmatch.h"
 #include <esp_heap_caps.h>
+#include <esp_coexist.h>
 
 static NimBLEAddress obdAddr;
 static bool obdFound = false;
@@ -101,6 +108,26 @@ bool obdAttach() {
   return false;
 }
 
+// the iCar's address from the last link (2.34), only if it was found under the name the T3 looks for now
+static void obdLoadAddr() {
+  Preferences p; p.begin("t3", true);
+  String a = p.getString("obda", ""), n = p.getString("obdn", "~");
+  uint8_t t = p.getUChar("obdt", 0);
+  p.end();
+  if (a.length() < 17 || n != cfg.obdName) return;
+  obdAddr = NimBLEAddress(std::string(a.c_str()), t);
+  obdKnown = true; obdTryAt = 0;
+  obdDiagSet("going straight to the iCar");
+}
+static void obdSaveAddr() {
+  String a = String(obdAddr.toString().c_str());
+  Preferences p; p.begin("t3", false);
+  if (p.getString("obda", "") != a || p.getString("obdn", "~") != cfg.obdName || p.getUChar("obdt", 0) != obdAddr.getType()) {
+    p.putString("obda", a); p.putString("obdn", cfg.obdName); p.putUChar("obdt", obdAddr.getType());
+  }
+  p.end();
+}
+
 void obdBegin() {
   obdQueue = xQueueCreate(512, 1);
   obdBleStartFree = ESP.getFreeHeap();
@@ -110,6 +137,7 @@ void obdBegin() {
   sc->setScanCallbacks(&scanCB, false);
   sc->setActiveScan(true);
   sc->setInterval(100); sc->setWindow(60);
+  obdLoadAddr();
 }
 
 void obdConnectStep() {
@@ -120,6 +148,8 @@ void obdConnectStep() {
       connecting = false;
       if (obdAttach()) {
         obdLinked = true; obdDiagSet("linked; engine setup");
+        esp_coex_preference_set(ESP_COEX_PREFER_BT);   // the engine numbers first when Wi-Fi wants the radio too (2.34)
+        obdSaveAddr();
         sdEvent(obdTries > 1 ? "iCar connected (try " + String(obdTries) + ")" : String("iCar connected"));
         obdTries = 0;
       }
@@ -150,9 +180,9 @@ void obdConnectStep() {
     obdClient = NimBLEDevice::createClient();
     if (!obdClient) { obdDiagSet("could not allocate BLE client"); return; }
     obdClient->setClientCallbacks(&obdCB, false); obdClient->setConnectTimeout(6000);
-    // 30-50 ms between radio meetings, and only give up after 8 s without hearing the iCar (was 2.56 s): a Wi-Fi
-    // scan can keep the radio busy for a couple of seconds (units: 1.25 ms, 1.25 ms, -, 10 ms)
-    obdClient->setConnectionParams(24, 40, 0, 800);
+    // 30-50 ms between radio meetings, and only give up after 20 s without hearing the iCar (2.34; was 8 s, and
+    // 2.56 s before 2.21): looking for Wi-Fi can keep the radio busy for a while (units: 1.25 ms, 1.25 ms, -, 10 ms)
+    obdClient->setConnectionParams(24, 40, 0, 2000);
   }
   obdFound = false;
   obdConnected = false;
@@ -282,6 +312,7 @@ void obdStep() {
   if (wasLinked && !obdLinked) {   // the link just went (the Bluetooth callbacks can't write to the SD card themselves)
     char why[64]; obdDiagCopy(why, sizeof(why));
     obdDrops++; obdLostAt = millis(); obdTries = 0; obdTryAt = 0;
+    esp_coex_preference_set(ESP_COEX_PREFER_BALANCE);   // (back to sharing evenly until it's linked again)
     sdEvent("iCar link lost: " + String(why) + (wifiState == W_ON ? " (Wi-Fi on)" : wifiState == W_SCAN || wifiState == W_JOIN ? " (Wi-Fi looking)" : ""));
   }
   if (obdLinked) obdLostAt = 0;

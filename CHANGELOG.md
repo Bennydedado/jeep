@@ -1,5 +1,15 @@
 # Changes
 
+## 11 Nov 2026 — T3 2.34: stop an upload, the iCar after a restart, fewer iCar drops
+
+- Stop the start-up upload: on the upload screen a tap still hides it, and **holding** a wheel button stops it. While it
+  runs hidden, the wheel menu's "Upload now" says "Stop it". Driving off stops an upload you didn't ask for. What went
+  up is kept, the rest goes next time, and the iCar connects straight away.
+- A restart while driving (or any restart that isn't a key-on) no longer uploads first: the iCar comes first.
+- The T3 remembers the iCar's address, so after a restart it connects to it straight away instead of searching.
+- Fewer iCar drops: the link now rides out 20 s of radio trouble (was 8 s), the radio favours the iCar over Wi-Fi
+  while it's linked, and while driving the T3 looks for a missing Wi-Fi network every 2 minutes instead of every 30 s.
+
 ## 5 Nov 2026 — Heep 1.1.34: every trip at once (heat map)
 
 - Trips has a flame button: every GPS track drawn together on dimmed streets, like Strava's heat map. Each trip adds

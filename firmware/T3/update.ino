@@ -139,15 +139,15 @@ static String bootJoin(bool blind) {
   for (int i = 0; i < cfg.netCount; i++) order[n++] = i;
   for (int a = 0; a < n; a++) for (int b = a + 1; b < n; b++) if (rssi[order[b]] > rssi[order[a]]) { int t = order[a]; order[a] = order[b]; order[b] = t; }
   String joined;
-  for (int t = 0; t < n && t < 4 && !joined.length(); t++) {
+  for (int t = 0; t < n && t < 4 && !joined.length() && !upStop; t++) {
     if (!blind && !seenAs[order[t]].length()) continue;   // quick: only networks in sight
     String ssid = seenAs[order[t]].length() ? seenAs[order[t]] : cfg.nets[order[t]].ssid;
     if (!ssid.length()) continue;
-    if (blind && bootUp) upSet("Uploading", "joining " + ssid, "any button: hide", -1);   // (the start-up upload: its own screen)
+    if (blind && bootUp) upSet("Uploading", "joining " + ssid, "hold a button: stop", -1);   // (the start-up upload: its own screen)
     else if (blind) bootShow("joining", ssid, -1);
     WiFi.begin(ssid.c_str(), cfg.nets[order[t]].pass.c_str());
     uint32_t t0 = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - t0 < (blind ? 15000 : 10000)) delay(100);
+    while (WiFi.status() != WL_CONNECTED && millis() - t0 < (blind ? 15000 : 10000) && !upStop) delay(100);
     if (WiFi.status() == WL_CONNECTED) joined = ssid;
     else { WiFi.disconnect(); delay(300); }
   }
@@ -225,9 +225,14 @@ void bootUpdate() {
 // so whatever doesn't go now carries on next time; what's gone is marked sent and never goes again.
 //   - key-on: only networks in sight, quietly; "Uploading" with a bar shows once something actually goes up
 //   - arrived home or asked for (Heep's Upload now, the wheel menu): the same, hidden hotspots tried too when asked
-// Any wheel button hides the upload screen (the upload carries on); "Upload done" flashes when it finishes.
+// A tap on a wheel button hides the upload screen (the upload carries on); "Upload done" flashes when it finishes.
+// 2.34: holding a button on the upload screen stops it (so does the wheel menu's "Upload now" while it runs, and
+// driving off, unless you asked for it): the Wi-Fi drops at once, what went up is kept, the rest goes next time, and
+// the iCar and Heep start. A restart that wasn't a key-on (a crash, the watchdog, low voltage...) skips it: the iCar first.
 volatile bool bootUp = false;          // the start-up upload is running (loop: Wi-Fi and Bluetooth wait for it)
 volatile bool upScreen = false;        // its screen is showing
+volatile bool upStop = false;          // 2.34: stop it (upStopNow)
+static char upStopWhy[24] = "";
 static volatile uint32_t upUntil = 0;  // the end screen goes at this millis() (0: still going)
 static volatile int upPctShown = -1;
 static char upTitle[24], upWhat[32], upSub[32], upWhy[32];
@@ -242,8 +247,9 @@ static void upSet(const char* title, const String& what, const String& sub, int 
   upPctShown = pct;
 }
 static void upShow(const String& what) {
+  if (upStop) return;                                   // ("Stopping" stays up)
   int pct = upTotal ? (int)min((uint64_t)100, (uint64_t)upDone * 100 / upTotal) : 0;
-  upSet("Uploading", what, String(pct) + "%  any button: hide", pct);
+  upSet("Uploading", what, String(pct) + "%  hold btn: stop", pct);
 }
 static void upPart(uint32_t bytes) {
   upDone += bytes;
@@ -263,9 +269,21 @@ bool upScreenDraw() {
   if (pct >= 0) { oled.drawRect(0, 46, 128, 10, SSD1306_WHITE); oled.fillRect(2, 48, 124 * constrain(pct, 0, 100) / 100, 6, SSD1306_WHITE); }
   return true;
 }
-// wheel.ino: any button while it shows hides it; the upload carries on
-bool upScreenHide() {
+// loop(): stop the start-up upload now (2.34). Dropping the Wi-Fi ends a request that is under way straight away;
+// each part can be sent again safely, so nothing is lost: the rest goes next time.
+void upStopNow(const char* why) {
+  if (!bootUp || upStop) return;
+  strlcpy(upStopWhy, why, sizeof(upStopWhy));
+  upStop = true;
+  upSet("Stopping upload", why, "the iCar is next", -1);
+  upScreen = true; upUntil = 0;
+  WiFi.disconnect();
+}
+// wheel.ino: while it shows, a tap hides it (the upload carries on) and a hold stops the upload (2.34)
+bool upScreenButton(char press) {
   if (!upScreen) return false;
+  if (press == 'R') return true;                        // (still held)
+  if (press == 'L' && bootUp) { upStopNow("button held"); return true; }
   upScreen = false; upUntil = 0;
   if (bootUp) flash("Uploading behind");
   return true;
@@ -302,16 +320,16 @@ static void bootSendTask(void*) {
   uint32_t heapAtStart = ESP.getFreeHeap() / 1024, blockAtStart = ESP.getMaxAllocHeap() / 1024;
   upTotal = tracks ? sdWaitingBytes(&upN) : 0; upDone = 0; upSent = 0;
   if (!upAsked) upScreen = true;                         // quiet until now: something is going up
-  if (trips) {
+  if (trips && !upStop) {
     upShow("trips to Jeep log");
     uploadTrips(cfg.sheetUrl, cfg.sheetKey);
     bootNote = "trips at start: " + String(lastUpload);
   }
-  if (tracks) {
+  if (tracks && !upStop) {
     upShow("finding the house receiver");
     bool viaHouse = findHouseReceiver();                 // 2.32: hand the tracks to it if it's there
     upPart(0);
-    while (WiFi.status() == WL_CONNECTED && sd.tracksWaiting > 0) {
+    while (!upStop && WiFi.status() == WL_CONNECTED && sd.tracksWaiting > 0) {
       int sent = uploadTracks(cfg.trkUrl, cfg.trkKey, 0, viaHouse ? 250 : 120, upPart);
       upSent += sent;
       sdCountWaiting();
@@ -335,10 +353,16 @@ static void bootSendTask(void*) {
   // paused: say why on the screen (2.27), so a wrong track key doesn't look like "it just stops"
   String why = "", fix = "";
   if (!allDone) upWhyText(trips && queued, why, fix);
+  if (upStop && !allDone) {                              // 2.34: you (or driving off) stopped it
+    why = "stopped: " + String(upStopWhy); fix = "rest next time";
+    bootNote += String(bootNote.length() ? "; " : "") + "stopped (" + String(upStopWhy) + ")";
+    if (upAsked) uplNote += " (stopped: " + String(upStopWhy) + ")";
+    upScreen = true;
+  }
   if (upScreen) {
-    upSet(allDone ? "Upload done" : "Upload paused", done, allDone ? String("") : why, allDone ? 100 : -1);
+    upSet(allDone ? "Upload done" : upStop ? "Upload stopped" : "Upload paused", done, allDone ? String("") : why, allDone ? 100 : -1);
     if (!allDone) strlcpy(upWhy, fix.c_str(), sizeof(upWhy));
-    upUntil = millis() + (allDone ? 3000 : 12000);
+    upUntil = millis() + (allDone ? 3000 : upStop ? 4000 : 12000);
   }
   else { strlcpy(upDoneText, allDone ? "Upload done" : "Upload paused", sizeof(upDoneText)); upFlashDone = true; }
   WiFi.disconnect(true); WiFi.mode(WIFI_OFF);
@@ -352,10 +376,18 @@ bool bootSend() {
   if (hs) pr.remove("hsend");
   pr.end();
   upHome = hs > 0; upAsked = hs == 2;
+  upStop = false;
+  // 2.34: restarted without a key-on (a crash, the watchdog, low voltage, a restart while driving): the iCar comes first.
+  // What's waiting goes at the next key-on, or when you park on your home Wi-Fi (homeStep restarts the T3 to send it).
+  if (!hs && resetWhy != "power on" && resetWhy != "sleep") {
+    if ((queued > 0 && cfg.sheetUrl.length()) || (sd.ok && sd.tracksWaiting > 0 && cfg.trkUrl.length()))
+      bootNote = "uploads at start: skipped after a " + resetWhy + " (the iCar first)";
+    return false;
+  }
   bool trips = queued > 0 && cfg.sheetUrl.length();
   bool tracks = sd.ok && sd.tracksWaiting > 0 && cfg.trkUrl.length();
   if ((!trips && !tracks) || !cfg.netCount) { if (upAsked) uplNote = "nothing was waiting"; return false; }
-  if (upAsked) { upSet("Uploading", "joining Wi-Fi...", "any button: hide", -1); upScreen = true; }
+  if (upAsked) { upSet("Uploading", "joining Wi-Fi...", "hold a button: stop", -1); upScreen = true; }
   bootUp = true;
   if (xTaskCreatePinnedToCore(bootSendTask, "bootsend", 16384, nullptr, 1, nullptr, 0) != pdPASS) { bootUp = false; upScreen = false; return false; }
   return true;
@@ -363,6 +395,12 @@ bool bootSend() {
 // loop(): an upload that finished behind your screens says so, and goes in the card's event log
 void bootSendStep() {
   static bool logged = false;
+  static uint32_t movingSince = 0;
+  // 2.34: driving off stops an upload you didn't ask for (GPS speed over 15 km/h for 5 s), so the iCar can start
+  if (bootUp && !upAsked && !upStop && speedNow() > 15) {
+    if (!movingSince) movingSince = millis();
+    else if (millis() - movingSince > 5000) upStopNow("driving off");
+  } else movingSince = 0;
   if (upFlashDone) { upFlashDone = false; flash(upDoneText); }
   if (!bootUp && !logged && bootNote.length()) { logged = true; sdEvent(bootNote); }
 }

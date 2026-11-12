@@ -118,7 +118,7 @@ void onWheelButton(int button, char press, const char* from) {
   wheel.lastAt = millis();
   wheel.presses++;
   if (screenWakeOnly()) return;   // the first press while the screen is off only wakes it
-  if (upScreenHide()) return;     // any button hides the upload screen; the upload carries on (2.26)
+  if (upScreenButton(press)) return;   // upload screen: a tap hides it (the upload carries on), a hold stops it (2.34)
   if (menuOpen()) { menuButton(button, press); return; }
   String a = actionFor(button, press);
   doAction(a, from);
