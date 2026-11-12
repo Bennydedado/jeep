@@ -374,14 +374,14 @@ int uploadTracks(const String& url, const String& key, uint32_t budgetMs, int pa
   int n = sdWaitingIds(ids, 3), done = 0;
   bool anyFail = false;
   int rowsNow = partRowsOk ? min(partRowsOk, partRows) : partRows;
-  for (int k = 0; k < n && WiFi.status() == WL_CONNECTED; k++) {
+  for (int k = 0; k < n && WiFi.status() == WL_CONNECTED && !upStop; k++) {
     const String& id = ids[k];
     int part, total, got = 0;
     uint32_t pos;
     sdUpProgress(id, &part, &pos, &total);               // carry on where the last try stopped
     bool more = true, ok = true;
     int code = 0;
-    while (more && ok && WiFi.status() == WL_CONNECTED) {
+    while (more && ok && WiFi.status() == WL_CONNECTED && !upStop) {
       if (budgetMs && millis() - t0 > budgetMs) { more = true; ok = false; break; }   // out of time: the rest next start
       uint32_t at = pos;
       String body;
@@ -576,6 +576,11 @@ static void relayKeep(uint32_t now) {
   if (now - lastPub >= 1000 && livePublish()) { lastPub = now; relaySend(liveJson()); }
 }
 
+// 2.34: the iCar is linked and the Jeep is on the move. The ESP32 has one radio for Bluetooth and Wi-Fi, and looking
+// for a network that isn't there (scans, asking for a hidden hotspot by name) is what starves the iCar's link the
+// most. So while driving with the iCar on, a missing network is looked for every 2 minutes (was 30 s) and a
+// network that wasn't in the scan gets 8 s to answer (was 15 s). A network you're already on is kept as before.
+static bool icarDriving() { return obdLinked && tripActive(); }
 void wifiStep() {
   netChores();
   if (otaMode) return;                                               // an update over Bluetooth has the radio
@@ -634,14 +639,15 @@ void wifiStep() {
       }
       // the Wi-Fi task said why it failed: give it a moment in case it gets in anyway, then say so
       int why = wifiReason;
-      if ((why && now - wifiAt > 4000) || now - wifiAt > 15000) {
+      uint32_t giveUp = (blindJoin && icarDriving()) ? 8000 : 15000;
+      if ((why && now - wifiAt > 4000) || now - wifiAt > giveUp) {
         lastReason = why;
         String res = why ? String(wifiReasonText(why)) : String("no answer");
         tryDone(res + (blindJoin ? " (wasn't in the scan)" : ""));
         wifiNow = "couldn't join " + wifiName + ": " + res;
         lastUpload.set("couldn't join " + wifiName);
         if (updPhase == UP_WAIT) { updPhase = UP_FAIL; updStatus.set("couldn't get on Wi-Fi (" + wifiName + ": " + res + ")"); }
-        wifiOff(asked ? 5000 : livePublish() ? 30000 : 60000);
+        wifiOff(asked ? 5000 : icarDriving() ? 120000 : livePublish() ? 30000 : 60000);
       }
       return;
     }

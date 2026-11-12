@@ -37,7 +37,10 @@ static String menuValue(int i) {
     case MI_ENGT: return cfg.engF ? "F" : "C";
     case MI_FLIP: return cfg.flip ? "Yes" : "No";
     case MI_LIVE: return cfg.liveWifi ? "On" : "Off";
-    case MI_SEND: { int w = queued + (sd.ok ? sd.tracksWaiting : 0); return w > 0 ? String(w) + " waiting" : String("none"); }
+    case MI_SEND: {
+      if (bootUp) return menuConfirmItem == i && millis() - menuConfirmAt < 3000 ? String("stop?") : String("Stop it");   // 2.34
+      int w = queued + (sd.ok ? sd.tracksWaiting : 0); return w > 0 ? String(w) + " waiting" : String("none");
+    }
     default: return menuConfirmItem == i && millis() - menuConfirmAt < 3000 ? String("again?") : String("");
   }
 }
@@ -81,7 +84,7 @@ static void menuChange(int i) {
     case MI_FLIP: menuSet("rot", cfg.flip ? 0 : 1); break;
     case MI_LIVE: menuSet("lw", cfg.liveWifi ? 0 : 1); break;
     case MI_PEAK: trip.boostMax = 0; flash("Peak reset"); break;
-    case MI_SEND: if (confirmed(i)) { menuIsOpen = false; sendTripsNow("wheel menu"); } break;
+    case MI_SEND: if (confirmed(i)) { menuIsOpen = false; if (bootUp) upStopNow("from the menu"); else sendTripsNow("wheel menu"); } break;
     case MI_END: if (confirmed(i)) { menuIsOpen = false; tripCommand("end", "wheel menu"); } break;
     case MI_CLOSE: menuIsOpen = false; break;
   }
