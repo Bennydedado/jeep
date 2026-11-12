@@ -323,6 +323,8 @@ void uploadTrips(const String& url, const String& key) {
     float s = numField(j, "s");
     String note = "";
     if (!t1) { t1 = now; note = "time approximate"; }
+    float el = numField(j, "el");                       // 2.35: diesel estimated where the iCar gave no fuel numbers
+    if (el >= 0.05) note += String(note.length() ? "; " : "") + String(el, 1) + " L estimated (iCar gap)";
     if (!t0) t0 = t1 - (long long)(s * 1000);
     if (n) ops += ",";
     ops += "{\"q\":\"" + id + "\",\"op\":\"put\",\"tab\":\"trip\",\"row\":{\"id\":\"" + id + "\",\"t0\":" + ll(t0) + ",\"t1\":" + ll(t1) +

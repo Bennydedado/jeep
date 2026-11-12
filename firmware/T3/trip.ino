@@ -9,6 +9,9 @@
 //
 // Distance comes from the speed source (iCar speed x distance correction, or GPS speed); the GPS track's own
 // length is kept separately (gpsKm) so the two can be compared. Fuel only comes from the iCar.
+// 2.35: driving on with no fuel numbers (the iCar dropped or went quiet), that stretch's diesel is estimated at the
+// trip's own average so far (estL); before 1 km with the iCar there is no average, so the stretch is left out of the
+// averages instead (nkm). Either way "Trip avg" no longer drops the farther you drive without fuel numbers.
 
 int tripNo = 0;
 static uint32_t lastIntegrate = 0, lastSnapshot = 0, quietSince = 0;
@@ -19,6 +22,7 @@ String tripJson(const Trip& t) {
   String j = "{\"t\":\"trip\",\"id\":\"" + t.id + "\",\"km\":" + String(t.km, 2) + ",\"l\":" + String(t.l, 2) +
              ",\"s\":" + String((long)t.s) + ",\"idle\":" + String((long)t.idle) + ",\"vmax\":" + String((long)t.vmax) +
              ",\"gkm\":" + String(t.gpsKm, 2);
+  if (t.fkm > 0 || t.estL > 0 || t.nkm > 0) j += ",\"fkm\":" + String(t.fkm, 2) + ",\"el\":" + String(t.estL, 2) + ",\"nkm\":" + String(t.nkm, 2);
   if (t.t0) j += ",\"t0\":" + ll(t.t0);
   if (t.t1) j += ",\"t1\":" + ll(t.t1);
   if (!isnan(t.lat0)) j += ",\"a0\":[" + String(t.lat0, 5) + "," + String(t.lon0, 5) + "]";
@@ -74,8 +78,8 @@ void finishTrip(Trip& t) {
   xSemaphoreGive(fsLock);
   sdTripEnd(t, real);
   if (!real) return;
-  totalKm += t.km; totalL += t.l;
-  Preferences p; p.begin("t3", false); p.putFloat("tk", totalKm); p.putFloat("tl", totalL); p.end();
+  totalKm += t.km; totalL += t.l; totalNkm += t.nkm;
+  Preferences p; p.begin("t3", false); p.putFloat("tk", totalKm); p.putFloat("tl", totalL); p.putFloat("tn", totalNkm); p.end();
   queued = queuedCount();
 }
 // forget the trips the sheet now has ("|id|id|")
@@ -119,6 +123,7 @@ void recoverTrip() {
   t.id = j.substring(a, b);
   t.km = numField(j, "km"); t.l = numField(j, "l"); t.s = numField(j, "s"); t.idle = numField(j, "idle"); t.vmax = numField(j, "vmax");
   t.gpsKm = numField(j, "gkm");
+  t.fkm = numField(j, "fkm"); t.estL = numField(j, "el"); t.nkm = numField(j, "nkm");
   t.t0 = llField(j, "t0"); t.t1 = llField(j, "t1");
   int p0 = j.indexOf("\"a0\":["), p1 = j.indexOf("\"a1\":[");
   if (p0 >= 0) { t.lat0 = j.substring(p0 + 6).toFloat(); t.lon0 = j.substring(j.indexOf(',', p0 + 6) + 1).toFloat(); }
@@ -176,8 +181,14 @@ void tripStep() {
     if (!trip.t0) trip.t0 = nowMs() ? nowMs() - (int64_t)(trip.s * 1000) : 0;
     float v = speedNow();
     if (v < 0) v = 0;
-    trip.km += v * dt / 3600.0 * (speedFromObd() ? cfg.distCal : 1.0);
-    if (engineOn()) trip.l += fuelNow() * dt / 3600.0;
+    float dkm = v * dt / 3600.0 * (speedFromObd() ? cfg.distCal : 1.0);
+    trip.km += dkm;
+    if (engineOn()) { trip.l += fuelNow() * dt / 3600.0; trip.fkm += dkm; }
+    else if (dkm > 0) {                                   // moving, no fuel numbers from the iCar (2.35)
+      float realL = trip.l - trip.estL;
+      if (trip.fkm >= 1 && realL > 0) { float add = realL / trip.fkm * dkm; trip.l += add; trip.estL += add; }
+      else trip.nkm += dkm;
+    }
     trip.s += dt;
     if (engineOn() && v < 2) trip.idle += dt;
     if (v > trip.vmax) trip.vmax = v;

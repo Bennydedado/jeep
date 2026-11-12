@@ -28,7 +28,7 @@ Wheel wheel;
 JLinkParser jlink;
 Trip trip;
 Sd sd;
-float totalKm = 0, totalL = 0;
+float totalKm = 0, totalL = 0, totalNkm = 0;   // (totalNkm: km with no fuel known, 2.35)
 int queued = 0;
 volatile WifiState wifiState = W_IDLE;
 String wifiName, wifiNow = "off", wifiSeen;

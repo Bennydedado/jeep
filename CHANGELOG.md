@@ -1,5 +1,12 @@
 # Changes
 
+## 11 Nov 2026 — T3 2.35: "Trip avg" holds steady when the iCar drops
+
+- Driving on without fuel numbers from the iCar (it dropped or went quiet) used to add distance with no diesel, so
+  "Trip avg" kept dropping the farther you drove. Now that stretch's diesel is estimated at the trip's own average so
+  far, which also keeps the tank countdown honest. If the iCar hadn't given 1 km of fuel numbers yet, the stretch is
+  left out of the averages instead. The trip sent to the sheet says how many litres were estimated.
+
 ## 11 Nov 2026 — T3 2.34: stop an upload, the iCar after a restart, fewer iCar drops
 
 - Stop the start-up upload: on the upload screen a tap still hides it, and **holding** a wheel button stops it. While it

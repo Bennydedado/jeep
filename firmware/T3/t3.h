@@ -156,6 +156,9 @@ extern JLinkParser jlink;
 struct Trip {
   String id;
   float km = 0, l = 0, s = 0, idle = 0, vmax = 0, boostMax = 0;
+  // 2.35: km with fuel numbers from the iCar, litres estimated for stretches without them, and km with no fuel known
+  // at all (left out of the averages): an iCar that drops mid-drive no longer makes the trip look better and better
+  float fkm = 0, estL = 0, nkm = 0;
   int64_t t0 = 0, t1 = 0;
   bool paused = false;
   // GPS track summary (what the map uses)
@@ -163,7 +166,7 @@ struct Trip {
   float gpsKm = 0;
 };
 extern Trip trip;
-extern float totalKm, totalL;
+extern float totalKm, totalL, totalNkm;
 extern int queued;
 
 // short status texts written by the upload task (core 0) and read by loop() (core 1): fixed buffers, never Strings,
